@@ -1,0 +1,12 @@
+{
+  "name": "esquadro-local",
+  "owner": { "name": "wendellmcs" },
+  "description": "Marketplace local de um plugin so: o esquadro.",
+  "plugins": [
+    {
+      "name": "esquadro",
+      "source": "./",
+      "description": "Portoes deterministicos que obrigam o agente a provar em vez de afirmar."
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+# Contexto local de trabalho — planos, handoffs, ledger. Nao versionar.
+.context/
+.superpowers/
+
+# Temporarios e saida de ferramenta
+*.tmp
+*.TMP
+*.log
+node_modules/
+
+# Vocabulario privado do detector de sanitacao (D133). NUNCA versionar:
+# se estes termos entrassem no git, o detector publicaria o que existe para impedir.
+.sanitacao-local.json
+
+# Estado que o plugin grava ao rodar aqui (sondagem, contadores, revisao). Nao versionar.
+.claude/

@@ -1,0 +1,9 @@
+{
+  "tetoDeInstrucoes": 200,
+  "avisarA": 150,
+  "origem": "teto medido na Fase 2 e registrado em docs/pesquisa/sintese.md",
+  "delegaveisConhecidos": [
+    { "nome": "superpowers", "delega": "metodo: brainstorming, escrita e execucao de plano, TDD, depuracao sistematica" },
+    { "nome": "context7", "delega": "doc viva de biblioteca: resolve a falha de API e pacote inventado" }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "esquadro",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Portoes deterministicos que obrigam o agente a provar em vez de afirmar.",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
