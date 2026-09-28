@@ -11,7 +11,7 @@ io.blindar(function () {
     const comando = (e.tool_input || {}).command;
     if (!comando) return io.permitir();
 
-    const projeto = config.carregarProjeto(e.cwd || process.cwd());
+    const projeto = config.carregarProjeto(config.raizDoProjeto(e.cwd || process.cwd()));
 
     // X2b: o botao honesto de desligar. Substitui o comandosLiberados:[".*"],
     // que desligava o portao por efeito colateral e sem dizer que desligava.
@@ -38,7 +38,7 @@ io.blindar(function () {
     }
 
     const shell = require('./lib/shell.js');
-    const problemas = shell.conferir(comando, projeto && projeto.plataforma);
+    const problemas = shell.conferir(comando, projeto && projeto.plataforma, e.tool_name);
     if (problemas.length) {
       const tentativa = estado.incrementar(e.session_id, 'shell_idioma_errado');
       return io.negarFerramenta(shell.motivo(comando, problemas, tentativa));

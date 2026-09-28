@@ -10,9 +10,16 @@ const TABELA = (function () {
   }
 })();
 
-/** Tira o que esta entre aspas: /tmp dentro de string literal nao e comando. */
+/**
+ * Tira o que esta entre aspas: /tmp dentro de string literal nao e comando.
+ * D244/achado 13: o corpo de here-string do PowerShell (`@'` ou `@"` no fim da linha, fechado
+ * por `'@`/`"@` no comeco de outra) tambem e texto - sai ANTES das aspas, porque o corpo costuma
+ * ter aspas desbalanceadas.
+ */
 function semLiterais(comando) {
   return String(comando == null ? '' : comando)
+    .replace(/@'[ \t]*\r?\n[\s\S]*?\r?\n'@/g, ' ')
+    .replace(/@"[ \t]*\r?\n[\s\S]*?\r?\n"@/g, ' ')
     .replace(/"(?:[^"\\]|\\.)*"/g, ' ')
     .replace(/'(?:[^'\\]|\\.)*'/g, ' ');
 }
@@ -24,10 +31,14 @@ function compilar(regra) {
 /**
  * F16: a tabela e carregada pela plataforma declarada em projeto.json,
  * nao inferida a cada comando.
+ * D244/defeito 4: e pela FERRAMENTA (`tool_name` do hook). No Windows a ferramenta Bash do
+ * harness e Git Bash, onde `&&`, `head` e `/tmp` existem: a tabela, que descreve o PowerShell,
+ * nao vale para ela. Sem ferramenta (chamada antiga), vale a plataforma, como antes.
  */
-function conferir(comando, plataforma) {
+function conferir(comando, plataforma, ferramenta) {
   const p = plataforma || {};
   if (p.so !== TABELA.quando.so) return [];
+  if (ferramenta === 'Bash') return [];
 
   const limpo = semLiterais(comando);
   const problemas = [];

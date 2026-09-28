@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.0 — correcao dos portoes
+
+Doze defeitos achados usando o plugin num projeto real, e um achado da revisao deles. Cada correcao
+tem teste que reprovava antes e mutacao plantada que o teste acusa. Nenhum portao novo: o que muda e
+onde os de antes erravam.
+
+- **Raiz do projeto.** Os hooks acham o projeto subindo a partir da pasta da sessao: sessao aberta
+  numa subpasta passa a ler o `projeto.json`, as regras e o `escopo.md` da raiz.
+- **Escopo.** Caminho com anotacao depois dele (`src/** (so o modulo X)`) passa a casar; a secao
+  "Fora" nega em qualquer marcha; escopo herdado de outra tarefa ganha aviso.
+- **Revisao cega.** So os achados do lado novo contam para a ronda; os do lado antigo saem listados a
+  parte. Achado refutado na fonte primaria vai em `refutados.json`, com prova e severidade. Arquivo
+  novo vira pacote com um lado vazio. A regua do projeto vai no pacote, e o inspetor a le.
+- **Idioma de shell.** O portao olha a ferramenta: no Windows o Bash e o Git Bash, e `&&` nele nao e
+  idioma errado. Here-string do PowerShell nao e lida como comando.
+- **Comando destrutivo.** O corpo de um heredoc so deixa de ser lido quando o comando inteiro e um
+  unico `cat` ou `tee` com corpo inerte, texto que o bash nao executa; qualquer outra coisa no comando,
+  le tudo. `-Confirm:$false` conta como forcado, como o `-f` do `rm`.
+- **Contador de agentes.** Trava por sessao e gravacao atomica: despachos em paralelo nao perdem
+  contagem.
+- **Aviso de `intocaveis`.** Padrao que aponta para pasta que existe no disco, fora do git, deixa de
+  ser dado como padrao que nao pega nada.
+- **Menores.** `experimento.js`: linha do outro manual com id repetido ganha o prefixo `outro:`, e a
+  prosa sai no stderr (o stdout e JSON puro). Modulo de design: `.04em` e lido como medida.
+
 ## 0.1.0 — v1
 
 Primeira versao. Oito travas; todo portao e um script deterministico, sem modelo no meio.

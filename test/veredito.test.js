@@ -170,3 +170,137 @@ test('apurar: o que nao e veredito e recusado, e nao conta como voto seco', () =
   }
   assert.strictEqual(v.apurar([seca, seca]).motivo, 'duas rondas secas seguidas: aprovado');
 });
+
+// D244/defeito 3 (D241 secao 2.3): na onda 7 as 3 rondas molharam com P1 do lado ANTIGO - o que
+// a mudanca conserta. So o lado novo molha; o antigo sai listado a parte.
+const P1 = (arquivo, linha, lente) => ({ lente: lente || 'design', melhor: 'A',
+  achados: [{ severidade: 'P1', arquivo: arquivo, linha: linha, descricao: 'x' }] });
+const TRAB_A = { A: 'trabalho', B: 'HEAD' };
+const TRAB_B = { A: 'HEAD', B: 'trabalho' };
+
+test('D244/defeito 3: P1 so do lado antigo nao molha a ronda', () => {
+  const r = v.apurar([[P1('B.txt', 10)], [P1('A.txt', 12)]], { mapas: [TRAB_A, TRAB_B] });
+  assert.strictEqual(r.encerrar, true, JSON.stringify(r));
+  assert.strictEqual(r.motivo, 'duas rondas secas seguidas: aprovado');
+  assert.strictEqual(r.achadosDoLadoAntigo.length, 1, 'o lado antigo da ultima ronda sai listado');
+});
+
+test('D244/defeito 3: P1 do lado novo continua molhando', () => {
+  const r = v.apurar([[P1('A.txt', 10)]], { mapas: [TRAB_A] });
+  assert.strictEqual(r.secas, 0);
+  assert.strictEqual(r.novos.length, 1);
+});
+
+test('D244/defeito 3: a mesma linha do mesmo lado e o mesmo achado, mesmo com o rotulo trocado', () => {
+  // ronda 1: trabalho = A; ronda 2: trabalho = B. Mesmo lugar do lado novo, rotulo diferente.
+  const r = v.apurar([[P1('A.txt', 10)], [P1('B.txt', 10)], []], { mapas: [TRAB_A, TRAB_B, TRAB_A] });
+  assert.strictEqual(r.encerrar, true);
+  assert.strictEqual(r.motivo, 'duas rondas secas seguidas: aprovado', JSON.stringify(r));
+});
+
+test('D244/defeito 3: arquivo citado com caminho ainda acha o lado', () => {
+  const r = v.apurar([[P1('.claude/esquadro/revisao/1/B.txt', 10)]], { mapas: [TRAB_A] });
+  assert.strictEqual(r.secas, 1);
+});
+
+test('D244/defeito 3: refutado com prova nao molha; sem prova e recusado', () => {
+  const vd = P1('A.txt', 7);
+  const ref = [{ ronda: 1, lente: 'design', arquivo: 'A.txt', linha: 7, severidade: 'P1', prova: 'css/01.css:12 define o token' }];
+  const r = v.apurar([[vd], []], { mapas: [TRAB_A, TRAB_A], refutados: ref });
+  assert.strictEqual(r.motivo, 'duas rondas secas seguidas: aprovado', JSON.stringify(r));
+  assert.throws(() => v.apurar([[vd]], { mapas: [TRAB_A],
+    refutados: [{ ronda: 1, lente: 'design', arquivo: 'A.txt', linha: 7 }] }), /prova/);
+});
+
+test('D244/defeito 3: no teto, os abertos contados sao so os do lado novo nao refutados', () => {
+  const r = v.apurar([[P1('A.txt', 1), P1('B.txt', 2, 'borda')], [P1('A.txt', 3)], [P1('A.txt', 4)]],
+    { mapas: [TRAB_A, TRAB_A, TRAB_A] });
+  assert.match(r.motivo, /teto de 3 rondas com 3 achado/);
+});
+
+test('D244/defeito 3: sem mapas (chamada antiga), a conta e a de antes', () => {
+  const r = v.apurar([[P1('B.txt', 10)]]);
+  assert.strictEqual(r.secas, 0, 'sem mapa nao da para saber o lado: conta, como antes');
+});
+
+// T14 ronda 1 (lente correcao): o inspetor que cita "A.txt:120" no campo arquivo perdia o lado, e
+// o achado do lado antigo voltava a molhar - o defeito 3 de novo, calado.
+test('T14: arquivo citado com a linha colada ainda acha o lado', () => {
+  for (const arq of ['A.txt:120', 'A.txt:120-124', '.claude/esquadro/revisao/1/A.txt:7']) {
+    const r = v.apurar([[P1(arq, 120)]], { mapas: [TRAB_B] });
+    assert.strictEqual(r.secas, 1, arq + ' e do lado HEAD: ' + JSON.stringify(r));
+    assert.strictEqual(r.achadosDoLadoAntigo.length, 1, arq);
+  }
+  // controle: o que nao e A nem B segue sem lado, e conta
+  assert.strictEqual(v.apurar([[P1('A.txt.bak', 1)]], { mapas: [TRAB_B] }).secas, 0);
+});
+
+// T14 ronda 2 (lente correcao): outras formas que um inspetor escreve de verdade.
+test('T14: citacao com linha por extenso, ancora ou espaco ainda acha o lado', () => {
+  for (const arq of ['A.txt linha 45', 'A.txt#L12', 'A.txt: 120', ' a.txt ', 'C:\\x\\rev\\A.txt (linha 3)']) {
+    const r = v.apurar([[P1(arq, 45)]], { mapas: [TRAB_B] });
+    assert.strictEqual(r.secas, 1, JSON.stringify(arq) + ' e do lado HEAD: ' + JSON.stringify(r));
+  }
+  // controles: os dois rotulos juntos, ou nome que so contem A.txt, nao tem lado - e contam
+  for (const arq of ['A.txt e B.txt', 'XA.txt', 'A.txt.bak', 'A.txtx']) {
+    assert.strictEqual(v.apurar([[P1(arq, 1)]], { mapas: [TRAB_B] }).secas, 0, JSON.stringify(arq));
+  }
+});
+
+// T14 ronda 2 (lente borda): `linha: true` virava 1 por coercao e derrubava o achado da linha 1.
+test('T14: refutacao com ronda, linha ou lente mal formadas e recusada com o motivo', () => {
+  const base = { ronda: 1, lente: 'correcao', arquivo: 'A.txt', linha: 1, severidade: 'P1', prova: 'x.js:1' };
+  for (const [campo, valor] of [['linha', true], ['linha', ''], ['linha', '1'], ['linha', 0], ['ronda', '1'],
+    ['ronda', null], ['lente', ''], ['lente', 3]]) {
+    const r = Object.assign({}, base, { [campo]: valor });
+    assert.throws(() => v.apurar([[P1('A.txt', 1, 'correcao')]], { mapas: [TRAB_A], refutados: [r] }),
+      new RegExp(campo), campo + '=' + JSON.stringify(valor));
+  }
+  // lente com caixa ou espaco diferente ainda casa
+  const ok = v.apurar([[P1('A.txt', 1, 'correcao')]], { mapas: [TRAB_A],
+    refutados: [Object.assign({}, base, { lente: ' Correcao ' })] });
+  assert.strictEqual(ok.secas, 1, JSON.stringify(ok));
+});
+
+// T14 ronda 1 (lente borda): refutacao sem A.txt/B.txt casava por null === null com um achado que
+// tambem nao citava A nem B, e o achado sumia da apuracao.
+test('T14: refutacao tem de citar A.txt ou B.txt', () => {
+  const vd = P1('A.txt.bak', 42, 'correcao');
+  for (const arquivo of ['', undefined, 'mapa.json']) {
+    assert.throws(() => v.apurar([[vd]], { mapas: [TRAB_A],
+      refutados: [{ ronda: 1, lente: 'correcao', arquivo: arquivo, linha: 42, prova: 'x.js:1' }] }), /A\.txt ou B\.txt/,
+    String(arquivo));
+  }
+  // controle: a refutacao certa segue aceita
+  const ok = v.apurar([[P1('A.txt', 42, 'correcao')]], { mapas: [TRAB_A],
+    refutados: [{ ronda: 1, lente: 'correcao', arquivo: 'A.txt:42', linha: 42, severidade: 'P1', prova: 'x.js:1' }] });
+  assert.strictEqual(ok.secas, 1, JSON.stringify(ok));
+});
+
+// D246 sec. 4.2: a virgula (e qualquer nao-palavra) e fronteira antes do nome. `A.txt,B.txt` cita os dois
+// lados e fica sem lado; antes dava `A`, e o achado ia para o lado antigo.
+test('D246: rotulo depois de virgula ou outra pontuacao conta', () => {
+  for (const arq of ['A.txt,B.txt', 'A.txt;B.txt', '[A.txt,B.txt]', 'copia.A.txt']) {
+    assert.strictEqual(v.apurar([[P1(arq, 1)]], { mapas: [TRAB_B] }).secas, 0, JSON.stringify(arq));
+  }
+  // um rotulo so, entre pontuacao, ainda acha o lado (A e o HEAD aqui)
+  for (const arq of ['"A.txt"', '[A.txt]', 'arquivo=A.txt']) {
+    assert.strictEqual(v.apurar([[P1(arq, 1)]], { mapas: [TRAB_B] }).secas, 1, JSON.stringify(arq));
+  }
+});
+
+// D246 sec. 4.3: a refutacao casa pela severidade. Refutar o P1 de uma linha apagava o P0 da mesma lente e
+// linha - medido antes: novos = 0.
+test('D246: refutacao exige severidade e so derruba o achado dela', () => {
+  const vd = { lente: 'correcao', melhor: 'A', achados: [
+    { severidade: 'P0', arquivo: 'A.txt', linha: 5, descricao: 'apaga tudo' },
+    { severidade: 'P1', arquivo: 'A.txt', linha: 5, descricao: 'mensagem ruim' }] };
+  const ref = { ronda: 1, lente: 'correcao', arquivo: 'A.txt', linha: 5, severidade: 'P1', prova: 'x.js:1' };
+  const r = v.apurar([[vd]], { mapas: [TRAB_A], refutados: [ref] });
+  assert.strictEqual(r.secas, 0, JSON.stringify(r));
+  assert.deepStrictEqual(r.novos.map((a) => a.severidade), ['P0'], JSON.stringify(r));
+  for (const sev of [undefined, '', 'p1', 'P3', 1]) {
+    assert.throws(() => v.apurar([[vd]], { mapas: [TRAB_A], refutados: [Object.assign({}, ref, { severidade: sev })] }),
+      /severidade/, JSON.stringify(sev));
+  }
+});

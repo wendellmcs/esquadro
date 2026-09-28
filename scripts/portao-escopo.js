@@ -35,7 +35,7 @@ function permitirComAviso(e, s, avisos) {
 
 io.blindar(function () {
   io.lerEntrada(function (e) {
-    const cwd = e.cwd || process.cwd();
+    const cwd = config.raizDoProjeto(e.cwd || process.cwd());
     const entrada = e.tool_input || {};
     const alvo = caminhoLib.relativoAoProjeto(entrada.file_path, cwd);
     if (!alvo) return io.permitir();
@@ -99,6 +99,14 @@ io.blindar(function () {
         });
       }
       return io.permitir();
+    }
+
+    // 3b. D244/defeito 7: o que o escopo declara FORA e negado em qualquer marcha, e ganha
+    // do "Dentro": a declaracao do "nao vou tocar" e a mais especifica das duas.
+    const foraDeclarado = escopoLib.declaradoFora(alvo, esc);
+    if (foraDeclarado) {
+      estado.incrementar(e.session_id, 'fora_do_escopo');
+      return io.negarFerramenta(escopoLib.motivoDeclaradoFora(alvo, foraDeclarado));
     }
 
     // 4. Marcha rapida nao exige escopo. Sem burocracia onde nao ha risco.

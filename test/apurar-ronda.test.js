@@ -35,6 +35,45 @@ function gravarRonda(cwd, n, vereditos) {
   }
 }
 
+function gravarMapa(cwd, n, mapa) {
+  const dir = path.join(cwd, '.claude', 'esquadro', 'revisao', String(n));
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'mapa.json'), JSON.stringify({ arquivo: 'src/a.js', mapa: mapa }), 'utf8');
+}
+
+// D244/defeito 3: a forma da onda 7 - todo P1 do lado antigo, nenhum do novo - fecha por
+// duas secas, e nao pelo teto. Fixture sintetica: os vereditos reais citam o produto.
+test('D244/defeito 3: pelo CLI, P1 so do lado antigo fecha por duas rondas secas', () => {
+  comTmp((tmp) => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-apurar-lado-'));
+    const vd = (arq, linha) => ({ lente: 'design', melhor: 'A',
+      achados: [{ severidade: 'P1', arquivo: arq, linha: linha, descricao: 'valor cru' }] });
+    gravarMapa(cwd, 1, { A: 'trabalho', B: 'HEAD' });
+    gravarRonda(cwd, 1, [vd('B.txt', 379)]);
+    gravarMapa(cwd, 2, { A: 'HEAD', B: 'trabalho' });
+    gravarRonda(cwd, 2, [vd('A.txt', 471)]);
+    const r = rodar(['--sessao', 'lado'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.strictEqual(r.json.encerrar, true, r.stdout);
+    assert.strictEqual(r.json.motivo, 'duas rondas secas seguidas: aprovado');
+    assert.strictEqual(r.json.achadosDoLadoAntigo.length, 1);
+  });
+});
+
+test('D244/defeito 3: pelo CLI, refutados.json sem prova para com erro', () => {
+  comTmp((tmp) => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-apurar-ref-'));
+    gravarMapa(cwd, 1, { A: 'trabalho', B: 'HEAD' });
+    gravarRonda(cwd, 1, [{ lente: 'design', melhor: 'A',
+      achados: [{ severidade: 'P1', arquivo: 'A.txt', linha: 3, descricao: 'x' }] }]);
+    fs.writeFileSync(path.join(cwd, '.claude', 'esquadro', 'revisao', 'refutados.json'),
+      JSON.stringify([{ ronda: 1, lente: 'design', arquivo: 'A.txt', linha: 3 }]), 'utf8');
+    const r = rodar(['--sessao', 'ref'], cwd, tmp);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /prova/);
+  });
+});
+
 function contadorDe(tmp, sessionId) {
   const arquivo = path.join(tmp, 'esquadro', sessionId + '.json');
   try {

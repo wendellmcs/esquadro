@@ -120,8 +120,24 @@ test('escopo D36: a SAIDA e ASCII pura mesmo com entrada acentuada', () => {
   }
 });
 
-test('escopo D36: a mensagem nao promete que "Fora de escopo" bloqueia', () => {
+// D36 dizia "Fora nao bloqueia", e era verdade entao. D244/defeito 7: agora bloqueia, e a
+// mensagem tem de dizer o que o portao faz - nem mais, nem menos.
+test('escopo D36/D244: a mensagem diz que "Fora de escopo" bloqueia, porque agora bloqueia', () => {
   const m = escopo.motivoSemEscopo('src/a.js', 'padrao');
   assert.ok(!m.includes('e a parte que funciona'));
-  assert.ok(m.includes('nao bloqueia'));
+  assert.ok(!m.includes('nao bloqueia'));
+  assert.ok(m.includes('tambem bloqueia'));
+});
+
+test('D244/defeito 2: item com anotacao depois do caminho casa pelo caminho', () => {
+  const esc = escopo.parse('## Dentro\n- src/a.js (o motivo)\n- `src/b/**` — outro motivo\n- src/c.js\n' +
+    '- src/d.js -- motivo\n- src/e.js # motivo\n- src/f.js - motivo\n');
+  assert.deepStrictEqual(esc.dentro, ['src/a.js', 'src/b/**', 'src/c.js', 'src/d.js', 'src/e.js', 'src/f.js']);
+  assert.ok(escopo.dentro('src/a.js', esc));
+  assert.ok(escopo.dentro('src/b/x.js', esc));
+});
+
+test('D244/defeito 2: caminho com espaco e hifen no nome continua inteiro', () => {
+  const esc = escopo.parse('## Dentro\r\n- Minha Pasta/extension/**\r\n- src/meu-arquivo.js\r\n- `Pasta X/a b.md` (motivo)\r\n');
+  assert.deepStrictEqual(esc.dentro, ['Minha Pasta/extension/**', 'src/meu-arquivo.js', 'Pasta X/a b.md']);
 });

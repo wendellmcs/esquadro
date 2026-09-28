@@ -70,3 +70,25 @@ test('inertes: o caso B da D104 continua SEM cobertura, e isso esta dito', () =>
   const porTipo = projeto.avisosDeTipo({ intocaveis: 'segredos/**' });
   assert.ok(porTipo.length >= 1, 'o aviso de tipo e que cobre a lista mal formada');
 });
+
+// D244/defeito 6 (D241 secao 2.6): pasta que EXISTE no disco, fora do git (ignorada de
+// proposito), era acusada de inerte a cada sessao - e aviso falso ensina a ignorar aviso.
+test('D244/defeito 6: pasta existente fora do git nao e inerte; o typo continua acusado', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-inertes-'));
+  try {
+    fs.mkdirSync(path.join(dir, 'Pasta Fora'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'Pasta Fora', 'a.txt'), 'x', 'utf8');
+    const r = projeto.intocaveisInertes({ intocaveis: ['Pasta Fora/**', 'Pasta Frao/**', 'segredos/**'] }, ARQUIVOS, dir);
+    assert.deepStrictEqual(r, ['Pasta Frao/**']);
+    // sem cwd, o comportamento de antes (so o git)
+    assert.deepStrictEqual(projeto.intocaveisInertes({ intocaveis: ['Pasta Fora/**'] }, ARQUIVOS), ['Pasta Fora/**']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D244/defeito 6: padrao sem pasta fixa (so glob) nao se salva pelo disco', () => {
+  const os = require('node:os');
+  assert.deepStrictEqual(projeto.intocaveisInertes({ intocaveis: ['**/*.pem'] }, ARQUIVOS, os.tmpdir()), ['**/*.pem']);
+});

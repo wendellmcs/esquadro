@@ -124,8 +124,10 @@ process.stdout.write(JSON.stringify({
   }
 }, null, 2) + '\n');
 
-process.stdout.write('\n');
-process.stdout.write('Grave o resultado no caminho acima e rode de novo com --veredito.\n');
-process.stdout.write('A coluna NADA e o resultado: cada linha dela e o que continua precisando\n');
-process.stdout.write('do manual antigo. Vazia, ele pode ser aposentado, se o dono decidir.\n');
+// D244 (P2 da D240 secao 4): o stdout e so o JSON, para `> roteiro.json` gerar JSON. A prosa
+// vai ao stderr, que o terminal mostra igual; o mesmo texto tambem esta em `comoExecutar`.
+process.stderr.write('\n');
+process.stderr.write('Grave o resultado no caminho acima e rode de novo com --veredito.\n');
+process.stderr.write('A coluna NADA e o resultado: cada linha dela e o que continua precisando\n');
+process.stderr.write('do manual antigo. Vazia, ele pode ser aposentado, se o dono decidir.\n');
 process.exit(0);

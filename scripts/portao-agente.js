@@ -8,7 +8,7 @@ const custo = require('./lib/custo.js');
 
 io.blindar(function () {
   io.lerEntrada(function (e) {
-    const cwd = e.cwd || process.cwd();
+    const cwd = config.raizDoProjeto(e.cwd || process.cwd());
     const tipo = (e.tool_input || {}).subagent_type;
 
     // F18: contar sempre. Custo e informacao do dono, e ele so a tem se alguem contar.

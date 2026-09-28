@@ -2,6 +2,10 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const shell = require('../scripts/lib/shell.js');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 
 const WIN = { so: 'win32', shell: 'powershell' };
 const LINUX = { so: 'linux', shell: 'bash' };
@@ -59,4 +63,44 @@ test('shell: motivo mostra achado e substituto lado a lado', () => {
   const m = shell.motivo('echo oi > /tmp/a.txt', p, 1);
   assert.ok(m.includes('/tmp'));
   assert.ok(m.includes('TEMP'));
+});
+
+// D244/defeito 4 (D241 secao 2.4): no Windows a ferramenta Bash do harness e Git Bash, onde
+// `&&`, `head`, `tail` e `/tmp` existem. A tabela descreve o PowerShell, nao o Git Bash.
+test('D244/defeito 4: ferramenta Bash no Windows nao leva a tabela do PowerShell', () => {
+  assert.deepStrictEqual(shell.conferir('ls | head -3 && tail x > /tmp/a 2>/dev/null', WIN, 'Bash'), []);
+  assert.deepStrictEqual(shell.conferir('ls | head -3', WIN, 'PowerShell').map((p) => p.achado), ['head']);
+  // sem ferramenta (chamada antiga): o comportamento de antes
+  assert.deepStrictEqual(shell.conferir('ls | head -3', WIN).map((p) => p.achado), ['head']);
+});
+
+// D244/achado 13: o corpo de um here-string do PowerShell e texto, nao comando.
+test('D244/achado 13: corpo de here-string do PowerShell nao e lido como comando', () => {
+  assert.deepStrictEqual(shell.conferir("$js = @'\nconst x = 'head';\nfoo && bar\n'@\nnode -e $js", WIN, 'PowerShell'), []);
+  assert.deepStrictEqual(shell.conferir('$t = @"\r\nuse tail aqui\r\n"@\r\nWrite-Output $t', WIN, 'PowerShell'), []);
+  // o que esta FORA do here-string continua lido
+  assert.deepStrictEqual(shell.conferir("@'\nx\n'@ | Out-Null; ls | head", WIN, 'PowerShell').map((p) => p.achado), ['head']);
+});
+
+function hookDestrutivo(ferramenta, comando) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-shell-'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-shell-tmp-'));
+  fs.mkdirSync(path.join(dir, '.claude', 'esquadro'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'projeto.json'),
+    JSON.stringify({ versaoConfig: 1, plataforma: WIN }), 'utf8');
+  const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'portao-destrutivo.js')], {
+    input: JSON.stringify({ session_id: 'sh', cwd: dir, hook_event_name: 'PreToolUse', tool_name: ferramenta,
+      tool_input: { command: comando } }),
+    encoding: 'utf8', env: Object.assign({}, process.env, { ESQUADRO_TMP: tmp })
+  });
+  let json = null;
+  try { json = JSON.parse(r.stdout); } catch (e) { json = null; }
+  return !!(json && json.hookSpecificOutput && json.hookSpecificOutput.permissionDecision === 'deny');
+}
+
+test('D244/defeito 4: pelo hook, Bash passa com && e PowerShell e barrado', { skip: process.platform !== 'win32' }, () => {
+  assert.strictEqual(hookDestrutivo('Bash', 'git status && git log -1'), false);
+  assert.strictEqual(hookDestrutivo('PowerShell', 'git status && git log -1'), true);
+  // controle negativo: o portao DESTRUTIVO continua valendo na ferramenta Bash
+  assert.strictEqual(hookDestrutivo('Bash', 'rm -rf build'), true);
 });

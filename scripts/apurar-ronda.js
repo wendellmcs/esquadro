@@ -12,6 +12,8 @@ function arg(nome) {
 
 const base = path.join(process.cwd(), '.claude', 'esquadro', 'revisao');
 let rondas = [];
+const mapas = [];
+const semMapa = [];
 const ilegiveis = [];
 const invalidos = [];
 try {
@@ -19,6 +21,13 @@ try {
     .filter(function (e) { return e.isDirectory() && /^\d+$/.test(e.name); })
     .sort(function (a, b) { return parseInt(a.name, 10) - parseInt(b.name, 10); })
     .map(function (e) {
+      // D244/defeito 3: o mapa diz qual rotulo e o lado novo. Sem ele (pacote antigo), a ronda
+      // e contada como antes, pelos dois lados, e a saida diz que foi assim.
+      let mapa = null;
+      try { mapa = JSON.parse(fs.readFileSync(path.join(base, e.name, 'mapa.json'), 'utf8')).mapa || null; }
+      catch (err) { mapa = null; }
+      if (!mapa) semMapa.push(Number(e.name));
+      mapas.push(mapa);
       const dir = path.join(base, e.name, 'vereditos');
       let arquivos = [];
       try { arquivos = fs.readdirSync(dir).filter(function (f) { return f.endsWith('.json'); }); } catch (err) { arquivos = []; }
@@ -51,7 +60,24 @@ if (ilegiveis.length || invalidos.length) {
   process.exit(1);
 }
 
-const r = veredito.apurar(rondas);
+// D244/defeito 3: achado refutado na fonte primaria, com a prova. Arquivo que nao se le e
+// erro, como veredito ilegivel: refutacao que falta nao pode virar ronda molhada calada.
+let refutados = [];
+const arqRefutados = path.join(base, 'refutados.json');
+if (fs.existsSync(arqRefutados)) {
+  try { refutados = JSON.parse(fs.readFileSync(arqRefutados, 'utf8')); } catch (err) {
+    process.stdout.write('ERRO: refutados.json ilegivel: ' + err.message + '\n');
+    process.exit(1);
+  }
+}
+
+let r;
+try {
+  r = veredito.apurar(rondas, { mapas: mapas, refutados: refutados });
+} catch (err) {
+  process.stdout.write('ERRO: ' + err.message + '\n');
+  process.exit(1);
+}
 const descartados = [];
 for (const ronda of rondas) for (const vd of ronda) {
   for (const e of veredito.validarVeredito(vd).erros) descartados.push(e);
@@ -75,6 +101,9 @@ process.stdout.write(JSON.stringify({
   motivo: r.motivo,
   placarDaUltimaRonda: r.placar,
   achadosNovosP0P1: r.novos,
+  achadosDoLadoAntigo: r.achadosDoLadoAntigo,
+  refutados: r.refutados,
+  rondasSemMapa: semMapa,
   vereditosDescartados: descartados,
   revisaoFechadaContada: contada,
   lembrete: 'placar A/B e sinal; o achado com arquivo:linha e a prova'

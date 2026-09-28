@@ -275,3 +275,54 @@ test('portao-escopo D37: entrada hostil faz o portao LIBERAR, nunca travar (R6)'
       'a entrada precisa ser mesmo hostil: sem estouro, este teste nao prova o R6');
   });
 });
+
+// D244/defeito 7 (D241 secao 2.7): a secao "Fora" era lida e nenhum portao a consultava.
+test('D244/defeito 7: arquivo declarado Fora e negado mesmo casando Dentro', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    escrever(dir, '.claude/esquadro/escopo.md',
+      '# Escopo\r\n**Objetivo:** x\r\n## Dentro\r\n- src/**\r\n## Fora de escopo\r\n- src/legado/** (nao mexer)\r\n');
+    escrever(dir, 'src/legado/x.js', 'velho');
+    escrever(dir, 'src/novo.js', 'velho');
+    const r = rodar(entrada(dir, 'src/legado/x.js'), tmp);
+    assert.ok(negou(r), 'src/legado/x.js foi declarado Fora e passou');
+    assert.ok(r.json.hookSpecificOutput.permissionDecisionReason.includes('src/legado/**'));
+    liberou(rodar(entrada(dir, 'src/novo.js'), tmp));
+  });
+});
+
+test('D244/defeito 7: Fora vale tambem em marcha rapida', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    escrever(dir, '.claude/esquadro/escopo.md', '## Dentro\n- src/a.js\n## Fora de escopo\n- docs/ata.md\n');
+    escrever(dir, 'docs/ata.md', 'velho');
+    assert.ok(negou(rodar(entrada(dir, 'docs/ata.md'), tmp)));
+  });
+});
+
+test('D244/defeito 7: a abertura avisa que o escopo e herdado, com objetivo e data', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    escrever(dir, '.claude/esquadro/escopo.md', '# Escopo\n**Objetivo:** fechar a tarefa antiga\n## Dentro\n- src/a.js\n');
+    const r = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'abertura.js')], {
+      input: JSON.stringify({ session_id: 'her', cwd: dir, source: 'startup' }),
+      encoding: 'utf8', env: Object.assign({}, process.env, { ESQUADRO_TMP: tmp })
+    });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /escopo herdado/);
+    assert.match(r.stdout, /fechar a tarefa antiga/);
+    assert.match(r.stdout, /\d{4}-\d{2}-\d{2}/);
+  });
+});
+
+test('D244/defeito 7: sem escopo.md, a abertura nao fala de heranca', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    const r = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'abertura.js')], {
+      input: JSON.stringify({ session_id: 'her2', cwd: dir, source: 'startup' }),
+      encoding: 'utf8', env: Object.assign({}, process.env, { ESQUADRO_TMP: tmp })
+    });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.doesNotMatch(r.stdout, /escopo herdado/);
+  });
+});

@@ -5,6 +5,21 @@ const glob = require('./glob.js');
 
 const ARQUIVO = '.claude/esquadro/escopo.md';
 
+/**
+ * D244/defeito 2: o item de lista e o CAMINHO, e o resto da linha e anotacao. Antes a linha
+ * inteira virava padrao, e `src/a.js (motivo)` nunca casava arquivo nenhum. Caminho pode ter
+ * espaco (`Minha Pasta/**`), entao o corte e pela anotacao, nao pelo primeiro espaco:
+ * entre crases vale o que esta entre elas; sem crase, corta em espaco seguido de `(`,
+ * travessao, `--`, ` - ` ou `#`.
+ */
+function caminhoDoItem(t) {
+  const s = t.replace(/^[-*+]\s+/, '').trim();
+  const crase = s.match(/^`+([^`]+)`+/);
+  if (crase) return crase[1].trim();
+  const corte = s.search(/\s+(?:\(|\u2014|--\s|-\s|#)/);
+  return (corte === -1 ? s : s.slice(0, corte)).replace(/`+/g, '').trim();
+}
+
 function parse(texto) {
   const esc = { objetivo: '', dentro: [], fora: [] };
   const linhas = String(texto == null ? '' : texto).split(/\r?\n/);
@@ -18,7 +33,7 @@ function parse(texto) {
     if (/^#{1,6}\s*fora\b/i.test(t)) { secao = 'fora'; continue; }
     if (/^#{1,6}\s/.test(t)) { secao = null; continue; }
     if (!secao) continue;
-    const item = t.replace(/^[-*+]\s+/, '').replace(/^`+/, '').replace(/`+$/, '').trim();
+    const item = caminhoDoItem(t);
     if (item) esc[secao].push(item);
   }
   return esc;
@@ -35,6 +50,13 @@ function carregar(cwd) {
 function dentro(caminho, esc) {
   if (!esc) return false;
   return glob.casaAlgum(esc.dentro, caminho);
+}
+
+/** D244/defeito 7: o padrao de "Fora" que casa o caminho, ou null. */
+function declaradoFora(caminho, esc) {
+  if (!esc || !Array.isArray(esc.fora)) return null;
+  for (const p of esc.fora) if (glob.casa(p, caminho)) return p;
+  return null;
 }
 
 /** R5/D36: nada que venha de fora chega cru ao texto do hook. Acento vira letra sem acento. */
@@ -92,8 +114,9 @@ function motivoSemEscopo(alvo, marcha) {
     '  ## Fora de escopo',
     '  - <o que voce NAO vai mexer, mesmo tendo vontade>',
     '',
-    'A secao "Fora de escopo" nao bloqueia nada: e a sua declaracao do que voce NAO vai tocar.',
-    'Quem bloqueia e a secao "Dentro" - o que nao estiver listado la e negado.',
+    'A secao "Dentro" libera: o que nao estiver listado la e negado.',
+    'A secao "Fora de escopo" tambem bloqueia: o que voce declarou que NAO vai tocar e negado,',
+    'mesmo que case um padrao de "Dentro". Pode anotar o motivo depois do caminho, entre parenteses.',
     'Qualidade maxima se aplica ao que foi pedido, jamais a ampliacao do pedido.'
   ].join('\n');
 }
@@ -116,6 +139,34 @@ function motivoFora(alvo, marcha, esc) {
     '',
     'Ampliar o escopo e contado e aparece no fecho do turno.'
   ].join('\n');
+}
+
+function motivoDeclaradoFora(alvo, padrao) {
+  alvo = ascii(alvo);
+  padrao = ascii(padrao);
+  return [
+    'esquadro - portao de escopo (trava 4).',
+    '',
+    'O arquivo ' + alvo + ' casa "' + padrao + '", que o escopo declara FORA desta tarefa.',
+    '',
+    'Escolha uma:',
+    '  1. nao edite este arquivo - achado fora de escopo vira REGISTRO, nunca correcao;',
+    '  2. se a tarefa mudou, reescreva ' + ARQUIVO + ' e diga por que.'
+  ].join('\n');
+}
+
+/** D244/defeito 7: o escopo em disco pode ser de outra sessao. Uma linha na abertura. */
+function avisoHeranca(cwd) {
+  let st;
+  try { st = fs.statSync(path.join(cwd, ARQUIVO)); } catch (e) { return null; }
+  const esc = carregar(cwd);
+  const d = st.mtime;
+  const p2 = function (n) { return String(n).padStart(2, '0'); };
+  const quando = d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' +
+    p2(d.getHours()) + ':' + p2(d.getMinutes());
+  return 'esquadro: escopo herdado de ' + quando + ' - objetivo: ' +
+    ascii((esc && esc.objetivo) || '(sem objetivo)').slice(0, 200) +
+    '. Se a tarefa mudou, reescreva ' + ARQUIVO + ' antes de editar.';
 }
 
 function motivoIntocavel(alvo) {
@@ -146,6 +197,6 @@ function motivoOutraFrente(alvo) {
 }
 
 module.exports = {
-  ARQUIVO, parse, carregar, dentro, ascii, conteudoDepois, ampliou,
-  motivoSemEscopo, motivoFora, motivoIntocavel, motivoOutraFrente
+  ARQUIVO, parse, carregar, dentro, declaradoFora, ascii, conteudoDepois, ampliou, avisoHeranca,
+  motivoSemEscopo, motivoFora, motivoDeclaradoFora, motivoIntocavel, motivoOutraFrente
 };

@@ -296,7 +296,15 @@ function linhasDoExperimento(cruz) {
   const out = [];
   for (const o of cruz.comuns) out.push(Object.assign({}, o, { naoMigrada: false, aConferir: false }));
   for (const o of cruz.soNoPlugin) out.push(Object.assign({}, o, { naoMigrada: false, aConferir: cruz.cruzou }));
-  for (const o of cruz.soNoOutro) out.push(Object.assign({}, o, { naoMigrada: true, aConferir: true }));
+  // D244/defeito 8: o id e numerado POR MANUAL, entao a linha do outro manual pode repetir o id
+  // de uma do plugin - e o resultado, indexado por id, julgava as duas com um mecanismo so. A do
+  // outro manual que colide ganha o prefixo `outro:`; a do plugin fica como sempre foi.
+  const usados = new Set(out.map(function (o) { return o.id; }));
+  for (const o of cruz.soNoOutro) {
+    const id = usados.has(o.id) ? 'outro:' + o.id : o.id;
+    usados.add(id);
+    out.push(Object.assign({}, o, { id: id, naoMigrada: true, aConferir: true }));
+  }
   return out;
 }
 

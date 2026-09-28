@@ -109,14 +109,70 @@ test('preparar-revisao: CONTROLE - da raiz continua funcionando (o conserto nao 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('preparar-revisao: CONTROLE - arquivo ausente de HEAD segue recusado, com o motivo certo', () => {
+// D244/defeito 10 (D242 secao 3.10): este teste era um CONTROLE que prendia a recusa do arquivo
+// novo - e foi por ela que o CSS novo da onda 7 ficou sem inspecao. Agora o lado antigo e vazio,
+// o pacote diz que e novo, e a cegueira que nao existe e declarada.
+test('D244/defeito 10: arquivo ausente de HEAD vira pacote com o lado antigo vazio e marcado novo', () => {
   const dir = repoDeEnsaio();
   try {
     fs.writeFileSync(path.join(dir, 'sub', 'novo.txt'), 'so no disco\n', 'utf8');
     const r = rodarCli(path.join(dir, 'sub'), 'novo.txt');
-    assert.strictEqual(r.status, 1, 'arquivo fora de HEAD nao tem dois lados para cegar');
-    assert.match(r.stdout, /nao existe em HEAD/);
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const saida = JSON.parse(r.stdout);
+    const lados = [fs.readFileSync(saida.a, 'utf8'), fs.readFileSync(saida.b, 'utf8')].sort();
+    assert.deepStrictEqual(lados, ['', 'so no disco\n']);
+    const mapa = JSON.parse(fs.readFileSync(path.join(path.dirname(saida.a), 'mapa.json'), 'utf8'));
+    assert.strictEqual(mapa.novo, true);
+    assert.match(saida.aviso, /arquivo novo/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// D244/defeito 9 (D242 secao 3.9): a regua do regras.md nao chegava ao inspetor.
+function comRegras(dir, texto) {
+  fs.mkdirSync(path.join(dir, '.claude', 'esquadro'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'projeto.json'), '{"versaoConfig":1}', 'utf8');
+  fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'regras.md'), texto, 'utf8');
+}
+
+test('D244/defeito 9: a secao da regua do regras.md vai para o pacote, inteira e so ela', () => {
+  const dir = repoDeEnsaio();
+  try {
+    comRegras(dir, '# Regras deste projeto\n- regra 1\n\n## Régua do projeto - fatias\n\n### cores\n' +
+      '| token | hex |\n| --primary | #0055ff |\n\n## Outra secao\n- nao vai\n');
+    const r = rodarCli(path.join(dir, 'sub'), 'aninhado.txt');
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const saida = JSON.parse(r.stdout);
+    assert.ok(saida.regua, 'a saida tem de dar o caminho da regua: ' + r.stdout);
+    const regua = fs.readFileSync(saida.regua, 'utf8');
+    assert.match(regua, /#0055ff/);
+    assert.doesNotMatch(regua, /nao vai/);
+    assert.doesNotMatch(regua, /regra 1/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D244/defeito 9: sem secao de regua, nada de regua.md, e a saida diz', () => {
+  const dir = repoDeEnsaio();
+  try {
+    comRegras(dir, '# Regras deste projeto\n- regra 1\n');
+    const r = rodarCli(dir, 'raiz.txt');
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const saida = JSON.parse(r.stdout);
+    assert.strictEqual(saida.regua, null);
+    assert.match(saida.semRegua, /nenhuma/);
+    assert.strictEqual(fs.existsSync(path.join(path.dirname(saida.a), 'regua.md')), false);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D244/defeito 9: a skill revisar e o inspetor mandam ler a regua', () => {
+  const skill = fs.readFileSync(path.join(RAIZ, 'skills', 'revisar', 'SKILL.md'), 'utf8');
+  const inspetor = fs.readFileSync(path.join(RAIZ, 'agents', 'inspetor.md'), 'utf8');
+  assert.match(skill, /regua\.md/);
+  assert.match(inspetor, /regua\.md/);
+});
+
+test('D244/defeito 10: a skill revisar manda declarar o que nao foi inspecionado', () => {
+  const skill = fs.readFileSync(path.join(RAIZ, 'skills', 'revisar', 'SKILL.md'), 'utf8');
+  assert.match(skill, /n[aã]o foi inspecionado/i);
 });
 
 // Ronda 1 do 8c.5: o --arquivo aceitava '..' e caminho absoluto. O de fora era lido e

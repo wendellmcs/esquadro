@@ -16,8 +16,9 @@ function avisoDeAmpliacao(contadores) {
 
 function encerrarTurno(e, s) {
   const contadores = s.contadores || {};
-  estado.descarregar(e.cwd, contadores);
-  const projeto = config.carregarProjeto(e.cwd);
+  const cwd = config.raizDoProjeto(e.cwd);
+  estado.descarregar(cwd, contadores);
+  const projeto = config.carregarProjeto(cwd);
 
   // D123: dois baldes. `contadores` e do TURNO - descarregado e depois ZERADO, senao o
   // ledger da D14 conta o mesmo disparo de novo a cada turno (medido: 1 -> 2 -> 3).
@@ -62,14 +63,15 @@ io.blindar(function () {
     // contadores.json) e o unico lugar que zera o estado do TURNO. Um io.permitir()
     // aqui desligaria a medicao do plugin inteiro e congelaria bloqueouNesteTurno.
     // Custo declarado (P2-38): o Stop passa a ler disco uma vez por turno.
-    const travas = projetoLib.travasDe(config.carregarProjeto(e.cwd));
+    const cwd = config.raizDoProjeto(e.cwd);
+    const travas = projetoLib.travasDe(config.carregarProjeto(cwd));
     if (travas.fecho === false) return encerrarTurno(e, s);
 
     const planoLib = require('./lib/plano.js');
-    const ativo = planoLib.lerAtivo(e.cwd);
+    const ativo = planoLib.lerAtivo(cwd);
     if (ativo && planoLib.alegaEtapaConcluida(e.last_assistant_message)) {
       let tarefas = [];
-      try { tarefas = planoLib.parseTarefas(require('node:fs').readFileSync(require('node:path').join(e.cwd, ativo.arquivo), 'utf8')); }
+      try { tarefas = planoLib.parseTarefas(require('node:fs').readFileSync(require('node:path').join(cwd, ativo.arquivo), 'utf8')); }
       catch (err) { tarefas = []; }
       const aberta = tarefas.filter(function (t) { return t.abertos > 0; })[0];
       if (aberta) {

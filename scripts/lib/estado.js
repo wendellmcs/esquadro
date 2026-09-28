@@ -15,25 +15,92 @@ function caminhoSessao(sessionId) {
 }
 
 function ler(sessionId) {
-  try {
-    const bruto = fs.readFileSync(caminhoSessao(sessionId), 'utf8');
-    const obj = JSON.parse(texto.semBom(bruto));
-    return obj && typeof obj === 'object' ? obj : {};
-  } catch (e) {
-    return {};
+  // D244/defeito 11: no Windows, ler no instante do rename de outro processo da EPERM/EBUSY, e
+  // o caminho de reserva do gravar (escrita direta) deixa o arquivo vazio por um instante - medido:
+  // 1 leitura de 0 bytes a cada ~8000 contra um escritor. Nada disso e "sem estado": tenta de
+  // novo. So a AUSENCIA do arquivo (ENOENT) e resposta imediata; JSON que segue quebrado depois
+  // das tentativas vira {} como antes.
+  for (let i = 0; ; i++) {
+    try {
+      const bruto = fs.readFileSync(caminhoSessao(sessionId), 'utf8');
+      const obj = JSON.parse(texto.semBom(bruto));
+      return obj && typeof obj === 'object' ? obj : {};
+    } catch (e) {
+      if ((e && e.code === 'ENOENT') || i >= 40) return {};
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+    }
   }
 }
 
+function dormir(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * D244/defeito 11: gravacao ATOMICA. Escrever direto no arquivo deixava um leitor paralelo ver
+ * JSON pela metade - e `ler` devolve {} no JSON invalido, zerando o estado da sessao inteiro.
+ * Escreve num temporario e renomeia; no Windows o rename pode dar EPERM/EBUSY enquanto outro
+ * processo le, entao tenta de novo algumas vezes antes de cair na escrita direta de antes.
+ */
 function gravar(sessionId, estado) {
   fs.mkdirSync(raiz(), { recursive: true });
-  fs.writeFileSync(caminhoSessao(sessionId), JSON.stringify(estado || {}), 'utf8');
+  const destino = caminhoSessao(sessionId);
+  const dados = JSON.stringify(estado || {});
+  const temp = destino + '.' + process.pid + '.' + Math.random().toString(36).slice(2) + '.tmp';
+  fs.writeFileSync(temp, dados, 'utf8');
+  for (let i = 0; i < 100; i++) {
+    try { fs.renameSync(temp, destino); return; } catch (e) {
+      if (e.code !== 'EPERM' && e.code !== 'EBUSY' && e.code !== 'EACCES') break;
+      dormir(5);
+    }
+  }
+  try { fs.rmSync(temp, { force: true }); } catch (e) { /* ja foi */ }
+  fs.writeFileSync(destino, dados, 'utf8');
+}
+
+// D244/defeito 11: trava por sessao para o ler-mudar-gravar. Hooks de um disparo paralelo
+// (varios Agent no mesmo turno) rodam ao mesmo tempo, e sem trava um gravava por cima do outro.
+const PRAZO_TRAVA_MS = 2000;
+const TRAVA_VELHA_MS = 10000;
+
+function caminhoTrava(sessionId) {
+  return caminhoSessao(sessionId) + '.trava';
+}
+
+/** true = travou. false = nao conseguiu no prazo: quem chama grava mesmo assim. */
+function travar(sessionId) {
+  fs.mkdirSync(raiz(), { recursive: true });
+  const trava = caminhoTrava(sessionId);
+  const limite = Date.now() + PRAZO_TRAVA_MS;
+  for (;;) {
+    try { fs.closeSync(fs.openSync(trava, 'wx')); return true; } catch (e) {
+      if (e.code !== 'EEXIST' && e.code !== 'EPERM' && e.code !== 'EBUSY') return false;
+      // Trava de processo que morreu sem soltar: velha demais, e tomada.
+      try {
+        if (Date.now() - fs.statSync(trava).mtimeMs > TRAVA_VELHA_MS) { fs.rmSync(trava, { force: true }); continue; }
+      } catch (x) { continue; }
+      if (Date.now() > limite) return false;
+      dormir(3 + Math.floor(Math.random() * 7));
+    }
+  }
+}
+
+function soltar(sessionId) {
+  try { fs.rmSync(caminhoTrava(sessionId), { force: true }); } catch (e) { /* ja foi */ }
 }
 
 function alterar(sessionId, fn) {
-  const atual = ler(sessionId);
-  const novo = fn(atual) || atual;
-  gravar(sessionId, novo);
-  return novo;
+  const travou = travar(sessionId);
+  try {
+    const atual = ler(sessionId);
+    const novo = fn(atual) || atual;
+    // Sem a trava (prazo de 2 s estourado), grava mesmo assim, como antes da D244: parar o
+    // portao por causa do contador seria pior. Neste caso raro, um disparo pode se perder.
+    gravar(sessionId, novo);
+    return novo;
+  } finally {
+    if (travou) soltar(sessionId);
+  }
 }
 
 function limpar(sessionId) {
@@ -106,5 +173,5 @@ function descarregar(cwd, contadores) {
   return true;
 }
 
-module.exports = { caminhoSessao, ler, gravar, alterar, limpar, CAMPOS_DA_SESSAO, CAMPOS_DO_TURNO,
+module.exports = { caminhoSessao, caminhoTrava, ler, gravar, alterar, limpar, CAMPOS_DA_SESSAO, CAMPOS_DO_TURNO,
   camposDaSessao, incrementar, descarregar };

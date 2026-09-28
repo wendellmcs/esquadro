@@ -4,10 +4,11 @@ const io = require('./lib/io.js');
 const estado = require('./lib/estado.js');
 const git = require('./lib/git.js');
 const regra = require('./lib/regra.js');
+const config = require('./lib/config.js');
 
 io.blindar(function () {
   io.lerEntrada(function (e) {
-    const cwd = e.cwd || process.cwd();
+    const cwd = config.raizDoProjeto(e.cwd || process.cwd());
     estado.alterar(e.session_id, function (s) {
       // D17: a foto e tirada uma vez, na abertura. Arquivo que ja estava
       // modificado aqui pertence a outra frente ate prova em contrario.
@@ -33,6 +34,8 @@ io.blindar(function () {
     // se perde, e e por isso que ela se reinjeta em vez de so se ler uma vez.
     const texto = require('./lib/reinjecao.js').montar(cwd, e.session_id, e.source);
     if (texto) process.stdout.write(texto);
+    const heranca = require('./lib/escopo.js').avisoHeranca(cwd);
+    if (heranca) process.stdout.write('\n' + heranca + '\n');
 
     // O buraco que a D104 mediu e deixou aberto: `intocaveis` com typo fica
     // INERTE em silencio - nao e erro de tipo nem de sintaxe, entao nenhum
@@ -40,7 +43,7 @@ io.blindar(function () {
     // repositorio e os portoes de custo zero nao podem pagar isso a cada escrita.
     const projetoLib = require('./lib/projeto.js');
     const projeto = require('./lib/config.js').carregarProjeto(cwd);
-    const inertes = projetoLib.intocaveisInertes(projeto, git.rastreados(cwd));
+    const inertes = projetoLib.intocaveisInertes(projeto, git.rastreados(cwd), cwd);
     if (inertes.length) {
       process.stdout.write('\n' + projetoLib.motivoInerte(inertes) + '\n');
     }

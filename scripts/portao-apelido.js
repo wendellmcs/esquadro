@@ -97,7 +97,7 @@ if (tem('corrigir')) {
 // ------------------------------------------------------------- modo hook
 io.blindar(function () {
   io.lerEntrada(function (e) {
-    const cwd = e.cwd || process.cwd();
+    const cwd = config.raizDoProjeto(e.cwd || process.cwd());
     const r = conferirAqui(cwd);
 
     // "Nao verificavel" nao vira aviso: viraria ruido em todo projeto sem

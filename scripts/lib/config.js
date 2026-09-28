@@ -30,4 +30,24 @@ function carregarDesign(cwd) {
   return lerJson(cwd, 'design.json');
 }
 
-module.exports = { carregarProjeto, carregarDesign };
+/**
+ * D244/defeito 1: a pasta do projeto, que nao e sempre o cwd da sessao. Sobe de `cwd` ate a
+ * primeira pasta com `.claude/esquadro/projeto.json` - o ARQUIVO, nao a pasta: uma
+ * `.claude/esquadro/` sem projeto.json no meio do caminho (contadores, revisao) e atravessada.
+ * Sem projeto em lugar nenhum acima, devolve o proprio cwd: e o "sem projeto" de antes.
+ * Os hooks usam isto no lugar do cwd cru; os CLIs rodam na pasta que a pessoa escolhe.
+ */
+function raizDoProjeto(cwd) {
+  // cwd que nao e texto (entrada absurda do harness) volta como veio: quem decide o que fazer
+  // com ele e o chamador, como antes; estourar aqui derrubaria o portao (portao-apelido.test).
+  if (!cwd || typeof cwd !== 'string') return cwd;
+  let atual = path.resolve(cwd);
+  for (;;) {
+    if (fs.existsSync(path.join(atual, '.claude', 'esquadro', 'projeto.json'))) return atual;
+    const pai = path.dirname(atual);
+    if (pai === atual) return cwd;
+    atual = pai;
+  }
+}
+
+module.exports = { carregarProjeto, carregarDesign, raizDoProjeto };

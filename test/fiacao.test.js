@@ -221,7 +221,8 @@ test('fiacao: portao-destrutivo nega idioma de shell errado e conta a tentativa 
 
     comPlataforma(dir, PLATAFORMA_WIN);
     const r = rodar('portao-destrutivo.js', dir,
-      { session_id: 'fa4', cwd: dir, tool_name: 'Bash', tool_input: { command: 'head -5 notas.txt' } });
+      // D244/defeito 4: a tabela do win32 descreve o PowerShell; a ferramenta Bash e Git Bash.
+      { session_id: 'fa4', cwd: dir, tool_name: 'PowerShell', tool_input: { command: 'head -5 notas.txt' } });
     assert.strictEqual(r.status, 0, r.stderr);
 
     const motivo = motivoNegado(r);
@@ -261,7 +262,7 @@ test('fiacao: o portao de shell responde ANTES do de comando destrutivo (R-T23-0
 
     comPlataforma(dir, PLATAFORMA_WIN);
     const r = rodar('portao-destrutivo.js', dir,
-      { session_id: 'fa6', cwd: dir, tool_name: 'Bash', tool_input: { command: 'rm -rf build' } });
+      { session_id: 'fa6', cwd: dir, tool_name: 'PowerShell', tool_input: { command: 'rm -rf build' } });
     assert.strictEqual(r.status, 0, r.stderr);
 
     const motivo = motivoNegado(r);

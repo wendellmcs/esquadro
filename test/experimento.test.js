@@ -218,6 +218,15 @@ test('experimento: o roteiro sai em JSON, com as linhas e como preenche-las', ()
   for (const l of j.linhas) assert.ok(/:\d+$/.test(l.fonte), 'linha sem arquivo:linha: ' + l.id);
 });
 
+// D244 (P2 da D240 secao 4): o `> roteiro.json` do Passo 7 gerou arquivo que nao era JSON,
+// porque a prosa saia no stdout depois do objeto. O stdout e so o JSON; a prosa vai ao stderr.
+test('D244/P2 prosa: o stdout do roteiro e JSON puro, e a prosa sai no stderr', () => {
+  const r = spawnSync(process.execPath, [SCRIPT], { cwd: RAIZ, encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.doesNotThrow(() => JSON.parse(r.stdout), 'stdout nao e JSON: ' + r.stdout.slice(-200));
+  assert.match(r.stderr, /Grave o resultado/);
+});
+
 test('experimento: --manual cruza, e marca o que so existe do outro lado', () => {
   const outro = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro outro '));
   fs.writeFileSync(path.join(outro, 'SKILL.md'),

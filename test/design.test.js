@@ -131,3 +131,12 @@ test('design: medida fora de px, rem e em passa sem conferencia - limite declara
       v + ' passou a ser conferido: o limite escrito no README e no CHANGELOG ficou falso');
   }
 });
+
+// D244 (P2 da D238 secao 6): `.04em` era lido `04em` - o `\b` separa o ponto do digito, e a
+// medida valida do sistema virava valor barrado.
+test('D244/P2 .04em: medida sem zero a esquerda e lida inteira, com e sem sinal', () => {
+  const v = (css) => design.valoresCrus(css).map((a) => a.valor);
+  assert.deepStrictEqual(v('a { letter-spacing: .04em; }'), ['.04em']);
+  assert.deepStrictEqual(v('a { margin: -.5em 0.04em 12px; }'), ['-.5em', '0.04em', '12px']);
+  assert.strictEqual(design.conferir('a { letter-spacing: .04em; }', { espacos: ['.04em'] }).ok, true);
+});

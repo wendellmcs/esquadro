@@ -42,7 +42,12 @@ Briefing de cada um, exatamente nesta forma:
 
 > Sua lente é **<titulo>**: <pergunta>.
 > Leia apenas estes dois arquivos: `<caminho de A.txt>` e `<caminho de B.txt>`.
+> Leia também `<caminho de regua.md>`: é a régua do projeto. Achado de valor fora da régua cita o valor dela.
 > Não abra o repositório. Não abra `mapa.json`. Devolva só o JSON do seu formato.
+
+A linha da régua só entra quando a saída do Passo 1 traz `regua` com um caminho. Quando traz
+`semRegua`, diga ao usuário que a revisão rodou **sem régua do projeto** — o inspetor julgou pelo
+bom senso, não pelo sistema declarado.
 
 Grave cada resposta em `.claude/esquadro/revisao/<n>/vereditos/<lente>.json`.
 
@@ -53,6 +58,14 @@ Grave cada resposta em `.claude/esquadro/revisao/<n>/vereditos/<lente>.json`.
     node "${CLAUDE_PLUGIN_ROOT}/scripts/apurar-ronda.js"
 
 Quem decide se a ronda foi seca é o script, não você. Cole a saída dele na resposta.
+
+- **Só o lado novo molha a ronda.** O script lê o `mapa.json` de cada ronda: P0/P1 citado no lado
+  antigo (o que a mudança conserta, ou já existia) sai em `achadosDoLadoAntigo` — informação, não
+  bloqueio. Você continua sem abrir o `mapa.json`: quem o lê é o script.
+- **Achado refutado na fonte primária** vai em `.claude/esquadro/revisao/refutados.json`:
+  `[{ "ronda": 2, "lente": "design", "arquivo": "B.txt", "linha": 471, "severidade": "P1", "prova": "<arquivo:linha ou comando>" }]`.
+  A `severidade` é a do achado: refutar o P1 de uma linha não derruba o P0 da mesma linha. Sem `prova`
+  ou sem `severidade`, o script para com erro. A saída lista os refutados para o dono conferir.
 
 Quando a revisão **fecha**, o próprio script conta um `revisao_fechada` — é o gatilho contável de
 troca de chat, e nada mais no plugin o incrementa. Ele descobre a sessão sozinho; passe
@@ -74,6 +87,13 @@ O `apurar-ronda.js` diz quando parar. Três saídas possíveis:
 | duas rondas secas | Aprovado. Feche dizendo quantos agentes rodaram, em quantas rondas |
 | teto de 3 rondas com P0/P1 aberto | **Para.** Leva ao dono com exatamente 3 opções, a recomendada marcada. O que sobrar vira registro |
 | ainda não encerrou | Corrige e roda a próxima ronda |
+
+## Passo 6 — o que não foi inspecionado
+
+O fecho lista **todo arquivo mudado no escopo que não passou por esta revisão**, e por quê
+(escolha de custo, arquivo gerado, fora da família de lentes). Arquivo novo passa, com um lado
+vazio: diga que nele a cegueira não existe. Silêncio sobre o que não foi inspecionado equivale a
+dizer que foi.
 
 ## O que esta revisão não faz
 

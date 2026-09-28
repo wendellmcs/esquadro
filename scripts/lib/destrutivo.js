@@ -462,7 +462,70 @@ function lerComando(cmd, fundo, opts) {
 // de barrar; o unico risco e falso positivo, e ele foi medido em fix5-bancada.
 // As alternativas so sao montadas quando o gatilho esta presente, entao o custo de
 // um comando sem `(`, sem continuacao e sem `#` e IDENTICO ao da leitura de antes.
+// D244/defeito 5: o corpo de um heredoc so e TEXTO quando quem o recebe e um escritor de
+// texto (`cat`, `tee`) e nada o encaminha a outro programa. Para `bash`, `sh`, `ssh`,
+// `python` ou por um cano, o corpo e executado e continua lido.
+// D246 sec. 5 (T14 no teto): cada ronda achou um furo novo no filtro que lia comando de varias
+// linhas (aspa aberta antes, `<<<`, `cat <<EOF > x.sh` e `bash x.sh` depois). Decisao do dono: o
+// corpo so sai quando o comando INTEIRO e um unico `cat`/`tee` com heredoc e nada mais. Qualquer
+// outra coisa no comando: le tudo, como o resto deste leitor (D67).
+const ESCRITOR = /^(?:cat|tee)$/;
+// O leitor de aspas da linha de abertura. O `<<` so abre heredoc FORA de aspa (T14 ronda 2). Leitor
+// simples de proposito: o que ele nao entende (`$'...'`, crase, `$(`, `<(`, `>(`) vira duvida, e a
+// duvida le tudo. Barra no fim da linha e continuacao: tambem le tudo.
+function lerAspas(texto, est) {
+  const t = texto.replace(/\r$/, '');
+  est.continua = false;
+  for (let k = 0; k < t.length; k++) {
+    const c = t[k];
+    if (est.q === "'") { if (c === "'") est.q = ''; continue; }
+    if (c === '\\') { if (k === t.length - 1) est.continua = true; k++; continue; }
+    if (c === '`' || (t[k + 1] === '(' && (c === '$' || c === '<' || c === '>'))) { est.duvida = true; continue; }
+    if (est.q === '"') { if (c === '"') est.q = ''; continue; }
+    if (c === '"') { est.q = '"'; continue; }
+    if (c === "'") { if (t[k - 1] === '$') est.duvida = true; est.q = "'"; }
+  }
+  return est;
+}
+// As condicoes, todas obrigatorias - cada uma fecha uma forma que o bash executa (medido com `echo`):
+//  1. a primeira linha nao vazia abre o heredoc: sem `<<<` (here-string), nenhum `;`, `&` ou `|`, o
+//     primeiro token e `cat`/`tee`, e o leitor de aspas acha o `<<` fora de aspa e termina a linha
+//     limpo;
+//  2. o delimitador acaba em espaco, tab, `<`, `>` ou no fim da linha: o de `<<EOF"x"` e `EOFx`, nao
+//     `EOF`. So espaco e tab: para o bash, espaco unicode e `\r` sao letra do delimitador;
+//  3. delimitador sem aspas: o bash expande o corpo, entao `$(` e crase leem tudo (o `$((` e o `$[`
+//     so executam com um dos dois dentro); e a barra invertida tambem, porque ela junta a linha
+//     seguinte (`E\` + `OF` e o fechamento);
+//  4. depois do PRIMEIRO fechamento, so linha em branco.
+// Limite declarado: o arquivo escrito pode ser executado por OUTRO comando depois; isso ja nao e este.
+function semCorpoDeHeredocInerte(cmd) {
+  if (cmd.indexOf('<<') === -1) return cmd;
+  const linhas = cmd.split('\n');
+  const vazia = (l) => /^\s*$/.test(l);
+  let a = 0;
+  while (a < linhas.length && vazia(linhas[a])) a++;
+  if (a === linhas.length) return cmd;
+  const abertura = linhas[a].replace(/\r$/, '');
+  if (/[;&|]|<<</.test(abertura)) return cmd;
+  const m = /<<(-?)[ \t]*(['"]?)([A-Za-z_][\w.-]*)\2(?=[ \t<>]|$)/.exec(abertura);
+  if (!m) return cmd;
+  const antes = abertura.slice(0, m.index);
+  if (!ESCRITOR.test(antes.trim().split(/\s+/)[0])) return cmd;
+  // a linha inteira passa pelo leitor, entao a duvida de antes do `<<` ja aparece em `naLinha`
+  const noOp = lerAspas(antes, { q: '', duvida: false });
+  const naLinha = lerAspas(abertura, { q: '', duvida: false });
+  if (noOp.q !== '' || naLinha.q !== '' || naLinha.duvida || naLinha.continua) return cmd;
+  const fecha = (l) => { const s = l.replace(/\r$/, ''); return (m[1] ? s.replace(/^\t+/, '') : s) === m[3]; };
+  let fim = a + 1;
+  while (fim < linhas.length && !fecha(linhas[fim])) fim++;
+  if (fim === linhas.length) return cmd;
+  if (m[2] === '' && /[`\\]|\$\(/.test(linhas.slice(a + 1, fim).join('\n'))) return cmd;
+  for (let j = fim + 1; j < linhas.length; j++) if (!vazia(linhas[j])) return cmd;
+  return linhas.slice(0, a + 1).concat(linhas.slice(fim)).join('\n');
+}
+
 function lerTudo(cmd) {
+  cmd = semCorpoDeHeredocInerte(cmd);
   const segmentos = lerComando(cmd, 0);
   // P0-1: comando dentro de `(...)`/`$(...)` em posicao de argumento.
   if (cmd.indexOf('(') !== -1 || cmd.indexOf(')') !== -1) {
@@ -595,8 +658,10 @@ const SEG = '[^\\n;|&]*';
 
 // D47: no PowerShell o parametro liga por prefixo. `-Recurse` aceita de `-R` em
 // diante; `-Force` so a partir de `-Fo`, porque `-F` e ambiguo com `-Filter`.
-const PS_FLAG = /^-(?:R(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?|Fo(?:r(?:c(?:e)?)?)?)\b/i;
-const PS_FLAG_TXT = /-(?:R(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?|Fo(?:r(?:c(?:e)?)?)?)\b/i;
+// D244/defeito 12: `-Confirm:$false` pula a confirmacao humana e conta como forcado, em
+// paridade com `rm -f` (decisao do dono, D244 4.1).
+const PS_FLAG = /^-(?:R(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?|Fo(?:r(?:c(?:e)?)?)?|Confirm:\$false)\b/i;
+const PS_FLAG_TXT = /-(?:R(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?|Fo(?:r(?:c(?:e)?)?)?|Confirm:\$false)\b/i;
 
 // D50/D51: o sufixo `.exe` vale para o apelido tambem, nao so para o `git`.
 const APELIDO = /^(?:del|erase|rd|ri|rm|rmdir)(?:\.exe)?$/i;

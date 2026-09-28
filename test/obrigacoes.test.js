@@ -248,6 +248,28 @@ test('obrigacoes: a linha que so existe no outro manual sai marcada nao migrada'
   limpar(a); limpar(b);
 });
 
+// D244/defeito 8 (D242 secao 3.8): os ids sao numerados POR MANUAL, e a linha que so existe no
+// outro manual herdava o id de uma linha do plugin. No roteiro real, 12 ids repetidos: 84 linhas,
+// 72 classificaveis, e o [NADA] imprimia o titulo da linha errada.
+test('D244/defeito 8: todo id do experimento e unico, e o [NADA] fala da linha certa', () => {
+  const a = manualDeMentira('# a\n\n## R\n\nSempre:\n\n- **Uma**\n- **So no plugin**\n');
+  const b = manualDeMentira('# b\n\n## R\n\nSempre:\n\n- **Uma**\n- **Outra** que ficou para tras\n');
+  const linhas = ob.linhasDoExperimento(ob.cruzar(ob.inventario(a), ob.inventario(b)));
+  const ids = linhas.map((l) => l.id);
+  assert.strictEqual(new Set(ids).size, ids.length, 'id repetido: ' + JSON.stringify(ids));
+  const doPlugin = linhas.find((l) => l.chave === 'so no plugin');
+  const doOutro = linhas.find((l) => l.chave === 'outra');
+  const c = ob.conferirResultado(linhas, {
+    tarefa: { referencia: 'abc1234' }, executor: 'x', juiz: 'y', semManualAntigo: true,
+    linhas: linhas.map((l) => ({ id: l.id, mecanismo: l === doOutro ? 'NADA' : 'HOOK', evidencia: 'e' }))
+  });
+  assert.strictEqual(c.classificadas, 3, 'cada linha tem de poder ser julgada: ' + JSON.stringify(c));
+  assert.deepStrictEqual(c.nada.map((n) => n.id), [doOutro.id]);
+  assert.ok(/Outra/.test(c.nada[0].titulo), 'o [NADA] tem de imprimir o titulo do outro manual');
+  assert.notStrictEqual(doPlugin.id, doOutro.id);
+  limpar(a); limpar(b);
+});
+
 /* ------------------------------------------------------------------------- *
  * A ASSERCAO SOBRE ESTE MANUAL. E a que envelhece junto com o repositorio.
  * As contagens abaixo sao PISOS, nao igualdades: o manual pode ganhar

@@ -17,7 +17,11 @@ const RE_COR = /#[0-9a-fA-F]{3,8}\b|\brgba?\([^)]*\)|\bhsla?\([^)]*\)/g;
 const UNIDADES = ['px', 'rem', 'em'];
 // O sinal e parte do valor: -8px nao e 8px. So conta como sinal o hifen que nao
 // vem colado a letra, digito ou ponto - em `.mt-8px` ele e parte do nome.
-const RE_MEDIDA = new RegExp('(?:(?<![\\w.-])-)?\\b\\d+(?:\\.\\d+)?(?:' + UNIDADES.join('|') + ')\\b', 'g');
+// D244 (P2 da D238 secao 6): `.04em` sem zero a esquerda. O `\b` antes do digito separava o
+// ponto, e a medida lida era `04em`. A segunda alternativa le o ponto quando ele nao vem
+// colado a letra, digito ou outro ponto (em `a.5em` ou `1.2.5em` nao e medida inteira).
+const RE_MEDIDA = new RegExp('(?:(?<![\\w.-])-)?(?:\\b\\d+(?:\\.\\d+)?|(?<![\\w.])\\.\\d+)(?:' +
+  UNIDADES.join('|') + ')\\b', 'g');
 
 function normalizarValor(v) {
   return String(v).trim().toLowerCase().replace(/\s+/g, '');

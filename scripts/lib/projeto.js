@@ -308,13 +308,31 @@ function atualizar(antigo, respostas, hoje) {
  * Aqui nao se adivinha intencao: so se diz que o padrao nao pegou nada. Um
  * padrao para pasta que ainda nao existe e legitimo, e por isso isto AVISA, nunca
  * nega. Funcao pura sobre duas listas, para poder ser testada sem repositorio.
+ *
+ * D244/defeito 6: com `cwd`, a pasta fixa do padrao (os segmentos antes do primeiro
+ * caractere de glob) que EXISTE no disco tambem salva o padrao - pasta ignorada pelo git
+ * de proposito nao e typo. Padrao sem pasta fixa (`**\/*.pem`) nao se salva assim.
  */
-function intocaveisInertes(projeto, arquivos) {
+function pastaFixa(padrao) {
+  const fixos = [];
+  for (const seg of String(padrao).split('/')) {
+    if (seg === '' || /[*?[\]{}]/.test(seg)) break;
+    fixos.push(seg);
+  }
+  return fixos.length ? fixos.join('/') : null;
+}
+
+function intocaveisInertes(projeto, arquivos, cwd) {
   const padroes = (projeto && Array.isArray(projeto.intocaveis)) ? projeto.intocaveis : [];
   if (!Array.isArray(arquivos) || arquivos.length === 0) return [];
   return padroes.filter(function (p) {
     if (typeof p !== 'string' || !p.trim()) return false;
-    return !arquivos.some(function (a) { return glob.casa(p, a, false); });
+    if (arquivos.some(function (a) { return glob.casa(p, a, false); })) return false;
+    const fixa = cwd ? pastaFixa(p) : null;
+    if (fixa) {
+      try { if (require('node:fs').existsSync(require('node:path').join(cwd, fixa))) return false; } catch (e) { /* inerte */ }
+    }
+    return true;
   });
 }
 

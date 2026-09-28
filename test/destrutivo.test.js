@@ -2438,3 +2438,146 @@ test('destrutivo FIX22/F3: `{}` e o ALVO do comando, nao um bloco de script', ()
       'FIX22/F3: `{}` ANTES do comando nao pode cegar as regras de token: ' + JSON.stringify(cmd));
   }
 });
+
+// D244/defeito 5 (D241 secao 2.5): `cat >> arq <<'EOF'` que so CITAVA um `rm -f` foi barrado.
+// O corpo de heredoc para um escritor de texto e texto; para um shell, e comando.
+test('D244/defeito 5: corpo de heredoc para cat/tee e texto, nao comando', () => {
+  for (const cmd of [
+    "cat >> a.md <<'EOF'\nexemplo: rm -f x\nEOF",
+    'cat > a.md <<EOF\nrm -rf build\nEOF',
+    'cat > a.md <<"FIM"\r\ngit reset --hard\r\nFIM\r\n',
+    "tee a.md <<-'FIM'\n\tgit reset --hard\n\tFIM",
+    'cat <<EOF > a.md\nrm -rf x\nEOF'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, false, JSON.stringify(cmd));
+  }
+});
+
+test('D244/defeito 5: heredoc executado, fora do corpo ou sem fechamento continua barrado', () => {
+  for (const cmd of [
+    'bash <<EOF\nrm -rf build\nEOF',
+    "sh <<'X'\nrm -rf /\nX",
+    'cat <<EOF | bash\nrm -rf b\nEOF',
+    'ssh host <<EOF\nrm -rf /srv\nEOF',
+    'python - <<EOF\nimport shutil\nEOF\nrm -rf build',
+    'cat <<EOF > a.md\nx\nEOF\nrm -rf build',
+    'cat <<EOF\nrm -rf x',
+    'rm -rf build; cat <<EOF\nnada\nEOF'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, true, JSON.stringify(cmd));
+  }
+});
+
+// T14 ronda 1 (lente borda): cada abertura sem fechamento varria ate o fim do comando procurando o
+// delimitador - quadratico. Medido: 20 mil aberturas, 6,4 s; o controle so com `echo`, 88 ms.
+test('T14: heredoc aberto muitas vezes sem fechamento custa linear', () => {
+  const abertos = (n) => Array.from({ length: n }, (_, i) => 'cat <<A' + i).join('\n');
+  const base = abertos(1250);
+  const cmd = abertos(5000);
+  const m = razaoDeCusto(5, () => destrutivo.classificar(base), () => destrutivo.classificar(cmd));
+  assert.ok(m.razao < TETO_RAZAO,
+    'quadruplicar as aberturas custou ' + m.razao.toFixed(2) + 'x (teto ' + TETO_RAZAO +
+    '; linear ~4, quadratico ~16): ' + m.pequeno.toFixed(2) + ' ms e ' + m.grande.toFixed(2) + ' ms');
+  // D246 sec. 5: dois heredocs no mesmo comando leem tudo (antes da D246, este passava)
+  assert.strictEqual(destrutivo.classificar('cat > a <<X\nrm -rf a\nX\ncat > b <<X\nrm -rf b\nX').destrutivo, true);
+  assert.strictEqual(destrutivo.classificar('cat > a <<X\nX\nrm -rf b').destrutivo, true);
+  // o corpo acaba no PRIMEIRO fechamento depois da abertura, nao no ultimo
+  assert.strictEqual(destrutivo.classificar('cat > a <<X\nnada\nX\nrm -rf b\nX').destrutivo, true);
+});
+
+// T14 ronda 2 (lente borda, P0): o `<<` dentro de uma aspa nao abre heredoc. Com a aspa aberta numa
+// linha anterior, o `cat <<EOF` era lido como abertura e o `rm` que vem depois de a aspa fechar sumia.
+// O que o leitor de aspas nao entende ($'...', crase, $(...), <(...), >(...), barra no fim) le tudo.
+test('T14: heredoc dentro de aspa, ou depois do que o leitor nao entende, continua lido', () => {
+  for (const cmd of [
+    'echo "line one\ncat <<EOF\nend quote" ; rm -rf /important\nmore stuff\nEOF',
+    'x="; cat <<EOF\n" ; rm -rf /x\nEOF',
+    // a aspa fecha DEPOIS do `<<` na mesma linha: a linha termina limpa, mas o `<<` era texto
+    'echo "a\ncat <<EOF "\nrm -rf /\nEOF',
+    'x="; cat <<EOF "\nrm -rf /\nEOF',
+    "echo 'a\ncat <<EOF\n' ; rm -rf /x\nEOF",
+    "echo $'a\\'\ncat <<EOF\n' ; rm -rf /x\nEOF",
+    'echo `\ncat <<EOF\n` ; rm -rf /x\nEOF',
+    'echo "$(\ncat <<EOF\n)" ; rm -rf /x\nEOF',
+    'cat <<EOF > >(sh)\nrm -rf /\nEOF',
+    'sh -s \\\ncat <<EOF\nrm -rf /\nEOF',
+    'sh -s \\\r\ncat <<EOF\r\nrm -rf /\r\nEOF',
+    // `<<<` e here-string do bash: a linha seguinte e comando, nao corpo (sonda da ronda 2)
+    'cat <<<word\nrm -rf /\nword',
+    'cat <<< word\nrm -rf /\nword',
+    'tee a <<<"x"\nrm -rf /\nx'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, true, JSON.stringify(cmd));
+  }
+  // D246 sec. 5: outro comando antes do `cat`, ou dois heredocs, leem tudo (antes da D246, controles que passavam)
+  for (const cmd of [
+    'echo "ok" && cat > a.md <<\'EOF\'\nrm -rf x\nEOF',
+    "cat > a <<'EOF'\nit's `x` \"y\n$(z)\nEOF\ncat > b <<EOF\nrm -rf y\nEOF"
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, true, JSON.stringify(cmd));
+  }
+  // controle: aspa e crase DENTRO de um corpo com delimitador entre aspas nao atrapalham
+  assert.strictEqual(destrutivo.classificar("cat > a <<'EOF'\nit's `x` \"y\n$(z)\nrm -rf y\nEOF").destrutivo, false);
+});
+
+// D246 sec. 5 (T14 no teto, decisao do dono): o corpo so sai quando o comando INTEIRO e um unico
+// `cat`/`tee` com heredoc e nada mais. Todos, menos os dois ultimos, o bash executa - medido com `echo` no
+// lugar do `rm` - e o HEAD barrava: o primeiro e o P0 da ronda 3; os outros, sonda desta correcao, um por
+// condicao do `semCorpoDeHeredocInerte`.
+test('D246: heredoc so sai quando o comando inteiro e um unico cat/tee com corpo inerte', () => {
+  const NB = String.fromCharCode(0xa0);
+  for (const cmd of [
+    'cat <<EOF > /tmp/x.sh\nrm -rf /\nEOF\nbash /tmp/x.sh',
+    // outro comando na abertura
+    'cat <<EOF > x.sh; bash x.sh\nrm -rf /\nEOF',
+    'cat <<EOF > x.sh && bash x.sh\nrm -rf /\nEOF',
+    // delimitador sem aspas: o bash expande o corpo
+    'cat > a.md <<EOF\n$(rm -rf /)\nEOF',
+    'cat > a.md <<EOF\n`rm -rf /`\nEOF',
+    // ... e junta a linha que acaba em barra: `E\` + `OF` e o fechamento
+    'cat > a <<EOF\nE\\\nOF\nrm -rf /\nEOF',
+    // o delimitador de `<<EOF"x"` e `EOFx`; para o bash, `\r` e espaco unicode sao letra dele
+    'cat > a <<EOF"x"\nEOFx\nrm -rf /\nEOF',
+    'cat > a <<EOF\rx\nEOF\rx\nrm -rf /\nEOF',
+    'cat > a <<EOF' + NB + 'x\nEOF' + NB + 'x\nrm -rf /\nEOF',
+    'cat > a <<' + NB + 'EOF\n' + NB + 'EOF\nrm -rf /\nEOF',
+    // aspa ou continuacao na abertura: o `<<` e texto, ou o comando segue na linha de baixo
+    'cat "a <<EOF b"\nrm -rf /\nEOF',
+    'cat <<EOF "x\n" ; rm -rf /\nEOF',
+    'cat > a <<EOF \\\n&& rm -rf /\nEOF',
+    // consequencia pedida: qualquer outra linha no comando, antes ou depois, le tudo
+    'echo a\ncat > a <<EOF\nrm -rf /\nEOF',
+    'cat > a <<EOF\nrm -rf /\nEOF\necho fim'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, true, JSON.stringify(cmd));
+  }
+  // controles: linha em branco em volta; `$(`, crase e barra num corpo com delimitador entre aspas; `$VAR` sem aspas
+  for (const cmd of [
+    '\ncat > a <<EOF\nrm -rf /\nEOF\n\n',
+    "cat > a <<'EOF'\n$(rm -rf /) `x` \\\nEOF",
+    'cat > a <<EOF\n$HOME rm -rf x\nEOF'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, false, JSON.stringify(cmd));
+  }
+});
+
+// D244/defeito 12 (D243 secao 4): a ferramenta PowerShell chegava ao portao; o que passava era a
+// regua - `Remove-Item` so contava como destrutivo com -Recurse/-Force. Decisao do dono (D244 4.1):
+// `-Confirm:$false` pula a confirmacao, e conta como forcado, em paridade com `rm -f`.
+test('D244/defeito 12: Remove-Item e apelido com -Confirm:$false sao destrutivos', () => {
+  for (const cmd of [
+    "Remove-Item -LiteralPath 'C:\\x\\o.txt' -Confirm:$false",
+    'Remove-Item x -confirm:$False',
+    'ri x -Confirm:$false',
+    'del x -Confirm:$false'
+  ]) {
+    const r = destrutivo.classificar(cmd);
+    assert.strictEqual(r.destrutivo, true, JSON.stringify(cmd));
+  }
+});
+
+test('D244/defeito 12: sem -Confirm:$false, ou em outro cmdlet, nada muda', () => {
+  for (const cmd of ['Remove-Item x', 'Get-Item x -Confirm:$false', 'Remove-Item x -Confirm', 'Remove-Item x -WhatIf']) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, false, JSON.stringify(cmd));
+  }
+});
