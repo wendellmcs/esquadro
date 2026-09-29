@@ -11,6 +11,12 @@ const ARQUIVO = '.claude/esquadro/escopo.md';
 const PASTA_FRENTES = '.claude/esquadro/escopos/';
 const NOME_DE_FRENTE = /^[a-zA-Z0-9_-]+$/;
 
+// O nome de frente que de fato vale no disco: o que vem do estado (arquivo em disco)
+// e saneado na mesma classe do session_id (lib/estado.js:caminhoSessao).
+function nomeSeguro(frente) {
+  return String(frente).replace(/[^a-zA-Z0-9_-]/g, '-');
+}
+
 /**
  * D244/defeito 2: o item de lista e o CAMINHO, e o resto da linha e anotacao. Antes a linha
  * inteira virava padrao, e `src/a.js (motivo)` nunca casava arquivo nenhum. Caminho pode ter
@@ -69,7 +75,7 @@ function frenteDoAlvo(alvoRelativo) {
  */
 function arquivoEmVigor(cwd, frente) {
   if (!frente) return ARQUIVO;
-  const seguro = String(frente).replace(/[^a-zA-Z0-9_-]/g, '-');
+  const seguro = nomeSeguro(frente);
   try {
     if (fs.existsSync(path.join(cwd, PASTA_FRENTES + seguro + '.md'))) return PASTA_FRENTES + seguro + '.md';
   } catch (e) { /* cai no escopo.md */ }
@@ -212,58 +218,72 @@ function motivoNomeDeFrente(alvo) {
  * D244/defeito 7: o escopo em disco pode ser de outra sessao. Uma linha na abertura.
  * Escopo por frente: com vinculo a uma frente que ainda existe no disco, a linha
  * passa a citar a frente e o objetivo DELA. Sem vinculo (ou frente aposentada),
- * mantem a linha de sempre sobre o escopo.md. Havendo frentes na pasta, uma
- * segunda linha lista cada uma e diz como se vincular - null so quando nao ha
- * nem escopo.md, nem vinculo, nem frente nenhuma na pasta.
+ * mantem a linha de sempre sobre o escopo.md. Havendo outras frentes na pasta, um
+ * segundo bloco lista cada uma (menos a vinculada) e diz como se vincular - null so
+ * quando nao ha nem escopo.md, nem vinculo, nem frente nenhuma na pasta.
  */
 function avisoHeranca(cwd, frente) {
   const partes = [];
-
-  let vinculoValido = false;
-  if (frente) {
-    const seguro = String(frente).replace(/[^a-zA-Z0-9_-]/g, '-');
-    try { vinculoValido = fs.existsSync(path.join(cwd, PASTA_FRENTES + seguro + '.md')); } catch (e) { vinculoValido = false; }
-  }
-
-  if (vinculoValido) {
-    const arquivo = PASTA_FRENTES + String(frente).replace(/[^a-zA-Z0-9_-]/g, '-') + '.md';
-    const esc = carregar(cwd, frente);
-    partes.push('esquadro: esta sessao esta vinculada a frente ' + ascii(frente) + ' (' + arquivo +
-      ') - objetivo: ' + ascii((esc && esc.objetivo) || '(sem objetivo)').slice(0, 200) + '.');
-  } else {
-    let st;
-    try { st = fs.statSync(path.join(cwd, ARQUIVO)); } catch (e) { st = null; }
-    if (st) {
-      const esc = carregar(cwd, null);
-      const d = st.mtime;
-      const p2 = function (n) { return String(n).padStart(2, '0'); };
-      const quando = d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' +
-        p2(d.getHours()) + ':' + p2(d.getMinutes());
-      partes.push('esquadro: escopo herdado de ' + quando + ' - objetivo: ' +
-        ascii((esc && esc.objetivo) || '(sem objetivo)').slice(0, 200) +
-        '. Se a tarefa mudou, reescreva ' + ARQUIVO + ' antes de editar.');
-    }
-  }
-
-  let nomes = [];
-  try {
-    nomes = fs.readdirSync(path.join(cwd, PASTA_FRENTES))
-      .filter(function (n) { return n.toLowerCase().slice(-3) === '.md'; });
-  } catch (e) { nomes = []; }
-  if (nomes.length) {
-    const linhas = ['esquadro: frentes de trabalho existentes:'];
-    for (const n of nomes) {
-      const nome = n.slice(0, n.length - 3);
-      let esc = null;
-      try { esc = parse(fs.readFileSync(path.join(cwd, PASTA_FRENTES, n), 'utf8')); } catch (e) { esc = null; }
-      linhas.push('  - ' + ascii(nome) + ': ' + ascii((esc && esc.objetivo) || '(sem objetivo)').slice(0, 200));
-    }
-    linhas.push('Editar o arquivo da frente vincula esta sessao a ela; sem vinculo vale ' + ARQUIVO + '.');
-    partes.push(linhas.join('\n'));
-  }
-
+  const principal = linhaDoVinculo(cwd, frente) || linhaDaHeranca(cwd);
+  if (principal) partes.push(principal);
+  const lista = blocoDeFrentes(cwd, frente);
+  if (lista) partes.push(lista);
   if (!partes.length) return null;
   return partes.join('\n\n');
+}
+
+/** A linha da frente vinculada, ou null quando nao ha vinculo, ou a frente sumiu do disco. */
+function linhaDoVinculo(cwd, frente) {
+  if (!frente) return null;
+  const arquivo = arquivoEmVigor(cwd, frente);
+  if (arquivo === ARQUIVO) return null;
+  const esc = carregar(cwd, frente);
+  return 'esquadro: esta sessao esta vinculada a frente ' + nomeSeguro(frente) + ' (' + arquivo +
+    ') - objetivo: ' + ascii((esc && esc.objetivo) || '(sem objetivo)').slice(0, 200) +
+    '. Se a tarefa mudou, reescreva ' + arquivo + ' antes de editar.';
+}
+
+/** A linha do escopo.md herdado (com a data dele), ou null quando ele nao existe. */
+function linhaDaHeranca(cwd) {
+  let st;
+  try { st = fs.statSync(path.join(cwd, ARQUIVO)); } catch (e) { st = null; }
+  if (!st) return null;
+  const esc = carregar(cwd, null);
+  const d = st.mtime;
+  const p2 = function (n) { return String(n).padStart(2, '0'); };
+  const quando = d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' +
+    p2(d.getHours()) + ':' + p2(d.getMinutes());
+  return 'esquadro: escopo herdado de ' + quando + ' - objetivo: ' +
+    ascii((esc && esc.objetivo) || '(sem objetivo)').slice(0, 200) +
+    '. Se a tarefa mudou, reescreva ' + ARQUIVO + ' antes de editar.';
+}
+
+/**
+ * As frentes da pasta, uma por linha, e como se vincular a elas - ou null sem nenhuma.
+ * So arquivo entra (uma pasta chamada x.md nao e frente), e a frente ja vinculada fica
+ * de fora: a linha do vinculo ja fala dela.
+ */
+function blocoDeFrentes(cwd, frente) {
+  let nomes = [];
+  try {
+    nomes = fs.readdirSync(path.join(cwd, PASTA_FRENTES), { withFileTypes: true })
+      .filter(function (e) { return e.isFile() && e.name.toLowerCase().slice(-3) === '.md'; })
+      .map(function (e) { return e.name; });
+  } catch (e) { nomes = []; }
+  if (frente && arquivoEmVigor(cwd, frente) !== ARQUIVO) {
+    const vinculado = (nomeSeguro(frente) + '.md').toLowerCase();
+    nomes = nomes.filter(function (n) { return n.toLowerCase() !== vinculado; });
+  }
+  if (!nomes.length) return null;
+  const linhas = ['esquadro: frentes de trabalho existentes:'];
+  for (const n of nomes) {
+    const nome = n.slice(0, n.length - 3);
+    let esc = null;
+    try { esc = parse(fs.readFileSync(path.join(cwd, PASTA_FRENTES, n), 'utf8')); } catch (e) { esc = null; }
+    linhas.push('  - ' + ascii(nome) + ': ' + ascii((esc && esc.objetivo) || '(sem objetivo)').slice(0, 200));
+  }
+  linhas.push('Editar o arquivo da frente vincula esta sessao a ela; sem vinculo vale ' + ARQUIVO + '.');
+  return linhas.join('\n');
 }
 
 function motivoIntocavel(alvo) {
@@ -296,6 +316,6 @@ function motivoOutraFrente(alvo, arquivo) {
 
 module.exports = {
   ARQUIVO, PASTA_FRENTES, parse, carregar, dentro, declaradoFora, ascii, conteudoDepois, ampliou,
-  avisoHeranca, frenteDoAlvo, arquivoEmVigor,
+  avisoHeranca, frenteDoAlvo, arquivoEmVigor, nomeSeguro,
   motivoSemEscopo, motivoFora, motivoDeclaradoFora, motivoIntocavel, motivoOutraFrente, motivoNomeDeFrente
 };

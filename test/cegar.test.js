@@ -201,3 +201,90 @@ test('preparar-revisao: arquivo que nao existe no disco diz qual, sem stack trac
     assert.match(r.stdout, /sumiu\.txt nao existe no disco/, r.stdout);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// T2 / item 11 da D257 (secao 11): uma base por arquivo. Antes, tres arquivos preparados na mesma
+// pasta viravam "rondas 1, 2, 3" de uma revisao so.
+function baseDeRevisao(dir) { return path.join(dir, '.claude', 'esquadro', 'revisao'); }
+
+test('cegar: idDoArquivo troca a barra por duplo underscore e o resto fora de [a-zA-Z0-9._-] por underscore', () => {
+  assert.strictEqual(cegar.idDoArquivo('scripts/lib/escopo.js'), 'scripts__lib__escopo.js');
+  assert.strictEqual(cegar.idDoArquivo('raiz.txt'), 'raiz.txt');
+  assert.strictEqual(cegar.idDoArquivo('a b/cç.js'), 'a_b__c_.js');
+});
+
+// Arquivo de nome so com digitos (`2026`, sem extensao) daria a base `revisao/2026`, igual a uma
+// ronda solta do formato da 0.3.0: a proxima preparacao cairia na base unica.
+test('cegar: idDoArquivo nunca e so digitos, para nao se passar por ronda solta', () => {
+  assert.strictEqual(/^\d+$/.test(cegar.idDoArquivo('2026')), false, cegar.idDoArquivo('2026'));
+  assert.strictEqual(cegar.idDoArquivo('2026'), '_2026');
+  assert.strictEqual(cegar.idDoArquivo('dir/2026'), 'dir__2026');
+});
+
+test('cegar: baseDoArquivo e revisao/<id>', () => {
+  const rev = path.join('x', 'revisao');
+  assert.strictEqual(cegar.baseDoArquivo(rev, 'sub/a.txt'), path.join(rev, 'sub__a.txt'));
+});
+
+test('cegar: temPastaNumeradaSolta so olha pasta numerada direto em revisao/', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-solta-'));
+  try {
+    assert.strictEqual(cegar.temPastaNumeradaSolta(path.join(dir, 'nao-existe')), false);
+    assert.strictEqual(cegar.temPastaNumeradaSolta(dir), false);
+    fs.mkdirSync(path.join(dir, 'sub__a.txt', '1'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '7'), 'arquivo, nao pasta', 'utf8');
+    assert.strictEqual(cegar.temPastaNumeradaSolta(dir), false, 'a numerada esta DENTRO da base, e 7 e arquivo');
+    fs.mkdirSync(path.join(dir, '1'));
+    assert.strictEqual(cegar.temPastaNumeradaSolta(dir), true);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T2/item 11: dois arquivos preparados na mesma pasta vao para bases separadas, cada um na ronda 1', () => {
+  const dir = repoDeEnsaio();
+  try {
+    const r1 = rodarCli(dir, 'raiz.txt');
+    const r2 = rodarCli(dir, 'sub/aninhado.txt');
+    assert.strictEqual(r1.status, 0, r1.stdout + r1.stderr);
+    assert.strictEqual(r2.status, 0, r2.stdout + r2.stderr);
+    const s1 = JSON.parse(r1.stdout);
+    const s2 = JSON.parse(r2.stdout);
+    assert.strictEqual(s1.ronda, 1);
+    assert.strictEqual(s2.ronda, 1, 'o segundo arquivo tem a propria contagem de rondas');
+    assert.strictEqual(path.basename(s1.base), 'raiz.txt');
+    assert.strictEqual(path.basename(s2.base), 'sub__aninhado.txt');
+    assert.strictEqual(path.basename(path.dirname(s1.base)), 'revisao');
+    assert.strictEqual(path.dirname(s1.a), path.join(s1.base, '1'));
+    assert.strictEqual(path.dirname(s2.b), path.join(s2.base, '1'));
+    assert.strictEqual(s2.vereditos, path.join(s2.base, '1', 'vereditos'));
+    assert.deepStrictEqual(fs.readdirSync(baseDeRevisao(dir)).sort(), ['raiz.txt', 'sub__aninhado.txt'],
+      'nenhuma pasta numerada solta em revisao/');
+    assert.doesNotMatch(s1.aviso, /formato antigo/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T2/item 11: o mesmo arquivo preparado de novo e a ronda 2 da base dele', () => {
+  const dir = repoDeEnsaio();
+  try {
+    const s1 = JSON.parse(rodarCli(dir, 'raiz.txt').stdout);
+    const s2 = JSON.parse(rodarCli(dir, 'raiz.txt').stdout);
+    assert.strictEqual(s1.ronda, 1);
+    assert.strictEqual(s2.ronda, 2);
+    assert.strictEqual(s2.base, s1.base);
+    assert.strictEqual(path.basename(path.dirname(s2.a)), '2');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T2/item 11: com pasta numerada solta (formato da 0.3.0) segue gravando la, e avisa', () => {
+  const dir = repoDeEnsaio();
+  try {
+    fs.mkdirSync(path.join(baseDeRevisao(dir), '1'), { recursive: true });
+    const r = rodarCli(dir, 'raiz.txt');
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const s = JSON.parse(r.stdout);
+    assert.strictEqual(s.ronda, 2, 'continua a contagem da pasta plana');
+    assert.strictEqual(s.base, baseDeRevisao(dir));
+    assert.strictEqual(path.dirname(s.a), path.join(baseDeRevisao(dir), '2'));
+    assert.match(s.aviso, /formato antigo/);
+    assert.match(s.aviso, /uma base por arquivo/);
+    assert.strictEqual(fs.existsSync(path.join(baseDeRevisao(dir), 'raiz.txt')), false, 'nao abre base nova no meio da revisao');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

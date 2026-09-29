@@ -40,7 +40,6 @@ function ambiente(cwd, projeto) {
     temIntocaveis: Array.isArray(p.intocaveis) && p.intocaveis.length > 0,
     temPlataforma: !!(p.plataforma && p.plataforma.so),
     temDesign: existe(path.join(cwd, '.claude', 'esquadro', 'design.json')),
-    temEscopo: existe(path.join(cwd, '.claude', 'esquadro', 'escopo.md')),
     temGit: existe(path.join(cwd, '.git')),
     escada: escada.length,
     degraus: degraus.length,

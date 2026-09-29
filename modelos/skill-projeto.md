@@ -101,7 +101,7 @@ inclusive depois de compactação de contexto.
 | Trava | O que bloqueia |
 |---|---|
 | Fecho sem evidência | Afirmar sucesso sem colar saída e sem declarar o não rodado |
-| Escopo | Editar arquivo fora do `escopo.md` em marcha padrão ou AAA |
+| Escopo | Editar arquivo fora do `escopo.md` (ou do arquivo da frente vinculada) em marcha padrão ou AAA |
 | Destrutivo | Comando que precisa de decisão humana |
 | Outra frente | Escrever em arquivo que já estava modificado quando a sessão abriu |
 | Custo | Agente do topo da escada em trabalho só de marcha rápida |

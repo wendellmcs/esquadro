@@ -139,7 +139,7 @@ const PONTOS = [
     chave: 'caminho_especifico',
     classe: SO_NO_SISTEMA,
     titulo: 'Caminho relativo remontado pelo separador do sistema',
-    arquivos: ['scripts/lib/cicatriz.js'],
+    arquivos: ['scripts/apurar-ronda.js', 'scripts/lib/cicatriz.js'],
     comoSeProva: 'rodando a suite naquele sistema: o separador e o do proprio Node',
     ressalva: 'no Windows a troca vira barra normal; fora dele e identidade. ' +
               'A suite so exercita o lado do Windows.'
@@ -149,7 +149,7 @@ const PONTOS = [
     classe: INJETAVEL,
     titulo: 'Caminho do Windows normalizado para barra normal',
     arquivos: [
-      'scripts/lib/busca.js', 'scripts/lib/git.js', 'scripts/lib/glob.js',
+      'scripts/apurar-ronda.js', 'scripts/lib/busca.js', 'scripts/lib/git.js', 'scripts/lib/glob.js',
       'scripts/lib/instrucoes.js', 'scripts/lib/plano.js', 'scripts/lib/plataforma.js',
       'scripts/lib/sanitacao.js', 'scripts/preparar-revisao.js'
     ],

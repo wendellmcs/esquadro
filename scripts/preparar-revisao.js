@@ -75,7 +75,11 @@ const doHead = versaoNoHead(cwd, pre + rel);
 const novo = doHead === null;
 const anterior = novo ? '' : doHead;
 
-const base = path.join(cwd, '.claude', 'esquadro', 'revisao');
+// D257 secao 11, item 11: uma base por arquivo (revisao/<id>/<n>/). Revisao em andamento no formato
+// da 0.3.0 - pasta numerada solta em revisao/ - segue na base unica, para nao partir a revisao ao meio.
+const revisao = path.join(cwd, '.claude', 'esquadro', 'revisao');
+const formatoAntigo = cegar.temPastaNumeradaSolta(revisao);
+const base = formatoAntigo ? revisao : cegar.baseDoArquivo(revisao, rel);
 const n = cegar.proximaRonda(base);
 const dir = path.join(base, String(n));
 fs.mkdirSync(dir, { recursive: true });
@@ -110,9 +114,14 @@ if (novo) {
   aviso += ' E arquivo novo: um dos lados e vazio, a cegueira nao existe; julgue o lado cheio pelo que ele e, ' +
     'e diga isso no fecho.';
 }
+if (formatoAntigo) {
+  aviso += ' A revisao em andamento esta no formato antigo (base unica em revisao/). Terminada ela, mova as ' +
+    'pastas numeradas para usar uma base por arquivo.';
+}
 const saida = {
   ronda: n,
   arquivo: rel,
+  base: base,
   a: path.join(dir, 'A.txt'),
   b: path.join(dir, 'B.txt'),
   regua: regua,

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.1 — revisao por arquivo e acabamento do escopo por frente
+
+Pendencias achadas na revisao da 0.3.0 e no uso dela. Nenhum portao novo. Os comportamentos novos
+vem com teste; a suite inteira roda com `npm test`.
+
+- **Revisao cega, uma base por arquivo.** O `preparar-revisao.js` grava em
+  `.claude/esquadro/revisao/<arquivo>/<n>/`, e o `apurar-ronda.js --arquivo <caminho>` apura a base
+  daquele arquivo: varios arquivos revisados juntos deixam de se misturar como rondas de uma revisao
+  so. Sem `--arquivo`, uma base unica e achada sozinha; com mais de uma, o script para e lista os
+  arquivos. Revisao em andamento no formato de antes (pasta numerada solta em `revisao/`) segue
+  nele ate acabar, com aviso.
+- **Fecho contado uma vez.** Revisao fechada grava `fechada.json` na base; rodar o apurar de novo nao
+  conta o fecho outra vez, e a saida diz que ja foi contado.
+- **Apuracao que nao cala.** Erro que antes passava em silencio agora para com o que fazer:
+  `--arquivo` sem valor, arquivo sem base quando so ha revisao de outro, `fechada.json` ilegivel,
+  falha ao gravar o fecho, e erro de leitura que nao e "nao existe".
+- **Arquivo so de logica.** O `/esquadro:revisar` dispensa a lente `design` em arquivo que nao e de
+  estilo e nao monta tela: as de codigo sem ela. Na duvida, todas as de codigo.
+- **Escopo por frente.** O aviso de vinculo diz o que fazer se a tarefa mudou; a lista de frentes da
+  abertura nao repete a vinculada e some quando fica vazia; uma pasta chamada `x.md` em `escopos/`
+  nao e frente; a reinjecao cita a frente pelo nome do arquivo que vale.
+- **Sessao sem interacao.** O README explica que em `claude -p` o Claude Code nega escrever em
+  `<projeto>/.claude/**`: o arquivo da frente tem de existir antes, e o agente le antes de editar.
+
 ## 0.3.0 — escopo por frente
 
 Duas frentes de trabalho no mesmo projeto deixam de disputar um `escopo.md` so. Nenhum portao novo:

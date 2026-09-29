@@ -294,3 +294,65 @@ test('escopo: avisoHeranca sem pasta escopos/ nem frentes e identico ao de hoje'
     assert.ok(!/frentes de trabalho/.test(a), a);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('escopo: a linha do vinculo fecha com o aviso de reescrever o arquivo da frente', () => {
+  const dir = projetoTmp({
+    '.claude/esquadro/escopos/omni.md': '**Objetivo:** fechar a onda 8\n## Dentro\n- src/a.js\n'
+  });
+  try {
+    const a = escopo.avisoHeranca(dir, 'omni');
+    assert.ok(a.includes('Se a tarefa mudou, reescreva .claude/esquadro/escopos/omni.md antes de editar.'), a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('escopo: com vinculo, a lista de frentes nao repete a frente vinculada', () => {
+  const dir = projetoTmp({
+    '.claude/esquadro/escopos/omni.md': '**Objetivo:** fechar a onda 8\n## Dentro\n- src/a.js\n',
+    '.claude/esquadro/escopos/tecnica.md': '**Objetivo:** medir a oscilacao\n## Dentro\n- src/b.js\n'
+  });
+  try {
+    const a = escopo.avisoHeranca(dir, 'omni');
+    assert.ok(a.includes('  - tecnica: medir a oscilacao'), a);
+    assert.ok(!a.includes('  - omni:'), 'a frente vinculada nao entra na lista: ' + a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('escopo: com vinculo e sem outra frente, o bloco da lista nao sai', () => {
+  const dir = projetoTmp({
+    '.claude/esquadro/escopos/omni.md': '**Objetivo:** fechar a onda 8\n## Dentro\n- src/a.js\n'
+  });
+  try {
+    const a = escopo.avisoHeranca(dir, 'omni');
+    assert.ok(a.includes('vinculada a frente omni'), a);
+    assert.ok(!/frentes de trabalho/.test(a), a);
+    assert.ok(!/Editar o arquivo da frente vincula/.test(a), a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('escopo: pasta chamada x.md dentro de escopos/ nao entra na lista de frentes', () => {
+  const dir = projetoTmp({
+    '.claude/esquadro/escopos/tecnica.md': '**Objetivo:** medir a oscilacao\n## Dentro\n- src/b.js\n'
+  });
+  try {
+    fs.mkdirSync(path.join(dir, '.claude', 'esquadro', 'escopos', 'pasta.md'));
+    const a = escopo.avisoHeranca(dir, null);
+    assert.ok(a.includes('  - tecnica:'), a);
+    assert.ok(!a.includes('pasta'), 'pasta nao e frente: ' + a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('escopo: a linha do vinculo cita o nome saneado da frente, nunca o valor cru do estado', () => {
+  const dir = projetoTmp({
+    '.claude/esquadro/escopos/om-ni.md': '**Objetivo:** fechar a onda 8\n## Dentro\n- src/a.js\n'
+  });
+  try {
+    const a = escopo.avisoHeranca(dir, 'om ni');
+    assert.ok(a.includes('vinculada a frente om-ni (.claude/esquadro/escopos/om-ni.md)'), a);
+    assert.ok(!a.includes('om ni'), 'valor cru do estado nao pode chegar ao texto: ' + a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('escopo: nomeSeguro troca o que esta fora da classe de frente por hifen', () => {
+  assert.strictEqual(escopo.nomeSeguro('om ni/x'), 'om-ni-x');
+  assert.strictEqual(escopo.nomeSeguro('onda_8-a'), 'onda_8-a');
+});

@@ -1,5 +1,6 @@
 'use strict';
 const fs = require('node:fs');
+const path = require('node:path');
 
 /** FNV-1a de 32 bits. Deterministico: a mesma sessao reproduz a mesma ordem. */
 function semente(texto) {
@@ -43,4 +44,34 @@ function proximaRonda(dir) {
   return existentes.length ? Math.max.apply(null, existentes) + 1 : 1;
 }
 
-module.exports = { semente, rotular, proximaRonda };
+/**
+ * D257 secao 11, item 11: uma base por arquivo. O id e o caminho relativo com a barra virando
+ * duplo underscore e todo caractere fora de [a-zA-Z0-9._-] virando underscore
+ * (scripts/lib/escopo.js -> scripts__lib__escopo.js). Sempre um nome de pasta seguro. Nunca so
+ * digitos: `2026` viraria uma ronda solta do formato antigo (temPastaNumeradaSolta), e ganha `_`.
+ */
+function idDoArquivo(rel) {
+  const id = String(rel == null ? '' : rel).split('/').join('__').replace(/[^a-zA-Z0-9._-]/g, '_');
+  return /^\d+$/.test(id) ? '_' + id : id;
+}
+
+/** A base das rondas de um arquivo: <revisao>/<id>. As rondas moram em <base>/<n>/. */
+function baseDoArquivo(revisao, rel) {
+  return path.join(revisao, idDoArquivo(rel));
+}
+
+/**
+ * Formato da 0.3.0: pasta numerada SOLTA em revisao/ (revisao/1/), uma base unica para todos os
+ * arquivos. Ha revisao em andamento nesse formato quando existe uma. As pastas numeradas das
+ * bases novas ficam um nivel abaixo e nao contam.
+ */
+function temPastaNumeradaSolta(revisao) {
+  try {
+    return fs.readdirSync(revisao, { withFileTypes: true })
+      .some(function (e) { return e.isDirectory() && /^\d+$/.test(e.name); });
+  } catch (e) {
+    return false;
+  }
+}
+
+module.exports = { semente, rotular, proximaRonda, idDoArquivo, baseDoArquivo, temPastaNumeradaSolta };

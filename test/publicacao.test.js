@@ -218,6 +218,24 @@ test('publicacao: a skill padrao conta as duas familias de lentes, com os numero
   }
 });
 
+// T2/item 13 da D257 (decisao do dono, 2026-09-29): arquivo so de logica - nao e de estilo e nao
+// monta tela - e revisado com as 9 de codigo sem a `design`. O numero nao e escrito a mao: e
+// LENTES.length - 1, e so faz sentido enquanto a `design` existir em LENTES. Na duvida, as 9.
+test('publicacao: a linha "So logica" do revisar diz LENTES.length - 1, e a lente design existe para sair', () => {
+  assert.ok(veredito.LENTES.some((l) => l.chave === 'design'),
+    'sem a lente design em LENTES o "8" de so logica nao tem sentido');
+  const revisar = fs.readFileSync(path.join(RAIZ, 'skills', 'revisar', 'SKILL.md'), 'utf8').split('\n');
+  const linha = revisar.find((l) => l.startsWith('| Só lógica '));
+  assert.ok(linha, 'a tabela do Passo 2 do revisar nao tem a linha "Só lógica"');
+  assert.ok(linha.includes('**' + (veredito.LENTES.length - 1) + '**'),
+    'so logica tem de dizer LENTES.length - 1: ' + linha);
+  assert.match(linha, /sem\s+`?design`?/, 'a linha tem de dizer que a lente que sai e a design: ' + linha);
+  assert.match(revisar.join('\n'), /na d[uú]vida, as 9/i, 'o revisar tem de dizer que na duvida vao as 9');
+  const m = README.match(/\*\*(\S+)\*\* quando [ée] s[oó] l[oó]gica/);
+  assert.ok(m, 'a linha do /esquadro:revisar no README nao diz o caso so logica');
+  assert.strictEqual(NUMEROS[m[1].toLowerCase()], veredito.LENTES.length - 1, 'o README conta so logica errado');
+});
+
 // Ronda 2 do Passo 8b: "oito travas" batia o README com o CHANGELOG e o manifesto, e o
 // titulo do README com a tabela dele - nunca com o codigo. Trava e portao que nega (os
 // baldes de bloqueio do saude.js) ou um dos dois comandos. Balde novo que nega tem de

@@ -127,3 +127,18 @@ test('reinjecao: sem vinculo, a saida e identica a de hoje mesmo com frentes na 
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });
+
+test('reinjecao: a linha Frente imprime o nome saneado, nunca o valor cru do estado', () => {
+  comTmp((rein, base) => {
+    const dir = projeto({
+      '.claude/esquadro/regras.md': '- ao editar -> rodar git status\n',
+      '.claude/esquadro/escopos/om-ni.md': '**Objetivo:** fechar a onda 8\n## Dentro\n- src/a.js\n'
+    });
+    try {
+      estadoCom(base, 's1', { frente: 'om ni' });
+      const t = rein.montar(dir, 's1', 'compact');
+      assert.ok(t.includes('Frente: om-ni (.claude/esquadro/escopos/om-ni.md)'), t);
+      assert.ok(!t.includes('om ni'), 'valor cru do estado nao pode chegar ao texto: ' + t);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});

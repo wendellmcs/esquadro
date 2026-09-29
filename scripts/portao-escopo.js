@@ -23,7 +23,7 @@ function existe(cwd, alvo) {
  * X2a: o aviso pega CARONA num `permitir` que ja ia acontecer. Um
  * `io.permitir({systemMessage})` novo na "posicao natural" - antes do passo 1 -
  * derrubava a protecao de `intocaveis`, porque `permitir` sai do portao.
- * Uma vez por sessao, como o `avisouSemConfig` da linha 87.
+ * Uma vez por sessao, como o `avisouSemConfig` do passo 3, abaixo.
  */
 function permitirComAviso(e, s, avisos) {
   if (avisos.length && !s.avisouTipoErrado) {

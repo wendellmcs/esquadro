@@ -104,7 +104,8 @@ function montar(cwd, sessionId, origem) {
 
   const estadoPartes = [];
 
-  const frente = estado.ler(sessionId).frente;
+  const s = estado.ler(sessionId);
+  const frente = s.frente;
   const esc = escopoLib.carregar(cwd, frente);
   if (esc && (esc.dentro.length || esc.objetivo)) {
     const linhas = [];
@@ -112,7 +113,7 @@ function montar(cwd, sessionId, origem) {
     // sem isto, depois de uma compactacao o agente le "Dentro do escopo" e nao
     // tem como saber que o arquivo que manda e o da frente, nao o escopo.md.
     const arquivo = escopoLib.arquivoEmVigor(cwd, frente);
-    if (frente && arquivo !== escopoLib.ARQUIVO) linhas.push('Frente: ' + frente + ' (' + arquivo + ')');
+    if (frente && arquivo !== escopoLib.ARQUIVO) linhas.push('Frente: ' + escopoLib.nomeSeguro(frente) + ' (' + arquivo + ')');
     if (esc.objetivo) linhas.push('Objetivo: ' + esc.objetivo);
     linhas.push('Dentro do escopo:');
     for (const d of esc.dentro) linhas.push('  - ' + d);
@@ -140,7 +141,6 @@ function montar(cwd, sessionId, origem) {
     } catch (e) { /* plano ilegivel nao derruba a abertura */ }
   }
 
-  const s = estado.ler(sessionId);
   const c = s.contadores || {};
   const chaves = Object.keys(c);
   if (chaves.length) {

@@ -14,8 +14,14 @@ produziu — e o raciocínio que produziu o bug reproduz o bug.
 
     node "${CLAUDE_PLUGIN_ROOT}/scripts/preparar-revisao.js" --arquivo <caminho>
 
-O script escreve `A.txt`, `B.txt` e `mapa.json` em `.claude/esquadro/revisao/<n>/`.
+O script escreve `A.txt`, `B.txt` e `mapa.json` em `.claude/esquadro/revisao/<arquivo>/<n>/`: cada
+arquivo tem a sua base (`<arquivo>` é o caminho com `/` trocado por `__`), e `<n>` é a ronda dele. O
+caminho exato vem na saída (`a`, `b`, `vereditos` e `base`); use o que a saída diz, não reconstrua.
 **Você não abre `mapa.json`, e nenhum inspetor recebe o caminho dele.**
+
+**Vários arquivos = uma base cada.** Prepare, inspecione e apure um arquivo por vez; cada um tem as
+suas rondas e o seu teto de 3. Se a saída avisar "formato antigo", há uma revisão da 0.3.0 em
+andamento em pastas numeradas soltas: ela segue na base única até acabar.
 
 Entregue o **arquivo inteiro** ao inspetor. Fatia que corta função no meio faz o inspetor reportar o
 corte como defeito e contamina a ronda.
@@ -27,6 +33,7 @@ a de código julga código, a de UI julga tela. Não se fundem.
 
 | O que mudou | Quantos inspetores | Onde estão as lentes |
 |---|---|---|
+| Só lógica (não é de estilo e não monta tela) | **8** | `scripts/lib/veredito.js` → `LENTES` sem `design` |
 | Só código | **9** | `scripts/lib/veredito.js` → `LENTES` |
 | Só tela | **8** | `scripts/lib/veredito.js` → `LENTES_UI` |
 | Código e tela | **17** | as duas listas |
@@ -34,6 +41,10 @@ a de código julga código, a de UI julga tela. Não se fundem.
 **A mudança toca tela** quando o escopo declarado inclui arquivo de estilo
 (`scripts/lib/design.js` → `ehArquivoDeEstilo`) ou markup que o projeto renderiza.
 Na dúvida, **as duas famílias** — a marcha mais rigorosa ganha.
+
+**Arquivo só de lógica** — que não é de estilo e não monta tela — dispensa a lente `design` (decisão
+do dono, 2026-09-29): são 8 inspetores, as de `LENTES` sem a `design`. Na dúvida, as 9 — a
+`design` só sai quando é claro que o arquivo não é de estilo e não monta tela.
 
 Leia as lentes do arquivo, **não de memória**. Despache todos no mesmo disparo, **um subagente
 `esquadro:inspetor` por lente**.
@@ -49,20 +60,24 @@ A linha da régua só entra quando a saída do Passo 1 traz `regua` com um camin
 `semRegua`, diga ao usuário que a revisão rodou **sem régua do projeto** — o inspetor julgou pelo
 bom senso, não pelo sistema declarado.
 
-Grave cada resposta em `.claude/esquadro/revisao/<n>/vereditos/<lente>.json`.
+Grave cada resposta no caminho `vereditos` da saída do Passo 1, como `<lente>.json`.
 
 **Declare ao usuário quantos agentes rodaram.** Custo é informação dele, não detalhe seu.
 
 ## Passo 3 — apurar por script, nunca por julgamento
 
-    node "${CLAUDE_PLUGIN_ROOT}/scripts/apurar-ronda.js"
+    node "${CLAUDE_PLUGIN_ROOT}/scripts/apurar-ronda.js" --arquivo <caminho>
+
+O `--arquivo` é o mesmo do Passo 1 e escolhe a base dele. Sem ele, o script acha a base sozinho se
+houver uma só; com mais de uma, para com erro que lista os arquivos.
 
 Quem decide se a ronda foi seca é o script, não você. Cole a saída dele na resposta.
 
 - **Só o lado novo molha a ronda.** O script lê o `mapa.json` de cada ronda: P0/P1 citado no lado
   antigo (o que a mudança conserta, ou já existia) sai em `achadosDoLadoAntigo` — informação, não
   bloqueio. Você continua sem abrir o `mapa.json`: quem o lê é o script.
-- **Achado refutado na fonte primária** vai em `.claude/esquadro/revisao/refutados.json`:
+- **Achado refutado na fonte primária** vai em `refutados.json`, na base do arquivo (a pasta `base`
+  da saída do Passo 1):
   `[{ "ronda": 2, "lente": "design", "arquivo": "B.txt", "linha": 471, "severidade": "P1", "prova": "<arquivo:linha ou comando>" }]`.
   A `severidade` é a do achado: refutar o P1 de uma linha não derruba o P0 da mesma linha. Sem `prova`
   ou sem `severidade`, o script para com erro. A saída lista os refutados para o dono conferir.
@@ -70,6 +85,8 @@ Quem decide se a ronda foi seca é o script, não você. Cole a saída dele na r
 Quando a revisão **fecha**, o próprio script conta um `revisao_fechada` — é o gatilho contável de
 troca de chat, e nada mais no plugin o incrementa. Ele descobre a sessão sozinho; passe
 `--sessao <id>` só se precisar forçar. A saída traz `revisaoFechadaContada` para você conferir.
+Rodar o script de novo numa revisão já fechada **não conta outra vez**: o fecho fica registrado na
+base (`fechada.json`) e a saída diz que já foi contada. Ronda nova depois do fecho é outro fecho.
 
 ## Passo 4 — rondas seguintes
 

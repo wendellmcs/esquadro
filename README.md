@@ -161,6 +161,11 @@ em qualquer marcha: é a declaração mais específica das duas.
 à frente dele, e a partir daí só o que estiver nele libera escrita, para aquela sessão. Sem vínculo,
 vale o `escopo.md` de sempre. Aposentar uma frente é mover o arquivo dela para fora da pasta.
 
+Em sessão sem interação (`claude -p`), o Claude Code trata `<projeto>/.claude/**` como arquivo
+sensível e nega a escrita, nem `acceptEdits` nem regra explícita liberam. O vínculo acontece assim
+mesmo, porque o hook roda antes dessa checagem, mas o arquivo da frente tem de existir antes (crie-o
+numa sessão interativa), e o agente precisa lê-lo antes de editar, um passo por vez.
+
 **3. Trabalhe.** O agente corrige o frete e, no caminho, acha um defeito na cobrança. Ao tentar
 editar `src/pagamento/cobranca.js`, recebe de volta:
 
@@ -177,8 +182,8 @@ Escolha uma:
 O defeito da cobrança vira registro para você decidir depois, em vez de um diff que ninguém pediu.
 
 **4. Revise às cegas.** `/esquadro:revisar src/carrinho/frete.js` despacha os inspetores, um por
-lente; o `scripts/apurar-ronda.js` diz se a ronda foi seca. Você fica sabendo quantos agentes
-rodaram — custo é informação sua.
+lente; o `scripts/apurar-ronda.js --arquivo src/carrinho/frete.js` diz se a ronda foi seca. Você
+fica sabendo quantos agentes rodaram — custo é informação sua.
 
 **5. Feche com prova.** "Pronto, os testes passam" sem saída colada volta, como no terminal lá em
 cima. Com a saída do `npm test` num bloco, o turno fecha.
@@ -387,7 +392,7 @@ e a decisao fica registrada - nao sai no meio de uma correcao.
 | Comando | O que faz |
 |---|---|
 | `/esquadro:init` | A entrevista. Varre o repositório, mostra o que inferiu — marcado como inferência — e faz seis perguntas que varredura nenhuma responde. Grava sempre `.claude/esquadro/projeto.json` e `.claude/esquadro/regras.md`, e registra a conferência do catálogo de modelos da instalação em `.claude/esquadro/catalogo.json`. O resto é opcional: `.claude/esquadro/design.json` (só quando há design system) e, cada um só com aprovação explícita e sem sobrescrever arquivo que já exista, os agentes do projeto em `.claude/agents/`, a skill do projeto em `.claude/skills/<slug>/SKILL.md` e o `AGENTS.md` na raiz. |
-| `/esquadro:revisar` | Revisão cega A/B de um arquivo mudado: rotula os dois lados sem autoria, despacha um inspetor por lente, **nove** de código, **oito** de tela, e **dezessete** quando a mudança é de código e de tela, com default reprovar, e apura por script com teto de 3 rondas. |
+| `/esquadro:revisar` | Revisão cega A/B de um arquivo mudado: rotula os dois lados sem autoria, despacha um inspetor por lente, **nove** de código, **oito** de tela, e **dezessete** quando a mudança é de código e de tela, e **oito** quando é só lógica (as de código sem a `design`; na dúvida, as nove), com default reprovar, e apura por script com teto de 3 rondas. |
 | `/esquadro:aprender` | Transforma uma correção sua em regra proposta no formato `gatilho -> ação`, mostra pronta, e **só grava depois de aprovação explícita**. |
 | `/esquadro:handoff` | Gera o texto de continuação para um chat novo: caminhos, `HEAD`, em que etapa o trabalho está, decisões já tomadas, pendências e erros de método que custaram tempo. Confere os fatos no disco, não na memória. |
 | `/esquadro:auditar` | Mede o peso de instrução do projeto contra um teto e aponta o que cortar: skills que se sobrepõem, regras que se contradizem e itens fora da rubrica. Não acrescenta — poda. |
@@ -432,7 +437,9 @@ escreveu, ele não lê o código — ele re-deriva o raciocínio que o produziu,
 produziu o bug reproduz o bug.
 
 - **Pacote cego.** O `scripts/preparar-revisao.js` escreve o antes e o depois como `A.txt` e
-  `B.txt`, sem dizer qual é qual. O `mapa.json` que desfaz a cegueira só o script de apuração lê.
+  `B.txt`, sem dizer qual é qual, numa base por arquivo (`.claude/esquadro/revisao/<arquivo>/<n>/`);
+  o `apurar-ronda.js --arquivo <caminho>` apura a base dele. O `mapa.json` que desfaz a cegueira só
+  o script de apuração lê.
 - **Lentes distintas, não inspetores repetidos.** Nove cópias do mesmo revisor acham o mesmo
   problema nove vezes; nove lentes acham nove classes de problema. Cada lente é um inspetor
   somente leitura, com **default reprovar**, que devolve JSON citando `arquivo:linha` e dá a cada
