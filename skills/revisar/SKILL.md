@@ -84,7 +84,8 @@ Quem decide se a ronda foi seca é o script, não você. Cole a saída dele na r
 
 Quando a revisão **fecha**, o próprio script conta um `revisao_fechada` — é o gatilho contável de
 troca de chat, e nada mais no plugin o incrementa. Ele descobre a sessão sozinho; passe
-`--sessao <id>` só se precisar forçar. A saída traz `revisaoFechadaContada` para você conferir.
+`--sessao <id>` só se precisar forçar (o id leva só letras, números, `_` e `-`; sem valor ou com outro
+caractere, o script para com erro). A saída traz `revisaoFechadaContada` para você conferir.
 Rodar o script de novo numa revisão já fechada **não conta outra vez**: o fecho fica registrado na
 base (`fechada.json`) e a saída diz que já foi contada. Ronda nova depois do fecho é outro fecho.
 

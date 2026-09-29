@@ -142,3 +142,56 @@ test('reinjecao: a linha Frente imprime o nome saneado, nunca o valor cru do est
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });
+
+// ---------------------------------------------------- 0.3.2, item 16
+
+const REGRA = '- ao editar -> rodar git status\n';
+
+test('0.3.2/item 16: projeto.json presente e ilegivel -> a reinjecao avisa, e as regras continuam saindo', () => {
+  comTmp((rein) => {
+    // JSON quebrado, e JSON valido que nao e objeto: para o leitor os dois sao "nao se le".
+    for (const bruto of ['{ "modeloDeAmeaca": "interno", ', '5', 'null']) {
+      const dir = projeto({
+        '.claude/esquadro/regras.md': REGRA,
+        '.claude/esquadro/projeto.json': bruto
+      });
+      try {
+        for (const origem of ['startup', 'compact']) {
+          const t = rein.montar(dir, 's1', origem) || '';
+          assert.ok(t.includes('git status'), 'as regras tem de sair (' + bruto + '): ' + t);
+          assert.ok(t.includes('.claude/esquadro/projeto.json existe mas nao se le'),
+            'falta o aviso (' + bruto + ', ' + origem + '): ' + t);
+          assert.ok(/Corrija o JSON ou rode \/esquadro:init de novo/.test(t), 'falta o que fazer: ' + t);
+          assert.ok(!t.includes('Contexto declarado'), 'nao ha contexto a declarar: ' + t);
+        }
+        assert.ok(/^[\x20-\x7E\n]+$/.test(rein.nucleo(dir)), 'o aviso e ASCII');
+      } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    }
+  });
+});
+
+test('0.3.2/item 16: projeto.json ausente segue como antes, sem aviso nenhum', () => {
+  comTmp((rein) => {
+    const dir = projeto({ '.claude/esquadro/regras.md': REGRA });
+    try {
+      const t = rein.nucleo(dir);
+      assert.ok(t.includes('git status'), t);
+      assert.ok(!t.includes('nao se le'), 'ausente nao e ilegivel: ' + t);
+      assert.ok(t.includes('Fonte: .claude/esquadro/regras.md. Regra numerica se cita com arquivo:linha.'), t);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('0.3.2/item 16: projeto.json legivel segue com o contexto e sem aviso', () => {
+  comTmp((rein) => {
+    const dir = projeto({
+      '.claude/esquadro/regras.md': REGRA,
+      '.claude/esquadro/projeto.json': JSON.stringify({ modeloDeAmeaca: 'interno', quemDecide: 'o dono' })
+    });
+    try {
+      const t = rein.nucleo(dir);
+      assert.ok(t.includes('Contexto declarado: projeto interno'), t);
+      assert.ok(!t.includes('nao se le'), t);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});

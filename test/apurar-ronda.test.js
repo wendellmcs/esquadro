@@ -528,3 +528,107 @@ test('T4/r2: sem revisao nenhuma, o erro diz como preparar uma', () => {
     assert.ok(r.stdout.includes('preparar-revisao.js --arquivo'), r.stdout);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// 0.3.2 (frente esquadro-p2-d258), T1: itens 2, 3, 4, 6 e 7 do apurar-ronda.js. O item 1 e o 5 sao
+// a remocao de um catch que nada alcancava: nao ha comportamento novo para prender.
+// ---------------------------------------------------------------------------------------------
+
+function baseFechada(cwd) {
+  gravarNaBase(cwd, 'src__a.js', 'src/a.js', 1, [SECO]);
+  gravarNaBase(cwd, 'src__a.js', 'src/a.js', 2, [SECO]);
+  return path.join(cwd, '.claude', 'esquadro', 'revisao', 'src__a.js');
+}
+
+/** O estado da sessao que --sessao/ambiente aponta: nada pode ter sido escrito em ESQUADRO_TMP. */
+function nadaGravadoEm(tmp) {
+  return !fs.existsSync(path.join(tmp, 'esquadro')) || fs.readdirSync(path.join(tmp, 'esquadro')).length === 0;
+}
+
+test('0.3.2/item 2: sessao fora de [a-zA-Z0-9_-] para com erro, sem contar e sem gravar fechada.json', () => {
+  comRepo((cwd, tmp) => {
+    const base = baseFechada(cwd);
+    for (const ruim of ['a/b', '..\\x', 'com espaco', 'a.b']) {
+      const r = rodar(['--sessao', ruim], cwd, tmp);
+      assert.strictEqual(r.status, 1, '"' + ruim + '" nao pode sair 0: ' + r.stdout);
+      assert.ok(r.stdout.startsWith('ERRO:'), r.stdout);
+      assert.ok(r.stdout.includes('--sessao') && r.stdout.includes(ruim), 'diz de onde veio e o valor: ' + r.stdout);
+      assert.ok(/letras/.test(r.stdout), 'diz a forma aceita: ' + r.stdout);
+      assert.strictEqual(r.json, null, 'sem apuracao: ' + r.stdout);
+      assert.strictEqual(fs.existsSync(path.join(base, 'fechada.json')), false, 'nao grava o fecho');
+      assert.ok(nadaGravadoEm(tmp), 'nao conta em sessao nenhuma');
+    }
+    const env = rodar([], cwd, tmp, { CLAUDE_CODE_SESSION_ID: 'da env' });
+    assert.strictEqual(env.status, 1, env.stdout);
+    assert.ok(env.stdout.includes('CLAUDE_CODE_SESSION_ID'), 'o valor do ambiente diz que veio do ambiente: ' + env.stdout);
+    assert.strictEqual(fs.existsSync(path.join(base, 'fechada.json')), false);
+    assert.ok(nadaGravadoEm(tmp));
+  });
+});
+
+test('0.3.2/item 3: --sessao sem valor para com erro, mesmo com o ambiente e mesmo sem revisao fechada', () => {
+  comRepo((cwd, tmp) => {
+    gravarNaBase(cwd, 'src__a.js', 'src/a.js', 1, [P1_NOVO]);
+    const casos = [['--sessao'], ['--sessao', '--arquivo', 'src/a.js'], ['--arquivo', 'src/a.js', '--sessao']];
+    for (const args of casos) {
+      const r = rodar(args, cwd, tmp, { CLAUDE_CODE_SESSION_ID: 'da-env' });
+      assert.strictEqual(r.status, 1, args.join(' ') + ' nao pode sair 0: ' + r.stdout);
+      assert.match(r.stdout, /--sessao sem valor/);
+      assert.strictEqual(r.json, null, 'sem apuracao: ' + r.stdout);
+    }
+  });
+  comRepo((cwd, tmp) => {
+    const vazio = rodar(['--sessao'], cwd, tmp);
+    assert.strictEqual(vazio.status, 1, vazio.stdout);
+    assert.match(vazio.stdout, /--sessao sem valor/, 'o erro nao espera a base: ' + vazio.stdout);
+  });
+});
+
+test('0.3.2/item 4: refutados.json ilegivel cita o caminho da base e diz o que fazer', () => {
+  comRepo((cwd, tmp) => {
+    baseFechada(cwd);
+    fs.writeFileSync(path.join(cwd, '.claude', 'esquadro', 'revisao', 'src__a.js', 'refutados.json'), '[ { "ronda": ', 'utf8');
+    const r = rodar(['--sessao', 'refile'], cwd, tmp);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.strictEqual(r.json, null, r.stdout);
+    assert.ok(r.stdout.includes('.claude/esquadro/revisao/src__a.js/refutados.json'), 'cita o caminho: ' + r.stdout);
+    assert.ok(/corrija/i.test(r.stdout) && /apague/i.test(r.stdout), 'diz o que fazer: ' + r.stdout);
+    assert.match(r.stdout, /de novo/);
+    assert.strictEqual(contadorDe(tmp, 'refile'), 0, 'nao apurou, nao conta');
+  });
+});
+
+test('0.3.2/item 6: fechada.json que se le mas nao tem "ronda" inteira para com erro, sem recontar', () => {
+  comRepo((cwd, tmp) => {
+    const base = baseFechada(cwd);
+    const arq = path.join(base, 'fechada.json');
+    for (const conteudo of ['{}', '5', '[]', 'null', '{"ronda":"2"}', '{"ronda":2.5}']) {
+      fs.writeFileSync(arq, conteudo, 'utf8');
+      const r = rodar(['--sessao', 'forma'], cwd, tmp);
+      assert.strictEqual(r.status, 1, conteudo + ' nao pode sair 0: ' + r.stdout);
+      assert.ok(r.stdout.startsWith('ERRO:') && r.stdout.includes('fechada.json'), r.stdout);
+      assert.ok(/apague/i.test(r.stdout) && /de novo/.test(r.stdout), 'diz o que fazer: ' + r.stdout);
+      assert.strictEqual(r.json, null, r.stdout);
+      assert.strictEqual(contadorDe(tmp, 'forma'), 0, conteudo + ' nao conta de novo');
+      assert.strictEqual(fs.readFileSync(arq, 'utf8'), conteudo, 'o arquivo fica como estava');
+    }
+  });
+});
+
+test('0.3.2/item 7: o arquivo do mapa.json da pasta plana com barra invertida ou "./" ainda e o pedido', () => {
+  comRepo((cwd, tmp) => {
+    gravarRonda(cwd, 1, [SECO]);
+    gravarRonda(cwd, 2, [SECO]);
+    const mapa2 = path.join(cwd, '.claude', 'esquadro', 'revisao', '2', 'mapa.json');
+    gravarMapa(cwd, 1, { A: 'trabalho', B: 'HEAD' });
+    for (const grafia of ['src\\a.js', './src/a.js', '.\\src\\a.js']) {
+      fs.writeFileSync(mapa2, JSON.stringify({ arquivo: grafia, mapa: { A: 'trabalho', B: 'HEAD' } }), 'utf8');
+      const r = rodar(['--sessao', 'grafia-' + grafia.length, '--arquivo', 'src/a.js'], cwd, tmp);
+      assert.strictEqual(r.status, 0, '"' + grafia + '" e o mesmo arquivo: ' + r.stdout);
+      assert.strictEqual(r.json.encerrar, true);
+      const outro = rodar(['--sessao', 'outro-' + grafia.length, '--arquivo', 'src/b.js'], cwd, tmp);
+      assert.strictEqual(outro.status, 1, 'outro arquivo segue recusado: ' + outro.stdout);
+      assert.ok(outro.stdout.includes('nao de src/b.js'), outro.stdout);
+    }
+  });
+});

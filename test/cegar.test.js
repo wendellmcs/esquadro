@@ -284,7 +284,168 @@ test('T2/item 11: com pasta numerada solta (formato da 0.3.0) segue gravando la,
     assert.strictEqual(s.base, baseDeRevisao(dir));
     assert.strictEqual(path.dirname(s.a), path.join(baseDeRevisao(dir), '2'));
     assert.match(s.aviso, /formato antigo/);
-    assert.match(s.aviso, /uma base por arquivo/);
     assert.strictEqual(fs.existsSync(path.join(baseDeRevisao(dir), 'raiz.txt')), false, 'nao abre base nova no meio da revisao');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// 0.3.2 (frente esquadro-p2-d258), T2, itens 8 a 11 do preparar-revisao.js.
+// Para forcar o que o disco e o git de um teste nao dao (git que estoura o tempo, escrita que falha
+// no meio do pacote), o teste roda o script com `node --require <gancho>`: o gancho troca UMA funcao
+// antes do script carregar. O script em si nao ganha porta nenhuma para isso.
+const GANCHO_GIT_SHOW_ESTOURA = [
+  "const cp = require('node:child_process');",
+  "const orig = cp.spawnSync;",
+  "cp.spawnSync = function (cmd, args) {",
+  "  if (cmd === 'git' && args && args[0] === 'show') {",
+  "    return { error: Object.assign(new Error('spawnSync git ETIMEDOUT'), { code: 'ETIMEDOUT' }), status: null, stdout: null, stderr: '' };",
+  "  }",
+  "  return orig.apply(this, arguments);",
+  "};"
+].join('\n');
+
+const GANCHO_GIT_SHOW_FORA_DO_HEAD = [
+  "const cp = require('node:child_process');",
+  "const orig = cp.spawnSync;",
+  "cp.spawnSync = function (cmd, args) {",
+  "  if (cmd === 'git' && args && args[0] === 'show') {",
+  "    return { status: 128, stdout: '', stderr: 'fatal: path does not exist in HEAD' };",
+  "  }",
+  "  return orig.apply(this, arguments);",
+  "};"
+].join('\n');
+
+const GANCHO_ESCRITA_DO_B_FALHA = [
+  "const fs = require('node:fs');",
+  "const orig = fs.writeFileSync;",
+  "fs.writeFileSync = function (p) {",
+  "  if (String(p).endsWith('B.txt')) {",
+  "    throw Object.assign(new Error(\"EACCES: permission denied, open '\" + p + \"'\"), { code: 'EACCES' });",
+  "  }",
+  "  return orig.apply(this, arguments);",
+  "};"
+].join('\n');
+
+function rodarComGancho(cwd, rel, ganchoSrc) {
+  const pasta = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-gancho-'));
+  try {
+    const gancho = path.join(pasta, 'gancho.js');
+    fs.writeFileSync(gancho, ganchoSrc, 'utf8');
+    return spawnSync(process.execPath, ['--require', gancho, CLI, '--arquivo', rel, '--semente', 'fixa'], {
+      cwd: cwd, encoding: 'utf8', shell: false
+    });
+  } finally { fs.rmSync(pasta, { recursive: true, force: true }); }
+}
+
+test('0.3.2/item 8: git que falha em ler o HEAD (timeout, spawn) e ERRO e nao grava; fora do HEAD segue sendo arquivo novo', () => {
+  const dir = repoDeEnsaio();
+  try {
+    const r = rodarComGancho(dir, 'raiz.txt', GANCHO_GIT_SHOW_ESTOURA);
+    assert.strictEqual(r.status, 1, 'o timeout do git virou arquivo novo em silencio. Saida: ' + r.stdout + r.stderr);
+    assert.strictEqual(r.stderr, '', 'sem stack trace: ' + r.stderr);
+    assert.match(r.stdout, /^ERRO: /, r.stdout);
+    assert.match(r.stdout, /raiz\.txt/, 'a mensagem cita o arquivo: ' + r.stdout);
+    assert.match(r.stdout, /ETIMEDOUT/, 'a mensagem traz a causa: ' + r.stdout);
+    assert.match(r.stdout, /rode de novo/i, 'a mensagem diz o proximo passo: ' + r.stdout);
+    assert.strictEqual(fs.existsSync(path.join(dir, '.claude')), false, 'com erro nao se grava pacote nenhum');
+    // Controle: status diferente de zero do git (nao esta em HEAD) continua sendo arquivo novo.
+    const c = rodarComGancho(dir, 'raiz.txt', GANCHO_GIT_SHOW_FORA_DO_HEAD);
+    assert.strictEqual(c.status, 0, c.stdout + c.stderr);
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(path.dirname(JSON.parse(c.stdout).a), 'mapa.json'), 'utf8')).novo, true);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('0.3.2/item 9: --arquivo que e uma pasta (a leitura falha) vira ERRO com o caminho, sem stack trace', () => {
+  const dir = repoDeEnsaio();
+  try {
+    const r = rodarCli(dir, 'sub');
+    assert.strictEqual(r.stderr, '', 'stack trace na saida de erro: ' + r.stderr);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /^ERRO: .*sub/, r.stdout);
+    assert.match(r.stdout, /EISDIR/, 'a causa vem na mensagem: ' + r.stdout);
+    assert.strictEqual(fs.existsSync(path.join(dir, '.claude')), false, 'nada gravado');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('0.3.2/item 9: pasta das revisoes que e um arquivo (o mkdir falha) vira ERRO com o caminho e diz que nada foi gravado', () => {
+  const dir = repoDeEnsaio();
+  try {
+    fs.mkdirSync(path.join(dir, '.claude', 'esquadro'), { recursive: true });
+    fs.writeFileSync(baseDeRevisao(dir), 'sou um arquivo, nao a pasta', 'utf8');
+    const r = rodarCli(dir, 'raiz.txt');
+    assert.strictEqual(r.stderr, '', 'stack trace na saida de erro: ' + r.stderr);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /^ERRO: /, r.stdout);
+    assert.ok(r.stdout.indexOf('.claude/esquadro/revisao') !== -1, 'cita o caminho: ' + r.stdout);
+    assert.match(r.stdout, /Nada foi gravado/, r.stdout);
+    assert.doesNotMatch(r.stdout, /pela metade/, 'nada ficou pela metade: ' + r.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('0.3.2/item 9: gravacao que falha depois de criar a pasta da ronda diz qual pasta ficou pela metade e manda apagar', () => {
+  const dir = repoDeEnsaio();
+  try {
+    const r = rodarComGancho(dir, 'raiz.txt', GANCHO_ESCRITA_DO_B_FALHA);
+    assert.strictEqual(r.stderr, '', 'stack trace na saida de erro: ' + r.stderr);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /^ERRO: /, r.stdout);
+    assert.match(r.stdout, /EACCES/, 'a causa vem na mensagem: ' + r.stdout);
+    assert.match(r.stdout, /pela metade/, r.stdout);
+    assert.match(r.stdout, /apague/i, r.stdout);
+    const pasta = path.join(baseDeRevisao(dir), 'raiz.txt', '1');
+    assert.ok(fs.existsSync(pasta), 'a pasta da ronda ficou no disco (o que a mensagem tem de apontar)');
+    assert.ok(r.stdout.indexOf('.claude/esquadro/revisao/raiz.txt/1') !== -1, 'a mensagem aponta a pasta certa: ' + r.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('0.3.2/item 10: flag sem valor, ou seguida de outra flag, e ERRO de uso que nomeia a flag', () => {
+  const dir = repoDeEnsaio();
+  try {
+    const casos = [
+      { args: ['--arquivo', '--semente', 'x'], flag: '--arquivo' },
+      { args: ['--arquivo'], flag: '--arquivo' },
+      { args: ['--arquivo', 'raiz.txt', '--semente'], flag: '--semente' },
+      { args: ['--semente', '--arquivo', 'raiz.txt'], flag: '--semente' }
+    ];
+    for (const c of casos) {
+      const r = spawnSync(process.execPath, [CLI].concat(c.args), { cwd: dir, encoding: 'utf8', shell: false });
+      const quem = c.args.join(' ');
+      assert.strictEqual(r.status, 1, quem + ' => ' + r.stdout + r.stderr);
+      assert.strictEqual(r.stderr, '', quem + ': sem stack trace: ' + r.stderr);
+      assert.match(r.stdout, /^ERRO: /, quem + ' => ' + r.stdout);
+      assert.ok(r.stdout.indexOf(c.flag + ' pede um valor') !== -1, quem + ' => nomeia a flag: ' + r.stdout);
+      assert.match(r.stdout, /uso: preparar-revisao\.js --arquivo/, quem + ' => traz a linha de uso: ' + r.stdout);
+      assert.strictEqual(fs.existsSync(path.join(dir, '.claude')), false, quem + ' => nada gravado');
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('0.3.2/item 11: o aviso do formato antigo diz para onde mover, com o id do arquivo daquela revisao', () => {
+  const dir = repoDeEnsaio();
+  try {
+    // A revisao antiga era de OUTRO arquivo (nome com espaco, para o id passar por idDoArquivo).
+    const antiga = path.join(baseDeRevisao(dir), '1');
+    fs.mkdirSync(antiga, { recursive: true });
+    fs.writeFileSync(path.join(antiga, 'mapa.json'),
+      JSON.stringify({ arquivo: 'a b/c.js', mapa: { A: 'HEAD', B: 'trabalho' } }), 'utf8');
+    const r = rodarCli(dir, 'raiz.txt');
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const s = JSON.parse(r.stdout);
+    assert.ok(s.aviso.indexOf('.claude/esquadro/revisao/a_b__c.js/') !== -1,
+      'o aviso tem de dizer o destino com o id da revisao antiga: ' + s.aviso);
+    assert.strictEqual(s.aviso.indexOf('revisao/raiz.txt/'), -1, 'o id e o da revisao antiga, nao o do arquivo de agora: ' + s.aviso);
+    assert.doesNotMatch(s.aviso, /base unica|base por arquivo/, s.aviso);
+    // Sem mapa legivel na ultima pasta solta: o aviso diz a regra do id.
+    const dir2 = repoDeEnsaio();
+    try {
+      fs.mkdirSync(path.join(baseDeRevisao(dir2), '1'), { recursive: true });
+      fs.writeFileSync(path.join(baseDeRevisao(dir2), '1', 'mapa.json'), '{ quebrado', 'utf8');
+      const r2 = rodarCli(dir2, 'raiz.txt');
+      assert.strictEqual(r2.status, 0, r2.stdout + r2.stderr);
+      const s2 = JSON.parse(r2.stdout);
+      assert.ok(s2.aviso.indexOf('.claude/esquadro/revisao/<id>/') !== -1, 'destino com <id>: ' + s2.aviso);
+      assert.ok(s2.aviso.indexOf('__') !== -1, 'diz a regra do id (barra vira __): ' + s2.aviso);
+      assert.doesNotMatch(s2.aviso, /base unica|base por arquivo/, s2.aviso);
+    } finally { fs.rmSync(dir2, { recursive: true, force: true }); }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+

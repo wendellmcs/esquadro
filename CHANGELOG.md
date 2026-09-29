@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.2 — mensagens que dizem o que fazer, e erro que nao passa calado
+
+Acabamento dos pontos que a revisao da 0.3.1 deixou registrados. Nenhum portao novo. Os
+comportamentos novos vem com teste; a suite inteira roda com `npm test`.
+
+- **Apuracao da revisao.** `--sessao` sem valor, ou com caractere fora de letras, numeros, `_` e
+  `-`, para com erro antes de contar (vale tambem para o id que vem do ambiente). Um `fechada.json`
+  que se le mas nao e o registro do fecho (ex.: `{}`) para com erro, em vez de contar o fecho de
+  novo. O arquivo de uma revisao no formato antigo e comparado sem diferenca de grafia (barra
+  invertida, `./` na frente). "refutados.json ilegivel" cita a base e diz o que fazer, e a leitura
+  das rondas tem um tratamento so, com o proximo passo.
+- **Preparo da revisao.** Git que nao responde ao ler o `HEAD` (tempo esgotado, falha ao iniciar)
+  para com erro e nao grava nada; antes o arquivo passava por novo, com o lado antigo vazio. Falha
+  ao ler o arquivo ou ao gravar o pacote diz o caminho e o que fazer, sem stack trace; a pasta de
+  ronda que ficou pela metade e citada, para ser apagada. `--arquivo` ou `--semente` sem valor e
+  erro de uso. O aviso do formato antigo diz para onde mover as pastas: `revisao/<id>/`, com o id.
+- **Portao de escopo.** As mensagens dizem o que e a marcha (o nivel de rigor que o
+  `projeto.json` da ao caminho), o que a trava 4 e a trava 5 guardam e o que e uma frente. Link
+  simbolico para arquivo em `escopos/` e frente; link quebrado e pasta nao sao. A lista de frentes
+  tira so o arquivo vinculado: em disco que diferencia caixa, `Foo.md` e `foo.md` sao duas frentes.
+- **Reinjecao.** Um `projeto.json` presente e ilegivel (JSON quebrado, ou que nao e objeto) deixa
+  de sumir calado: uma linha diz que ele nao se le e o que fazer. Ausente segue como antes.
+
 ## 0.3.1 — revisao por arquivo e acabamento do escopo por frente
 
 Pendencias achadas na revisao da 0.3.0 e no uso dela. Nenhum portao novo. Os comportamentos novos

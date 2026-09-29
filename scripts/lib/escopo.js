@@ -140,14 +140,20 @@ function ampliou(antes, depois) {
   return false;
 }
 
+// 0.3.2, item 12: a mensagem e lida num portao, sem a spec do lado. "marcha" e "trava" sao nomes
+// da spec, entao cada mensagem diz o que eles guardam. "trava N" fica: e o nome publico (README)
+// e os testes o prendem.
+const TRAVA_ESCOPO = 'esquadro - portao de escopo (trava 4 - o escopo da tarefa).';
+const O_QUE_E_MARCHA = 'o nivel de rigor que o projeto.json da a este caminho';
+
 function motivoSemEscopo(alvo, marcha, arquivo) {
   alvo = ascii(alvo);
   marcha = ascii(marcha);
   arquivo = arquivo || ARQUIVO;
   return [
-    'esquadro - portao de escopo (trava 4).',
+    TRAVA_ESCOPO,
     '',
-    'O arquivo ' + alvo + ' esta em marcha ' + marcha + ', e nao ha escopo declarado.',
+    'O arquivo ' + alvo + ' esta em marcha ' + marcha + ' (' + O_QUE_E_MARCHA + '), e nao ha escopo declarado.',
     '',
     'Antes de editar, escreva ' + arquivo + ' nesta forma:',
     '',
@@ -171,9 +177,9 @@ function motivoFora(alvo, marcha, esc, arquivo) {
   arquivo = arquivo || ARQUIVO;
   const lista = (esc && esc.dentro.length) ? esc.dentro.map(function (d) { return '  - ' + ascii(d); }).join('\n') : '  (vazio)';
   return [
-    'esquadro - portao de escopo (trava 4).',
+    TRAVA_ESCOPO,
     '',
-    'O arquivo ' + alvo + ' (marcha ' + marcha + ') NAO esta no escopo declarado em ' + arquivo + '.',
+    'O arquivo ' + alvo + ' (marcha ' + marcha + ': ' + O_QUE_E_MARCHA + ') NAO esta no escopo declarado em ' + arquivo + '.',
     '',
     'Escopo atual:',
     lista,
@@ -191,7 +197,7 @@ function motivoDeclaradoFora(alvo, padrao, arquivo) {
   padrao = ascii(padrao);
   arquivo = arquivo || ARQUIVO;
   return [
-    'esquadro - portao de escopo (trava 4).',
+    TRAVA_ESCOPO,
     '',
     'O arquivo ' + alvo + ' casa "' + padrao + '", que o escopo declara FORA desta tarefa.',
     '',
@@ -205,9 +211,9 @@ function motivoDeclaradoFora(alvo, padrao, arquivo) {
 function motivoNomeDeFrente(alvo) {
   alvo = ascii(alvo);
   return [
-    'esquadro - portao de escopo (trava 4).',
+    TRAVA_ESCOPO,
     '',
-    'O arquivo ' + alvo + ' tem nome de frente invalido.',
+    'O arquivo ' + alvo + ' tem nome de frente invalido (frente = uma tarefa em andamento, com o seu arquivo de escopo).',
     '',
     'Nome de frente so pode ter letras sem acento, numeros, "_" e "-".',
     'Renomeie o arquivo e tente de novo.'
@@ -259,6 +265,17 @@ function linhaDaHeranca(cwd) {
 }
 
 /**
+ * 0.3.2, item 13: o Dirent de um link simbolico nao e `isFile()`, e um link para arquivo
+ * sumia da lista. Link entra se o que ele aponta e arquivo; link quebrado e link para pasta
+ * ficam fora, como a pasta chamada x.md.
+ */
+function ehArquivo(cwd, e) {
+  if (e.isFile()) return true;
+  if (!e.isSymbolicLink()) return false;
+  try { return fs.statSync(path.join(cwd, PASTA_FRENTES, e.name)).isFile(); } catch (x) { return false; }
+}
+
+/**
  * As frentes da pasta, uma por linha, e como se vincular a elas - ou null sem nenhuma.
  * So arquivo entra (uma pasta chamada x.md nao e frente), e a frente ja vinculada fica
  * de fora: a linha do vinculo ja fala dela.
@@ -267,12 +284,18 @@ function blocoDeFrentes(cwd, frente) {
   let nomes = [];
   try {
     nomes = fs.readdirSync(path.join(cwd, PASTA_FRENTES), { withFileTypes: true })
-      .filter(function (e) { return e.isFile() && e.name.toLowerCase().slice(-3) === '.md'; })
+      .filter(function (e) { return e.name.toLowerCase().slice(-3) === '.md' && ehArquivo(cwd, e); })
       .map(function (e) { return e.name; });
   } catch (e) { nomes = []; }
   if (frente && arquivoEmVigor(cwd, frente) !== ARQUIVO) {
-    const vinculado = (nomeSeguro(frente) + '.md').toLowerCase();
-    nomes = nomes.filter(function (n) { return n.toLowerCase() !== vinculado; });
+    // 0.3.2, item 14: sai da lista SO o arquivo vinculado - o de nome exato, se ha; senao o de
+    // mesma grafia sem caixa (o existsSync de arquivoEmVigor so o achou porque o disco nao
+    // diferencia caixa). Em disco que diferencia, Foo.md e foo.md sao duas frentes.
+    const exato = nomeSeguro(frente) + '.md';
+    const vinculado = nomes.indexOf(exato) !== -1
+      ? exato
+      : nomes.filter(function (n) { return n.toLowerCase() === exato.toLowerCase(); })[0];
+    nomes = nomes.filter(function (n) { return n !== vinculado; });
   }
   if (!nomes.length) return null;
   const linhas = ['esquadro: frentes de trabalho existentes:'];
@@ -303,10 +326,10 @@ function motivoOutraFrente(alvo, arquivo) {
   alvo = ascii(alvo);
   arquivo = arquivo || ARQUIVO;
   return [
-    'esquadro - outra frente de trabalho (trava 5).',
+    'esquadro - outra frente de trabalho (trava 5 - arquivo de outra frente).',
     '',
     'O arquivo ' + alvo + ' JA aparecia modificado no git status quando esta sessao abriu.',
-    'Todo arquivo modificado e nao commitado pertence a outra frente ate prova em contrario.',
+    'Todo arquivo modificado e nao commitado pertence a outra frente (outra tarefa em andamento neste repositorio) ate prova em contrario.',
     'Nao e rascunho abandonado, e nao e convite.',
     '',
     'Se precisar mesmo tocar nele, isso e decisao do dono. Depois de ele autorizar,',

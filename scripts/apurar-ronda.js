@@ -34,8 +34,8 @@ function lerMapaJson(base, ronda) {
 }
 
 /** O arquivo revisado por uma base: o do mapa.json da ultima ronda dela. */
-function arquivoDaBase(base) {
-  const rs = rondasDe(base);
+function arquivoDaBase(base, pastas) {
+  const rs = pastas || rondasDe(base);
   if (!rs.length) return null;
   const m = lerMapaJson(base, rs[rs.length - 1].name);
   return m && typeof m.arquivo === 'string' ? m.arquivo : null;
@@ -44,6 +44,38 @@ function arquivoDaBase(base) {
 function falhar(texto) {
   process.stdout.write(texto);
   process.exit(1);
+}
+
+/** 0.3.2, item 7: o mesmo arquivo em grafias diferentes (barra invertida, "./" na frente) e o mesmo. */
+function grafiaUnica(p) {
+  return String(p).replace(/\\/g, '/').replace(/^(\.\/)+/, '');
+}
+
+/**
+ * 0.3.2, itens 2 e 3: a sessao vem de --sessao ou do ambiente, e vai crua para o fechada.json e para o
+ * contador. Valor que falta ou fora da classe do estado.js (letras, numeros, "_" e "-") para aqui, antes
+ * de escolher a base: o erro nao pode depender de a revisao ter fechado.
+ */
+function sessaoDoUso() {
+  const i = process.argv.indexOf('--sessao');
+  let valor = null;
+  let origem = '';
+  if (i !== -1) {
+    valor = process.argv[i + 1];
+    origem = '--sessao';
+    if (!valor || valor.startsWith('--')) {
+      falhar('ERRO: --sessao sem valor. Passe o id da sessao: --sessao <id>, ou tire a flag para usar ' +
+        'CLAUDE_CODE_SESSION_ID.\n');
+    }
+  } else if (process.env.CLAUDE_CODE_SESSION_ID) {
+    valor = process.env.CLAUDE_CODE_SESSION_ID;
+    origem = 'CLAUDE_CODE_SESSION_ID';
+  }
+  if (valor !== null && !/^[a-zA-Z0-9_-]+$/.test(valor)) {
+    falhar('ERRO: o valor de ' + origem + ' (' + valor + ') nao serve de id de sessao. Use so letras, numeros, ' +
+      '"_" e "-" (exemplo: --sessao minha-sessao) e rode de novo.\n');
+  }
+  return valor;
 }
 
 /**
@@ -68,7 +100,7 @@ function escolherBase() {
       // Rondas 1 e 2 da T4: a plana e a revisao de um arquivo (o do mapa.json); a de outro, ou a sem
       // mapa que diga de qual, nao se apura calada.
       const doAntigo = arquivoDaBase(revisao);
-      if (doAntigo === rel) return revisao;
+      if (doAntigo && grafiaUnica(doAntigo) === grafiaUnica(rel)) return revisao;
       falhar('ERRO: a revisao no formato antigo (pastas numeradas soltas em revisao/) ' +
         (doAntigo ? 'e de ' + doAntigo + ', nao de ' + rel : 'nao diz de qual arquivo e') +
         '. Apure-a sem --arquivo.\n');
@@ -99,46 +131,49 @@ function escolherBase() {
   return bases[0];
 }
 
+const sessaoPedida = sessaoDoUso();
+
 let base;
-try { base = escolherBase(); } catch (err) {
+let pastas;
+// 0.3.2, item 1: as pastas de ronda da base escolhida se leem uma vez, aqui, sob este tratamento so
+// (causa e proximo passo). Antes havia uma leitura fora de qualquer try e um catch mais abaixo que
+// nada alcancava: as rondas ja tinham sido lidas. Cobre tambem o item 5 (mensagem sem proximo passo).
+try {
+  base = escolherBase();
+  pastas = rondasDe(base);
+} catch (err) {
   falhar('ERRO: nao consegui ler as revisoes (' + err.message + '). Confira a pasta citada e rode de novo.\n');
 }
 // Os caminhos das mensagens: relativos ao cwd, com barra normal, os da base escolhida.
 const baseRel = path.relative(cwd, base).split(path.sep).join('/');
-const arquivoRevisado = arquivoDaBase(base);
-let rondas = [];
+const arquivoRevisado = arquivoDaBase(base, pastas);
 const mapas = [];
 const semMapa = [];
 const ilegiveis = [];
 const invalidos = [];
-try {
-  rondas = rondasDe(base)
-    .map(function (e) {
-      // D244/defeito 3: o mapa diz qual rotulo e o lado novo. Sem ele (pacote antigo), a ronda
-      // e contada como antes, pelos dois lados, e a saida diz que foi assim.
-      const mj = lerMapaJson(base, e.name);
-      const mapa = (mj && mj.mapa) || null;
-      if (!mapa) semMapa.push(Number(e.name));
-      mapas.push(mapa);
-      const dir = path.join(base, e.name, 'vereditos');
-      let arquivos = [];
-      try { arquivos = fs.readdirSync(dir).filter(function (f) { return f.endsWith('.json'); }); } catch (err) { arquivos = []; }
-      return arquivos.map(function (f) {
-        const nome = [baseRel, e.name, 'vereditos', f].join('/');
-        let vd;
-        try { vd = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch (err) {
-          ilegiveis.push(nome + ': ' + err.message);
-          return null;
-        }
-        const erros = veredito.errosDoVeredito(vd);
-        if (erros.length) { invalidos.push(nome + ': ' + erros.join('; ')); return null; }
-        return vd;
-      });
+const rondas = pastas
+  .map(function (e) {
+    // D244/defeito 3: o mapa diz qual rotulo e o lado novo. Sem ele (pacote antigo), a ronda
+    // e contada como antes, pelos dois lados, e a saida diz que foi assim.
+    const mj = lerMapaJson(base, e.name);
+    const mapa = (mj && mj.mapa) || null;
+    if (!mapa) semMapa.push(Number(e.name));
+    mapas.push(mapa);
+    const dir = path.join(base, e.name, 'vereditos');
+    let arquivos = [];
+    try { arquivos = fs.readdirSync(dir).filter(function (f) { return f.endsWith('.json'); }); } catch (err) { arquivos = []; }
+    return arquivos.map(function (f) {
+      const nome = [baseRel, e.name, 'vereditos', f].join('/');
+      let vd;
+      try { vd = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch (err) {
+        ilegiveis.push(nome + ': ' + err.message);
+        return null;
+      }
+      const erros = veredito.errosDoVeredito(vd);
+      if (erros.length) { invalidos.push(nome + ': ' + erros.join('; ')); return null; }
+      return vd;
     });
-} catch (e) {
-  process.stdout.write('ERRO: nao consegui ler as rondas de ' + baseRel + ': ' + e.message + '\n');
-  process.exit(1);
-}
+  });
 
 // D218 (ronda 1 do 8c.5): o veredito que nao se lia virava empate sem achados e contava a
 // ronda como seca. Um voto que falta nao e voto a favor: para aqui, antes de apurar e de
@@ -158,7 +193,9 @@ let refutados = [];
 const arqRefutados = path.join(base, 'refutados.json');
 if (fs.existsSync(arqRefutados)) {
   try { refutados = JSON.parse(fs.readFileSync(arqRefutados, 'utf8')); } catch (err) {
-    process.stdout.write('ERRO: refutados.json ilegivel: ' + err.message + '\n');
+    // 0.3.2, item 4: o erro cita o arquivo (cada base tem o seu) e diz o que fazer.
+    process.stdout.write('ERRO: ' + baseRel + '/refutados.json ilegivel (' + err.message + '). Corrija o JSON ' +
+      'ou apague o arquivo se nao ha refutacao, e rode este comando de novo.\n');
     process.exit(1);
   }
 }
@@ -192,11 +229,17 @@ if (r.encerrar) {
       falhar('ERRO: ' + baseRel + '/fechada.json ilegivel (' + err.message + '). Ele registra o fecho ja ' +
         'contado desta revisao. Apague-o e rode de novo: o fecho sera contado outra vez.\n');
     }
+    // 0.3.2, item 6: o que se le mas nao e o registro do fecho ({}, 5, [], null, "ronda" que nao e
+    // inteira) tambem nao diz se o fecho foi contado; recontar calado inflava o gatilho.
+    if (!previa || typeof previa !== 'object' || Array.isArray(previa) || !Number.isInteger(previa.ronda)) {
+      falhar('ERRO: ' + baseRel + '/fechada.json nao tem o formato esperado (um objeto com "ronda" inteira). ' +
+        'Ele registra o fecho ja contado desta revisao. Apague-o e rode de novo: o fecho sera contado outra vez.\n');
+    }
   }
   if (previa && previa.ronda === r.ronda) {
     contada = { jaContada: true, sessao: previa.sessao };
   } else {
-    const sessao = arg('sessao') || process.env.CLAUDE_CODE_SESSION_ID || 'sem-sessao';
+    const sessao = sessaoPedida || 'sem-sessao';
     // Conta antes de gravar: fechada.json existir quer dizer que o fecho foi contado.
     let n;
     try { n = estado.incrementar(sessao, 'revisao_fechada'); } catch (err) {

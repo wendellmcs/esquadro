@@ -355,4 +355,176 @@ test('escopo: a linha do vinculo cita o nome saneado da frente, nunca o valor cr
 test('escopo: nomeSeguro troca o que esta fora da classe de frente por hifen', () => {
   assert.strictEqual(escopo.nomeSeguro('om ni/x'), 'om-ni-x');
   assert.strictEqual(escopo.nomeSeguro('onda_8-a'), 'onda_8-a');
+  // 0.3.2, item 15: as bordas que importam a reinjecao, que monta caminho e linha de texto com o nome.
+  // Quebra de linha: nao pode sobrar no nome, senao a linha "Frente: ..." quebra em duas.
+  assert.strictEqual(escopo.nomeSeguro('a\nb'), 'a-b', 'quebra de linha');
+  assert.strictEqual(escopo.nomeSeguro('a\r\nb'), 'a--b', 'CR e LF sao dois caracteres, dois hifens');
+  // Acento: cada caractere fora da classe vira UM hifen (nao some, nao vira a letra sem acento).
+  assert.strictEqual(escopo.nomeSeguro('ação'), 'a--o', 'acento');
+  // Numero e o valor `null` chegam do estado em disco: viram texto, nao explodem.
+  assert.strictEqual(escopo.nomeSeguro(8), '8', 'numero');
+  assert.strictEqual(escopo.nomeSeguro(null), 'null', 'null vira a palavra, sem excecao');
+  // Subida de pasta: ponto e barra saem, entao o nome nunca escapa da pasta de frentes.
+  assert.strictEqual(escopo.nomeSeguro('../x'), '---x', 'subida de pasta');
+});
+
+// ---------------------------------------------------- 0.3.2 (T3: itens 12 a 14)
+
+// Troca metodos de `fs` por uns instantes. O escopo.js chama `fs.metodo(...)` na hora de usar,
+// entao o remendo vale. Serve para provar o que o disco desta maquina nao deixa criar
+// (link simbolico sem privilegio no Windows; dois nomes que so diferem na caixa).
+function comFsRemendado(remendos, fn) {
+  const originais = {};
+  for (const nome of Object.keys(remendos)) {
+    originais[nome] = fs[nome];
+    fs[nome] = remendos[nome](originais[nome]);
+  }
+  try { return fn(); } finally {
+    for (const nome of Object.keys(originais)) fs[nome] = originais[nome];
+  }
+}
+const noPosix = (p) => String(p).replace(/\\/g, '/').replace(/\/$/, '');
+const entrada = (name, tipo) => ({
+  name: name,
+  isFile: () => tipo === 'arquivo',
+  isSymbolicLink: () => tipo === 'link',
+  isDirectory: () => tipo === 'pasta'
+});
+
+test('0.3.2/item 12: a mensagem que cita a marcha diz o que ela e', () => {
+  const esc = escopo.parse('## Dentro\n- src/a.js\n');
+  const oQueE = /nivel de rigor que o projeto\.json da a este caminho/;
+  const semEscopo = escopo.motivoSemEscopo('src/a.js', 'padrao');
+  const fora = escopo.motivoFora('src/a.js', 'aaa', esc);
+  assert.ok(semEscopo.includes('marcha padrao'), semEscopo);
+  assert.ok(oQueE.test(semEscopo), 'sem escopo: marcha sem explicar: ' + semEscopo);
+  assert.ok(fora.includes('marcha aaa'), fora);
+  assert.ok(oQueE.test(fora), 'fora do escopo: marcha sem explicar: ' + fora);
+});
+
+test('0.3.2/item 12: "trava N" fica, com a palavra do que a trava guarda ao lado', () => {
+  const esc = escopo.parse('## Dentro\n- src/a.js\n');
+  const doEscopo = [
+    escopo.motivoSemEscopo('src/a.js', 'padrao'),
+    escopo.motivoFora('src/a.js', 'padrao', esc),
+    escopo.motivoDeclaradoFora('src/a.js', 'src/**'),
+    escopo.motivoNomeDeFrente('.claude/esquadro/escopos/onda 8.md')
+  ];
+  for (const m of doEscopo) {
+    assert.ok(/trava 4 - o escopo da tarefa/.test(m), 'trava 4 sem dizer o que guarda: ' + m);
+  }
+  const outra = escopo.motivoOutraFrente('src/a.js');
+  assert.ok(/trava 5 - arquivo de outra frente/.test(outra), 'trava 5 sem dizer o que guarda: ' + outra);
+  assert.ok(/outra frente/.test(outra) && /outra tarefa em andamento/.test(outra),
+    '"frente" tem de se explicar: ' + outra);
+});
+
+test('0.3.2/item 13: link simbolico que aponta para arquivo entra na lista de frentes; link quebrado e pasta ficam fora', () => {
+  const dir = projetoTmp({});
+  const remendos = {
+    readdirSync: (orig) => function (p, opcoes) {
+      if (noPosix(p).endsWith('/.claude/esquadro/escopos')) {
+        return [
+          entrada('real.md', 'arquivo'),
+          entrada('link-arquivo.md', 'link'),
+          entrada('link-quebrado.md', 'link'),
+          entrada('link-pasta.md', 'link'),
+          entrada('pasta.md', 'pasta')
+        ];
+      }
+      return orig.call(fs, p, opcoes);
+    },
+    statSync: (orig) => function (p, opcoes) {
+      const q = noPosix(p);
+      if (q.endsWith('/escopos/link-arquivo.md')) return { isFile: () => true };
+      if (q.endsWith('/escopos/link-pasta.md')) return { isFile: () => false };
+      if (q.endsWith('/escopos/link-quebrado.md')) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      return orig.call(fs, p, opcoes);
+    }
+  };
+  try {
+    const a = comFsRemendado(remendos, () => escopo.avisoHeranca(dir, null));
+    assert.ok(a.includes('  - real:'), a);
+    assert.ok(a.includes('  - link-arquivo:'), 'link para arquivo tem de entrar: ' + a);
+    assert.ok(!a.includes('link-quebrado'), 'link quebrado fica fora: ' + a);
+    assert.ok(!a.includes('link-pasta'), 'link para pasta fica fora: ' + a);
+    assert.ok(!a.includes('  - pasta:'), 'pasta fica fora: ' + a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('0.3.2/item 13: link simbolico de verdade no disco (pula sem privilegio para criar link)', (t) => {
+  const dir = projetoTmp({ 'alvo/frente-real.md': '**Objetivo:** vinda de um link\n## Dentro\n- src/a.js\n' });
+  try {
+    const pasta = path.join(dir, '.claude', 'esquadro', 'escopos');
+    fs.mkdirSync(pasta, { recursive: true });
+    try {
+      fs.symlinkSync(path.join(dir, 'alvo', 'frente-real.md'), path.join(pasta, 'link.md'), 'file');
+      fs.symlinkSync(path.join(dir, 'alvo', 'nao-existe.md'), path.join(pasta, 'quebrado.md'), 'file');
+      fs.symlinkSync(path.join(dir, 'alvo'), path.join(pasta, 'pasta-link.md'), 'dir');
+    } catch (e) {
+      t.skip('nao deu para criar link simbolico neste disco/usuario (' + (e && e.code) + ')');
+      return;
+    }
+    const a = escopo.avisoHeranca(dir, null);
+    assert.ok(a.includes('  - link: vinda de um link'), a);
+    assert.ok(!a.includes('quebrado'), a);
+    assert.ok(!a.includes('pasta-link'), a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('0.3.2/item 14: em disco que diferencia caixa, vincular-se a Foo tira so o Foo.md da lista (nao o foo.md)', () => {
+  const dir = projetoTmp({});
+  const remendos = {
+    // Disco que diferencia caixa: so o nome EXATO existe.
+    existsSync: (orig) => function (p) {
+      if (noPosix(p).endsWith('/escopos/Foo.md')) return true;
+      if (noPosix(p).endsWith('/escopos/foo.md')) return true;
+      return orig.call(fs, p);
+    },
+    readdirSync: (orig) => function (p, opcoes) {
+      if (noPosix(p).endsWith('/.claude/esquadro/escopos')) return [entrada('Foo.md', 'arquivo'), entrada('foo.md', 'arquivo')];
+      return orig.call(fs, p, opcoes);
+    }
+  };
+  try {
+    const a = comFsRemendado(remendos, () => escopo.avisoHeranca(dir, 'Foo'));
+    assert.ok(a.includes('vinculada a frente Foo'), a);
+    assert.ok(a.includes('  - foo:'), 'foo.md e outra frente e tem de continuar na lista: ' + a);
+    assert.ok(!a.includes('  - Foo:'), 'Foo.md e a vinculada e sai da lista: ' + a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('0.3.2/item 14: em disco que NAO diferencia caixa, so foo.md e frente Foo: o recuo tira o foo.md da lista', (t) => {
+  const dir = projetoTmp({
+    '.claude/esquadro/escopos/foo.md': '**Objetivo:** unica\n## Dentro\n- a.js\n',
+    '.claude/esquadro/escopos/bar.md': '**Objetivo:** outra\n## Dentro\n- b.js\n'
+  });
+  try {
+    if (!fs.existsSync(path.join(dir, '.claude', 'esquadro', 'escopos', 'FOO.md'))) {
+      t.skip('este disco diferencia caixa; o recuo so vale onde Foo.md e foo.md sao o mesmo arquivo');
+      return;
+    }
+    const a = escopo.avisoHeranca(dir, 'Foo');
+    assert.ok(a.includes('vinculada a frente Foo'), a);
+    assert.ok(a.includes('  - bar:'), a);
+    assert.ok(!a.includes('  - foo:'), 'o foo.md e o arquivo vinculado, sai da lista: ' + a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('0.3.2/item 14: em disco que diferencia caixa de verdade, Foo.md e foo.md ficam separados (pula onde nao ha esse disco)', (t) => {
+  const dir = projetoTmp({});
+  try {
+    const pasta = path.join(dir, '.claude', 'esquadro', 'escopos');
+    fs.mkdirSync(pasta, { recursive: true });
+    fs.writeFileSync(path.join(pasta, 'Foo.md'), '**Objetivo:** grande\n## Dentro\n- a.js\n', 'utf8');
+    if (fs.existsSync(path.join(pasta, 'foo.md'))) {
+      t.skip('este disco nao diferencia caixa (Foo.md e foo.md sao o mesmo arquivo)');
+      return;
+    }
+    fs.writeFileSync(path.join(pasta, 'foo.md'), '**Objetivo:** pequena\n## Dentro\n- b.js\n', 'utf8');
+    const a = escopo.avisoHeranca(dir, 'Foo');
+    assert.ok(a.includes('vinculada a frente Foo'), a);
+    assert.ok(a.includes('  - foo: pequena'), 'foo.md e outra frente: ' + a);
+    assert.ok(!a.includes('  - Foo:'), a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

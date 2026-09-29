@@ -78,6 +78,16 @@ function nucleo(cwd) {
     // morrer por isso: e a ausencia normal de todo projeto antes do /esquadro:init.
     const ctx = contexto(cwd);
     if (ctx) linhas.push(ctx.join('\n'), '');
+    // 0.3.2, item 16: projeto.json PRESENTE e ilegivel (JSON quebrado, ou nao e objeto) faz o
+    // config devolver null, igual ao ausente - e a reinjecao saia calada, sem o contexto.
+    // Ausente segue como sempre (o normal antes do /esquadro:init); ilegivel avisa e diz o que fazer.
+    if (!ctx && fs.existsSync(path.join(cwd, '.claude', 'esquadro', 'projeto.json'))) {
+      linhas.push(
+        'ATENCAO: .claude/esquadro/projeto.json existe mas nao se le (JSON quebrado ou nao e um objeto), ' +
+        'entao o contexto declarado nao entra aqui. Corrija o JSON ou rode /esquadro:init de novo.',
+        ''
+      );
+    }
     for (const r of regras) linhas.push('- ' + r.gatilho + ' -> ' + r.acao);
     linhas.push('');
     linhas.push(
