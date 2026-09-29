@@ -104,9 +104,15 @@ function montar(cwd, sessionId, origem) {
 
   const estadoPartes = [];
 
-  const esc = escopoLib.carregar(cwd);
+  const frente = estado.ler(sessionId).frente;
+  const esc = escopoLib.carregar(cwd, frente);
   if (esc && (esc.dentro.length || esc.objetivo)) {
     const linhas = [];
+    // Com vinculo a uma frente que ainda existe, a primeira linha diz qual e -
+    // sem isto, depois de uma compactacao o agente le "Dentro do escopo" e nao
+    // tem como saber que o arquivo que manda e o da frente, nao o escopo.md.
+    const arquivo = escopoLib.arquivoEmVigor(cwd, frente);
+    if (frente && arquivo !== escopoLib.ARQUIVO) linhas.push('Frente: ' + frente + ' (' + arquivo + ')');
     if (esc.objetivo) linhas.push('Objetivo: ' + esc.objetivo);
     linhas.push('Dentro do escopo:');
     for (const d of esc.dentro) linhas.push('  - ' + d);

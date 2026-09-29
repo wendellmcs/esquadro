@@ -34,7 +34,7 @@ io.blindar(function () {
     // se perde, e e por isso que ela se reinjeta em vez de so se ler uma vez.
     const texto = require('./lib/reinjecao.js').montar(cwd, e.session_id, e.source);
     if (texto) process.stdout.write(texto);
-    const heranca = require('./lib/escopo.js').avisoHeranca(cwd);
+    const heranca = require('./lib/escopo.js').avisoHeranca(cwd, estado.ler(e.session_id).frente);
     if (heranca) process.stdout.write('\n' + heranca + '\n');
 
     // O buraco que a D104 mediu e deixou aberto: `intocaveis` com typo fica

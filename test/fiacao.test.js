@@ -121,6 +121,36 @@ test('fiacao: portao-agente nega o agente do topo em escopo so de marcha rapida 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('fiacao: portao-agente usa o escopo da frente vinculada, nao o escopo.md geral (escopo por frente)', () => {
+  const dir = temp('agente-frente');
+  try {
+    escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'), JSON.stringify({
+      marchaPadrao: 'padrao',
+      marchas: { rapida: ['**/*.md'], padrao: ['src/**'] },
+      agentes: { escada: ['busca-rapida', 'tarefas-simples', 'desenvolvedor', 'arquiteto', 'especialista'] }
+    }));
+    // o escopo.md geral so tem caminho de marcha rapida: despachar 'especialista' seria negado por ele.
+    escrever(dir, path.join('.claude', 'esquadro', 'escopo.md'),
+      '**objetivo:** geral\n\n## dentro\n\n- docs/nota.md\n');
+    // a frente vinculada tem um caminho de marcha padrao: o topo da escada passa a ser permitido.
+    escrever(dir, path.join('.claude', 'esquadro', 'escopos', 'omni.md'),
+      '**objetivo:** onda\n\n## dentro\n\n- src/a.js\n');
+    const sessoes = path.join(dir, '_sessoes', 'esquadro');
+    fs.mkdirSync(sessoes, { recursive: true });
+    fs.writeFileSync(path.join(sessoes, 'fa9.json'), JSON.stringify({ frente: 'omni' }), 'utf8');
+
+    const r = rodar('portao-agente.js', dir,
+      { session_id: 'fa9', cwd: dir, tool_name: 'Task', tool_input: { subagent_type: 'especialista' } });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(r.stdout, '',
+      'a frente vinculada tem caminho de marcha padrao: nao pode negar o topo da escada; stdout: ' + r.stdout);
+
+    const s = lerSessao(dir, 'fa9');
+    assert.strictEqual(s.contadores.agente_caro_em_marcha_rapida, undefined,
+      'usou o escopo.md geral (so rapida) em vez da frente vinculada (tem padrao)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('fiacao: abrir-turno zera as marcas do turno e PRESERVA os contadores (R-T26-01, D123)', () => {
   const dir = temp('abrir-turno');
   try {
@@ -302,6 +332,41 @@ test('fiacao: abertura NAO avisa quando o plano ativo e da propria sessao (R-T25
     const r = rodar('abertura.js', dir, { session_id: 'fa8', cwd: dir, source: 'startup' });
     assert.strictEqual(r.status, 0, r.stderr);
     assert.ok(!/outra sessao detem/i.test(r.stdout), 'aviso indevido: ' + JSON.stringify(r.stdout));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('fiacao: abertura cita a frente vinculada e o objetivo dela (escopo por frente)', () => {
+  const dir = temp('abertura-frente');
+  try {
+    escrever(dir, path.join('.claude', 'esquadro', 'escopos', 'omni.md'),
+      '**Objetivo:** fechar a onda 8\n## Dentro\n- src/a.js\n');
+    const sessoes = path.join(dir, '_sessoes', 'esquadro');
+    fs.mkdirSync(sessoes, { recursive: true });
+    fs.writeFileSync(path.join(sessoes, 'ab1.json'), JSON.stringify({ frente: 'omni' }), 'utf8');
+
+    const r = rodar('abertura.js', dir, { session_id: 'ab1', cwd: dir, source: 'startup' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(/vinculada a frente omni/.test(r.stdout), r.stdout);
+    assert.ok(r.stdout.includes('.claude/esquadro/escopos/omni.md'), r.stdout);
+    assert.ok(r.stdout.includes('fechar a onda 8'), r.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('fiacao: abertura sem vinculo lista as frentes existentes e diz como se vincular', () => {
+  const dir = temp('abertura-lista');
+  try {
+    escrever(dir, path.join('.claude', 'esquadro', 'escopos', 'omni.md'),
+      '**Objetivo:** fechar a onda 8\n## Dentro\n- src/a.js\n');
+    escrever(dir, path.join('.claude', 'esquadro', 'escopos', 'tecnica.md'),
+      '**Objetivo:** medir a oscilacao\n## Dentro\n- src/b.js\n');
+
+    const r = rodar('abertura.js', dir, { session_id: 'ab2', cwd: dir, source: 'startup' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(r.stdout.includes('omni'), r.stdout);
+    assert.ok(r.stdout.includes('fechar a onda 8'), r.stdout);
+    assert.ok(r.stdout.includes('tecnica'), r.stdout);
+    assert.ok(r.stdout.includes('medir a oscilacao'), r.stdout);
+    assert.ok(/vincula/.test(r.stdout), r.stdout);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

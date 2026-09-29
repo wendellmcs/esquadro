@@ -84,3 +84,46 @@ test('reinjecao: resume tambem reinjeta estado, nao so compact', () => {
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });
+
+// ---------------------------------------------------- escopo por frente
+
+function estadoCom(base, sessionId, dados) {
+  const sessoes = path.join(base, 'esquadro');
+  fs.mkdirSync(sessoes, { recursive: true });
+  fs.writeFileSync(path.join(sessoes, sessionId + '.json'), JSON.stringify(dados), 'utf8');
+}
+
+test('reinjecao: com vinculo a frente, o bloco ESTADO cita a frente e o arquivo dela', () => {
+  comTmp((rein, base) => {
+    const dir = projeto({
+      '.claude/esquadro/regras.md': '- ao editar -> rodar git status\n',
+      '.claude/esquadro/escopo.md': '**Objetivo:** tarefa geral\n## Dentro\n- geral.js\n',
+      '.claude/esquadro/escopos/omni.md': '**Objetivo:** fechar a onda 8\n## Dentro\n- src/a.js\n'
+    });
+    try {
+      estadoCom(base, 's1', { frente: 'omni' });
+      const t = rein.montar(dir, 's1', 'compact');
+      assert.ok(t.includes('Frente: omni (.claude/esquadro/escopos/omni.md)'), t);
+      assert.ok(t.includes('src/a.js'), t);
+      assert.ok(!t.includes('geral.js'), 'vinculado a omni, nao pode citar o escopo.md geral: ' + t);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('reinjecao: sem vinculo, a saida e identica a de hoje mesmo com frentes na pasta', () => {
+  comTmp((rein, base) => {
+    const dir = projeto({
+      '.claude/esquadro/regras.md': '- ao editar -> rodar git status\n',
+      '.claude/esquadro/escopo.md': '**Objetivo:** tarefa geral\n## Dentro\n- geral.js\n',
+      '.claude/esquadro/escopos/omni.md': '**Objetivo:** fechar a onda 8\n## Dentro\n- src/a.js\n'
+    });
+    try {
+      const comFrentes = rein.montar(dir, 's1', 'compact');
+      fs.rmSync(path.join(dir, '.claude', 'esquadro', 'escopos'), { recursive: true, force: true });
+      const semFrentes = rein.montar(dir, 's1', 'compact');
+      assert.strictEqual(comFrentes, semFrentes,
+        'sem vinculo, a pasta escopos/ nao pode mudar a reinjecao');
+      assert.ok(comFrentes.includes('geral.js'), comFrentes);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});

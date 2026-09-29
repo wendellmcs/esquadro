@@ -326,3 +326,163 @@ test('D244/defeito 7: sem escopo.md, a abertura nao fala de heranca', () => {
     assert.doesNotMatch(r.stdout, /escopo herdado/);
   });
 });
+
+// ---------------------------------------------------- escopo por frente
+
+function lerEstado(tmp, sessionId) {
+  process.env.ESQUADRO_TMP = tmp;
+  delete require.cache[require.resolve('../scripts/lib/estado.js')];
+  const estado = require('../scripts/lib/estado.js');
+  const s = estado.ler(sessionId);
+  delete process.env.ESQUADRO_TMP;
+  return s;
+}
+
+test('escopo por frente: Write em escopos/omni.md libera sem escopo previo e grava a frente no estado', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    const r = rodar({
+      session_id: 's1', cwd: dir, tool_name: 'Write',
+      tool_input: { file_path: path.join(dir, '.claude', 'esquadro', 'escopos', 'omni.md'), content: '## Dentro\n- src/a.js\n' }
+    }, tmp);
+    liberou(r);
+    assert.strictEqual(lerEstado(tmp, 's1').frente, 'omni');
+
+    escrever(dir, '.claude/esquadro/escopos/omni.md', '## Dentro\n- src/a.js\n');
+    liberou(rodar(entrada(dir, 'src/a.js'), tmp));
+    const fora = rodar(entrada(dir, 'src/b.js'), tmp);
+    assert.strictEqual(negou(fora), true);
+    assert.ok(fora.json.hookSpecificOutput.permissionDecisionReason.includes('.claude/esquadro/escopos/omni.md'),
+      fora.json.hookSpecificOutput.permissionDecisionReason);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+test('escopo por frente: ampliar o Dentro do arquivo da frente conta escopo_ampliado, encolher nao', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    escrever(dir, '.claude/esquadro/escopos/omni.md', '## Dentro\n- src/a.js\n');
+    liberou(rodar({
+      session_id: 's1', cwd: dir, tool_name: 'Write',
+      tool_input: { file_path: path.join(dir, '.claude', 'esquadro', 'escopos', 'omni.md'), content: '## Dentro\n- src/a.js\n- src/b.js\n' }
+    }, tmp));
+    assert.strictEqual(lerEstado(tmp, 's1').contadores.escopo_ampliado, 1);
+
+    // controle: encolher o Dentro nao pode contar como ampliacao (mesmo desenho do escopo.md)
+    process.env.ESQUADRO_TMP = tmp;
+    delete require.cache[require.resolve('../scripts/lib/estado.js')];
+    require('../scripts/lib/estado.js').incrementar('s2', 'sem_escopo');
+    delete process.env.ESQUADRO_TMP;
+    escrever(dir, '.claude/esquadro/escopos/outra.md', '## Dentro\n- src/c.js\n- src/d.js\n');
+    liberou(rodar({
+      session_id: 's2', cwd: dir, tool_name: 'Write',
+      tool_input: { file_path: path.join(dir, '.claude', 'esquadro', 'escopos', 'outra.md'), content: '## Dentro\n- src/c.js\n' }
+    }, tmp));
+    const s2 = lerEstado(tmp, 's2');
+    assert.ok(s2.contadores, 'o estado precisa existir de verdade');
+    assert.strictEqual(s2.contadores.escopo_ampliado, undefined, 'encolher nao pode contar como ampliacao');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+test('escopo por frente: sessao sem vinculo continua regida pelo escopo.md de hoje', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    escrever(dir, '.claude/esquadro/escopo.md', '## Dentro\n- src/geral.js\n');
+    escrever(dir, '.claude/esquadro/escopos/omni.md', '## Dentro\n- src/a.js\n');
+    const semVinculo = rodar({
+      session_id: 'sv1', cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, 'src', 'a.js') }
+    }, tmp);
+    assert.strictEqual(negou(semVinculo), true, 'arquivo so listado na frente nao pode passar sem vinculo');
+    liberou(rodar({
+      session_id: 'sv1', cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, 'src', 'geral.js') }
+    }, tmp));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+test('escopo por frente: duas frentes simultaneas nao se liberam uma a outra', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    // os arquivos das duas frentes precisam existir DE VERDADE no disco: o
+    // portao so simula a escrita que esta acontecendo agora (a do proprio
+    // arquivo de frente), nao o resultado dela - por isso escreve-se antes.
+    escrever(dir, '.claude/esquadro/escopos/a.md', '## Dentro\n- src/so-a.js\n');
+    escrever(dir, '.claude/esquadro/escopos/b.md', '## Dentro\n- src/so-b.js\n');
+    liberou(rodar({
+      session_id: 'sA', cwd: dir, tool_name: 'Write',
+      tool_input: { file_path: path.join(dir, '.claude', 'esquadro', 'escopos', 'a.md'), content: '## Dentro\n- src/so-a.js\n' }
+    }, tmp));
+    liberou(rodar({
+      session_id: 'sB', cwd: dir, tool_name: 'Write',
+      tool_input: { file_path: path.join(dir, '.claude', 'esquadro', 'escopos', 'b.md'), content: '## Dentro\n- src/so-b.js\n' }
+    }, tmp));
+    assert.strictEqual(lerEstado(tmp, 'sA').frente, 'a');
+    assert.strictEqual(lerEstado(tmp, 'sB').frente, 'b');
+
+    const aTentaB = rodar({
+      session_id: 'sA', cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, 'src', 'so-b.js') }
+    }, tmp);
+    assert.strictEqual(negou(aTentaB), true, 'a sessao A nao pode gravar o que so a frente B libera');
+    assert.ok(aTentaB.json.hookSpecificOutput.permissionDecisionReason.includes('.claude/esquadro/escopos/a.md'),
+      aTentaB.json.hookSpecificOutput.permissionDecisionReason);
+    const bTentaA = rodar({
+      session_id: 'sB', cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, 'src', 'so-a.js') }
+    }, tmp);
+    assert.strictEqual(negou(bTentaA), true, 'a sessao B nao pode gravar o que so a frente A libera');
+
+    liberou(rodar({
+      session_id: 'sA', cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, 'src', 'so-a.js') }
+    }, tmp));
+    liberou(rodar({
+      session_id: 'sB', cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, 'src', 'so-b.js') }
+    }, tmp));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+test('escopo por frente: frente aposentada (arquivo movido para fora de escopos/) volta a valer o escopo.md', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    escrever(dir, '.claude/esquadro/escopo.md', '## Dentro\n- src/geral.js\n');
+    const arquivoFrente = escrever(dir, '.claude/esquadro/escopos/omni.md', '## Dentro\n- src/a.js\n');
+    liberou(rodar({
+      session_id: 's1', cwd: dir, tool_name: 'Write', tool_input: { file_path: arquivoFrente, content: '## Dentro\n- src/a.js\n' }
+    }, tmp));
+
+    assert.strictEqual(negou(rodar(entrada(dir, 'src/geral.js'), tmp)), true, 'a frente vinculada ainda existe');
+
+    fs.rmSync(arquivoFrente);
+    liberou(rodar(entrada(dir, 'src/geral.js'), tmp));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+test('escopo por frente: nome de frente invalido e negado sem gravar vinculo, e conta no balde fora_do_escopo', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    const r = rodar({
+      session_id: 's1', cwd: dir, tool_name: 'Write',
+      tool_input: { file_path: path.join(dir, '.claude', 'esquadro', 'escopos', 'onda 8.md'), content: '## Dentro\n- src/a.js\n' }
+    }, tmp);
+    assert.strictEqual(negou(r), true);
+    assert.ok(r.json.hookSpecificOutput.permissionDecisionReason.includes('nome de frente invalido'),
+      r.json.hookSpecificOutput.permissionDecisionReason);
+    const s = lerEstado(tmp, 's1');
+    assert.strictEqual(s.frente, undefined, 'nome invalido nao pode gravar vinculo');
+    assert.strictEqual(s.contadores.fora_do_escopo, 1, 'sem balde novo: conta no balde existente');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+test('escopo por frente: a mesma pasta em caixa alta continua liberando e vinculando (D38)', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    liberou(rodar({
+      session_id: 's1', cwd: dir, tool_name: 'Write',
+      tool_input: { file_path: path.join(dir, '.claude', 'Esquadro', 'Escopos', 'omni.md'), content: '## Dentro\n- src/a.js\n' }
+    }, tmp));
+    assert.strictEqual(lerEstado(tmp, 's1').frente, 'omni');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});

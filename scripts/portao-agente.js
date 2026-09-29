@@ -18,7 +18,7 @@ io.blindar(function () {
     const projeto = config.carregarProjeto(cwd);
     if (!projeto) return io.permitir();
 
-    const esc = escopoLib.carregar(cwd);
+    const esc = escopoLib.carregar(cwd, estado.ler(e.session_id).frente);
     const marchaMax = custo.marchaMaximaDoEscopo(esc, projeto);
     const r = custo.permitido(tipo, marchaMax, projeto);
     if (r.ok) return io.permitir();

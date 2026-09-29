@@ -40,12 +40,23 @@ io.blindar(function () {
     const alvo = caminhoLib.relativoAoProjeto(entrada.file_path, cwd);
     if (!alvo) return io.permitir();
 
+    // Escopo por frente: o arquivo de UMA frente tem o mesmo passe livre do
+    // escopo.md (logo abaixo) e vincula a sessao a ela. Nome fora da classe
+    // [a-zA-Z0-9_-] e negado sem gravar nada: sem isto o arquivo seria escrito
+    // com um nome e o leitor procuraria outro, e a sessao acharia que esta
+    // vinculada sem estar.
+    const frenteAlvo = escopoLib.frenteDoAlvo(alvo);
+    if (frenteAlvo && !frenteAlvo.valido) {
+      estado.incrementar(e.session_id, 'fora_do_escopo');
+      return io.negarFerramenta(escopoLib.motivoNomeDeFrente(alvo));
+    }
+
     // D35: o passe livre e do ARQUIVO de escopo, nao da pasta. Sem ele nao ha
     // como declarar escopo; com ele largo demais, projeto.json e contadores.json
     // ficariam gravaveis sem portao e sem contagem.
     // D38: comparacao sem diferenciar caixa - o sistema de arquivos nao diferencia,
     // e "Escopo.md" nao pode escapar do passe livre so por causa da letra.
-    if (alvo.toLowerCase() === escopoLib.ARQUIVO) {
+    if (alvo.toLowerCase() === escopoLib.ARQUIVO || frenteAlvo) {
       // D34: conta a ampliacao tambem na CRIACAO, e so quando a lista "Dentro" cresce.
       let atual = '';
       try { atual = fs.readFileSync(path.join(cwd, alvo), 'utf8'); } catch (err) { atual = ''; }
@@ -54,12 +65,15 @@ io.blindar(function () {
       if (escopoLib.ampliou(escopoLib.parse(atual), depois)) {
         estado.incrementar(e.session_id, 'escopo_ampliado');
       }
+      // Ultima frente escrita vence: uma sessao so tem um vinculo por vez.
+      if (frenteAlvo) estado.alterar(e.session_id, function (x) { x.frente = frenteAlvo.nome; return x; });
       return io.permitir();
     }
 
     const projeto = config.carregarProjeto(cwd);
-    const esc = escopoLib.carregar(cwd);
     const s = estado.ler(e.session_id);
+    const esc = escopoLib.carregar(cwd, s.frente);
+    const arquivoEmVigor = escopoLib.arquivoEmVigor(cwd, s.frente);
     // X2a e X2b sao calculados AQUI, antes de qualquer decisao: nenhuma saida
     // de portao nova e inserida acima do canal de aviso.
     const travas = projetoLib.travasDe(projeto);
@@ -87,7 +101,7 @@ io.blindar(function () {
     });
     if (deOutraFrente && !escopoLib.dentro(alvo, esc)) {
       estado.incrementar(e.session_id, 'outra_frente');
-      return io.negarFerramenta(escopoLib.motivoOutraFrente(alvo));
+      return io.negarFerramenta(escopoLib.motivoOutraFrente(alvo, arquivoEmVigor));
     }
 
     // 3. Sem projeto.json o portao de escopo nao roda. Avisa uma vez por sessao.
@@ -106,7 +120,7 @@ io.blindar(function () {
     const foraDeclarado = escopoLib.declaradoFora(alvo, esc);
     if (foraDeclarado) {
       estado.incrementar(e.session_id, 'fora_do_escopo');
-      return io.negarFerramenta(escopoLib.motivoDeclaradoFora(alvo, foraDeclarado));
+      return io.negarFerramenta(escopoLib.motivoDeclaradoFora(alvo, foraDeclarado, arquivoEmVigor));
     }
 
     // 4. Marcha rapida nao exige escopo. Sem burocracia onde nao ha risco.
@@ -116,11 +130,11 @@ io.blindar(function () {
     // 5. Marcha padrao ou AAA: escopo declarado, e o arquivo dentro dele.
     if (!esc) {
       estado.incrementar(e.session_id, 'sem_escopo');
-      return io.negarFerramenta(escopoLib.motivoSemEscopo(alvo, marcha));
+      return io.negarFerramenta(escopoLib.motivoSemEscopo(alvo, marcha, arquivoEmVigor));
     }
     if (!escopoLib.dentro(alvo, esc)) {
       estado.incrementar(e.session_id, 'fora_do_escopo');
-      return io.negarFerramenta(escopoLib.motivoFora(alvo, marcha, esc));
+      return io.negarFerramenta(escopoLib.motivoFora(alvo, marcha, esc, arquivoEmVigor));
     }
 
     // 6. C9: arquivo NOVO exige ter procurado antes. Editar o que ja existe nao,

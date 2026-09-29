@@ -105,6 +105,11 @@ test('publicacao: a versao do manifesto e a do topo do CHANGELOG', () => {
     'manifesto e CHANGELOG discordam da versao que esta saindo');
 });
 
+test('publicacao: a versao do package.json e a do manifesto', () => {
+  assert.strictEqual(json('package.json').version, PLUGIN.version,
+    'package.json e manifesto discordam da versao (a 0.2.0 saiu com o package.json em 0.1.0)');
+});
+
 /**
  * Spec, secao 3: "guarde o metodo, nunca o resultado". Numero de teste congelado
  * em prosa apodrece calado - o CHANGELOG ja carregou "419 testes" quando eram
@@ -327,9 +332,10 @@ test('publicacao: todo comando que o CHANGELOG anuncia existe como skill', () =>
  * dizer. Mede-se o que chega a quem le: as strings dos scripts e os .md e .json.
  * Comentario fica de fora de proposito - e de quem mantem, e tem o repositorio.
  * O test/ tambem: nome de teste e assercao sao para quem roda a suite.
+ * Codigo precedido de `%` e hexadecimal de URL codificada (`%C3%A7`), nao registro.
  */
 const CODIGO_INTERNO =
-  /\b(?:[A-F]\d{1,2}|D\d{1,3}|R\d{1,2}|R-T\d+-\d+)\b|\b[Dd]ecis(?:ao|ão) (?:do dono )?\d+/;
+  /(?<!%)\b(?:[A-F]\d{1,2}|D\d{1,3}|R\d{1,2}|R-T\d+-\d+)\b|\b[Dd]ecis(?:ao|ão) (?:do dono )?\d+/;
 
 /**
  * Os literais de texto de um fonte JS, sem comentario nem regex literal. O regex
@@ -351,8 +357,9 @@ function literais(fonte) {
 
 test('publicacao: o texto que vai a publico nao cita codigo de registro que nao vai', () => {
   // o instrumento: acha na string; ignora no comentario e no regex literal
+  // e o hexadecimal de URL codificada (%C3%A7 e um c cedilha, nao o codigo C3)
   const amostra = literais("x('(F16) idioma'); // D35\n/* C9 */ y(\"decisao 12\");\n" +
-    "if (/[`']/.test(c)) z('D14'); // `B7`");
+    "if (/[`']/.test(c)) z('D14'); // `B7`\nw('%C3%A7');");
   assert.deepStrictEqual(amostra.filter((p) => CODIGO_INTERNO.test(p)),
     ["'(F16) idioma'", '"decisao 12"', "'D14'"]);
 

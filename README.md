@@ -156,6 +156,11 @@ grava `.claude/esquadro/projeto.json` e `.claude/esquadro/regras.md`.
 "Dentro" é o que a tarefa pode tocar. "Fora" é o que ela promete não tocar, e ganha do "Dentro"
 em qualquer marcha: é a declaração mais específica das duas.
 
+**Várias frentes no mesmo projeto?** Em vez de um `escopo.md` só, dê um arquivo por frente em
+`.claude/esquadro/escopos/<frente>.md` (mesmo formato acima). Editar esse arquivo vincula a sessão
+à frente dele, e a partir daí só o que estiver nele libera escrita, para aquela sessão. Sem vínculo,
+vale o `escopo.md` de sempre. Aposentar uma frente é mover o arquivo dela para fora da pasta.
+
 **3. Trabalhe.** O agente corrige o frete e, no caminho, acha um defeito na cobrança. Ao tentar
 editar `src/pagamento/cobranca.js`, recebe de volta:
 
@@ -249,7 +254,7 @@ burocracia onde não há risco.
 | 1 | Entrevista → configuração sob medida | Nada. Gera a configuração do projeto pelo comando `/esquadro:init`. | tokens 1× por projeto, com teto declarado |
 | 2 | Revisão cega A/B por lentes distintas | Nada. Apura por script, pelo comando `/esquadro:revisar`. | tokens só quando invocado |
 | 3 | Fecho sem evidência | O fim do turno, quando a resposta alega sucesso sem colar a saída. Hook `Stop`. | zero |
-| 4 | Arquivo fora do escopo declarado | A escrita, quando o alvo não está no `.claude/esquadro/escopo.md`. Hook `PreToolUse` em `Write` e `Edit`. | zero |
+| 4 | Arquivo fora do escopo declarado | A escrita, quando o alvo não está no `.claude/esquadro/escopo.md` (ou, com a sessão vinculada a uma frente, em `.claude/esquadro/escopos/<frente>.md`). Hook `PreToolUse` em `Write` e `Edit`. | zero |
 | 5 | Comando destrutivo e sessão concorrente | O comando que apaga, e a escrita em arquivo que outra frente já mexeu. Hook `PreToolUse` em `Bash` e em `Write`/`Edit`, contra a foto do `git status` da abertura. | zero |
 | 6 | Agente caro em marcha rápida | O despacho do agente do topo da escada quando o escopo declarado só tem caminhos de marcha `rapida`. Hook `PreToolUse` em `Task`/`Agent`. Conta **todo** despacho, inclusive os que permite. | zero |
 | 7 | Criar sem ter procurado | A criação de arquivo **novo** quando nada foi buscado antes no turno. Editar arquivo existente nunca é barrado — quem edita já achou —, e nomear o arquivo no `escopo.md` também libera: declarar já é deliberar. | zero |

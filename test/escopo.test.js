@@ -1,7 +1,20 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const escopo = require('../scripts/lib/escopo.js');
+
+function projetoTmp(arquivos) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-escopo-frente-'));
+  for (const [rel, txt] of Object.entries(arquivos || {})) {
+    const alvo = path.join(dir, rel);
+    fs.mkdirSync(path.dirname(alvo), { recursive: true });
+    fs.writeFileSync(alvo, txt, 'utf8');
+  }
+  return dir;
+}
 
 const TEXTO = [
   '# Escopo',
@@ -140,4 +153,144 @@ test('D244/defeito 2: item com anotacao depois do caminho casa pelo caminho', ()
 test('D244/defeito 2: caminho com espaco e hifen no nome continua inteiro', () => {
   const esc = escopo.parse('## Dentro\r\n- Minha Pasta/extension/**\r\n- src/meu-arquivo.js\r\n- `Pasta X/a b.md` (motivo)\r\n');
   assert.deepStrictEqual(esc.dentro, ['Minha Pasta/extension/**', 'src/meu-arquivo.js', 'Pasta X/a b.md']);
+});
+
+// ---------------------------------------------------- escopo por frente
+
+test('escopo: frenteDoAlvo reconhece um arquivo de frente valido', () => {
+  const f = escopo.frenteDoAlvo('.claude/esquadro/escopos/omni.md');
+  assert.deepStrictEqual(f, { nome: 'omni', valido: true });
+});
+
+test('escopo: frenteDoAlvo aceita prefixo e extensao sem diferenciar caixa (D38)', () => {
+  const f = escopo.frenteDoAlvo('.claude/Esquadro/Escopos/omni.MD');
+  assert.deepStrictEqual(f, { nome: 'omni', valido: true });
+});
+
+test('escopo: frenteDoAlvo marca invalido quando o nome tem caractere fora da classe', () => {
+  const f = escopo.frenteDoAlvo('.claude/esquadro/escopos/onda 8.md');
+  assert.deepStrictEqual(f, { nome: 'onda 8', valido: false });
+});
+
+test('escopo: frenteDoAlvo devolve null fora da pasta de frentes, sem nome ou com barra', () => {
+  assert.strictEqual(escopo.frenteDoAlvo('.claude/esquadro/escopo.md'), null);
+  assert.strictEqual(escopo.frenteDoAlvo('src/a.js'), null);
+  assert.strictEqual(escopo.frenteDoAlvo('.claude/esquadro/escopos/.md'), null);
+  assert.strictEqual(escopo.frenteDoAlvo('.claude/esquadro/escopos/sub/omni.md'), null);
+});
+
+test('escopo: arquivoEmVigor usa o arquivo da frente quando ele existe no disco', () => {
+  const dir = projetoTmp({ '.claude/esquadro/escopos/omni.md': '## Dentro\n- src/a.js\n' });
+  try {
+    assert.strictEqual(escopo.arquivoEmVigor(dir, 'omni'), '.claude/esquadro/escopos/omni.md');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('escopo: arquivoEmVigor cai no escopo.md sem frente, ou com frente aposentada', () => {
+  const dir = projetoTmp({});
+  try {
+    assert.strictEqual(escopo.arquivoEmVigor(dir, null), escopo.ARQUIVO);
+    assert.strictEqual(escopo.arquivoEmVigor(dir, ''), escopo.ARQUIVO);
+    assert.strictEqual(escopo.arquivoEmVigor(dir, 'omni'), escopo.ARQUIVO, 'frente sem arquivo no disco');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('escopo: arquivoEmVigor saneia a frente antes de montar o caminho', () => {
+  const dir = projetoTmp({ '.claude/esquadro/escopos/onda-8.md': '## Dentro\n- a.js\n' });
+  try {
+    assert.strictEqual(escopo.arquivoEmVigor(dir, 'onda 8'), '.claude/esquadro/escopos/onda-8.md');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('escopo: carregar(cwd, frente) le o arquivo da frente vinculada', () => {
+  const dir = projetoTmp({
+    '.claude/esquadro/escopo.md': '## Dentro\n- geral.js\n',
+    '.claude/esquadro/escopos/omni.md': '## Dentro\n- src/a.js\n'
+  });
+  try {
+    assert.deepStrictEqual(escopo.carregar(dir, 'omni').dentro, ['src/a.js']);
+    assert.deepStrictEqual(escopo.carregar(dir, null).dentro, ['geral.js']);
+    assert.deepStrictEqual(escopo.carregar(dir).dentro, ['geral.js'], 'compat: sem frente e como hoje');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('escopo: as 4 mensagens citam o arquivo passado, no lugar do escopo.md padrao', () => {
+  const esc = escopo.parse('## Dentro\n- src/a.js\n');
+  const arquivo = '.claude/esquadro/escopos/omni.md';
+  assert.ok(escopo.motivoSemEscopo('src/a.js', 'padrao', arquivo).includes(arquivo));
+  assert.ok(!escopo.motivoSemEscopo('src/a.js', 'padrao', arquivo).includes(escopo.ARQUIVO));
+  assert.ok(escopo.motivoFora('src/a.js', 'padrao', esc, arquivo).includes(arquivo));
+  assert.ok(escopo.motivoDeclaradoFora('src/a.js', 'src/**', arquivo).includes(arquivo));
+  assert.ok(escopo.motivoOutraFrente('src/a.js', arquivo).includes(arquivo));
+});
+
+test('escopo: as 4 mensagens citam o escopo.md quando o arquivo nao e passado (compat)', () => {
+  const esc = escopo.parse('## Dentro\n- src/a.js\n');
+  assert.ok(escopo.motivoSemEscopo('src/a.js', 'padrao').includes(escopo.ARQUIVO));
+  assert.ok(escopo.motivoDeclaradoFora('src/a.js', 'src/**').includes(escopo.ARQUIVO));
+  assert.ok(escopo.motivoOutraFrente('src/a.js').includes(escopo.ARQUIVO));
+});
+
+test('escopo: motivoNomeDeFrente e curto, ASCII e cita o alvo', () => {
+  const m = escopo.motivoNomeDeFrente('.claude/esquadro/escopos/onda 8.md');
+  assert.ok(m.includes('.claude/esquadro/escopos/onda 8.md'));
+  assert.ok(/^[\x20-\x7E\n]+$/.test(m), 'motivo fora de ASCII: ' + m);
+  assert.ok(/letras sem acento/.test(m));
+});
+
+test('escopo: avisoHeranca sem escopo.md e sem frente nenhuma devolve null', () => {
+  const dir = projetoTmp({});
+  try {
+    assert.strictEqual(escopo.avisoHeranca(dir, null), null);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('escopo: avisoHeranca com vinculo a frente existente cita nome, arquivo e objetivo', () => {
+  const dir = projetoTmp({
+    '.claude/esquadro/escopos/omni.md': '**Objetivo:** fechar a onda 8\n## Dentro\n- src/a.js\n'
+  });
+  try {
+    const a = escopo.avisoHeranca(dir, 'omni');
+    assert.ok(a.includes('omni'), a);
+    assert.ok(a.includes('.claude/esquadro/escopos/omni.md'), a);
+    assert.ok(a.includes('fechar a onda 8'), a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('escopo: avisoHeranca com vinculo a frente aposentada volta a valer o escopo.md', () => {
+  const dir = projetoTmp({
+    '.claude/esquadro/escopo.md': '**Objetivo:** tarefa antiga\n## Dentro\n- src/a.js\n'
+  });
+  try {
+    const a = escopo.avisoHeranca(dir, 'omni');
+    assert.ok(a.includes('escopo herdado'), a);
+    assert.ok(a.includes('tarefa antiga'), a);
+    assert.ok(!a.includes('vinculada'), a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('escopo: avisoHeranca lista as frentes existentes e diz como se vincular', () => {
+  const dir = projetoTmp({
+    '.claude/esquadro/escopos/omni.md': '**Objetivo:** fechar a onda 8\n## Dentro\n- src/a.js\n',
+    '.claude/esquadro/escopos/tecnica.md': '**Objetivo:** medir a oscilacao\n## Dentro\n- src/b.js\n'
+  });
+  try {
+    const a = escopo.avisoHeranca(dir, null);
+    assert.ok(a.includes('omni'), a);
+    assert.ok(a.includes('fechar a onda 8'), a);
+    assert.ok(a.includes('tecnica'), a);
+    assert.ok(a.includes('medir a oscilacao'), a);
+    assert.ok(/vincula/.test(a), a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('escopo: avisoHeranca sem pasta escopos/ nem frentes e identico ao de hoje', () => {
+  const dir = projetoTmp({
+    '.claude/esquadro/escopo.md': '**Objetivo:** tarefa unica\n## Dentro\n- src/a.js\n'
+  });
+  try {
+    const a = escopo.avisoHeranca(dir, null);
+    assert.ok(a.includes('escopo herdado'), a);
+    assert.ok(!/frentes de trabalho/.test(a), a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

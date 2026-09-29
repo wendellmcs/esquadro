@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 — escopo por frente
+
+Duas frentes de trabalho no mesmo projeto deixam de disputar um `escopo.md` so. Nenhum portao novo:
+muda o arquivo que o portao de escopo le.
+
+- **Escopo por frente.** Cada frente pode ter o seu arquivo em `.claude/esquadro/escopos/<frente>.md`,
+  no mesmo formato do `escopo.md`. Editar esse arquivo vincula a sessao a frente, e a partir dai o
+  portao de escopo, o de agente caro, a reinjecao das regras e o aviso de abertura leem so ele. Sem
+  vinculo, vale o `escopo.md` de sempre: projeto que ja usa o plugin nao precisa mudar nada.
+  Aposentar uma frente e mover o arquivo dela para fora da pasta. Nome de frente com caractere fora
+  de letras sem acento, numeros, `_` e `-` e negado.
+- **Abertura.** Havendo frentes na pasta, a sessao abre com a lista delas e o objetivo de cada uma,
+  e com o jeito de se vincular. As mensagens de negacao citam o arquivo de escopo em vigor.
+- **Versao.** O `package.json` passa a ter a versao do manifesto, e um teste reprova se discordarem.
+
 ## 0.2.0 — correcao dos portoes
 
 Doze defeitos achados usando o plugin num projeto real, e um achado da revisao deles. Cada correcao

@@ -555,6 +555,10 @@ dizendo o que está dentro e o que está fora daquele trabalho — e o próprio 
 na primeira vez que nega. Diga isso, senão a linha `escopo` da tabela cita um arquivo que o usuário
 nunca viu e não sabe como criar.
 
+**Com mais de uma frente de trabalho ativa no mesmo projeto**, cada uma pode ter o seu próprio
+arquivo em `.claude/esquadro/escopos/<frente>.md` (mesmo formato do `escopo.md`). Editar esse arquivo
+vincula a sessão àquela frente; sem vínculo, continua valendo o `escopo.md` geral.
+
 **A última linha não é uma trava, e diga isso.** Não existe `travas.custo`: o portao de custo se cala
 sozinho quando a escada tem menos de dois nomes. E ele não barra só o agente do topo — barra a
 metade de cima da escada, arredondada para cima. Numa escada de cinco, os dois últimos; numa de
