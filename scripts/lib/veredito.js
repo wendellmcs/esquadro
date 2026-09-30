@@ -178,6 +178,11 @@ function apurar(rondas, opcoes) {
     const novos = [];
     const antigos = [];
     const mapa = mapas[indice] && typeof mapas[indice] === 'object' ? mapas[indice] : null;
+    // 0.3.3, item 1: ronda sem nenhum veredito nao e ronda seca - e voto que falta. Sem isto,
+    // `apurar([[], []])` fechava aprovado. Diz qual ronda; o apurar-ronda.js confere a pasta antes.
+    if (!Array.isArray(ronda) || ronda.length === 0) {
+      throw new Error('ronda ' + (indice + 1) + ' sem nenhum veredito: ronda sem voto nao e ronda seca, e nao se apura');
+    }
     for (const vd of ronda) {
       // D230: o que nao e veredito nao e voto sem achado - seria ronda seca por falta de voto. O
       // apurar-ronda.js para antes de chegar aqui; quem chamar direto recebe o erro, com o motivo.

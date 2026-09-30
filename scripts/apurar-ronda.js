@@ -28,9 +28,34 @@ function rondasDe(base) {
   }
 }
 
-/** O mapa.json de uma ronda, ou null. */
+/** Os caminhos das mensagens: relativos ao cwd, com barra normal. */
+function relDoCwd(p) {
+  return path.relative(cwd, p).split(path.sep).join('/');
+}
+
+/**
+ * O mapa.json de uma ronda, ou null quando nao ha (pacote antigo, sem mapa). 0.3.3, item 6: o que
+ * existe e nao se le como o objeto que o preparar-revisao.js grava ({ arquivo, mapa: {...} }) para
+ * aqui - antes virava "ronda sem mapa" calado e a ronda contava pelos dois lados.
+ */
 function lerMapaJson(base, ronda) {
-  try { return JSON.parse(fs.readFileSync(path.join(base, ronda, 'mapa.json'), 'utf8')); } catch (err) { return null; }
+  const arq = path.join(base, ronda, 'mapa.json');
+  const corrompido = function (motivo) {
+    falhar('ERRO: ' + relDoCwd(arq) + ' esta corrompido (' + motivo + '). Ele diz qual arquivo a ronda revisou e ' +
+      'qual rotulo e o lado novo; sem ele legivel os achados nao se separam por lado. Apague a pasta ' +
+      relDoCwd(path.dirname(arq)) + '/ e prepare a ronda de novo (Passo 1 do /esquadro:revisar), regrave os ' +
+      'vereditos dela e rode este comando de novo.\n');
+  };
+  let texto;
+  try { texto = fs.readFileSync(arq, 'utf8'); } catch (err) {
+    if (err && err.code === 'ENOENT') return null;
+    corrompido(err.message);
+  }
+  let mj;
+  try { mj = JSON.parse(texto); } catch (err) { corrompido(err.message); }
+  if (!mj || typeof mj !== 'object' || Array.isArray(mj)) corrompido('nao e um objeto');
+  if (!mj.mapa || typeof mj.mapa !== 'object' || Array.isArray(mj.mapa)) corrompido('"mapa" nao e um objeto');
+  return mj;
 }
 
 /** O arquivo revisado por uma base: o do mapa.json da ultima ronda dela. */
@@ -46,36 +71,64 @@ function falhar(texto) {
   process.exit(1);
 }
 
-/** 0.3.2, item 7: o mesmo arquivo em grafias diferentes (barra invertida, "./" na frente) e o mesmo. */
+/**
+ * 0.3.2, item 7: o mesmo arquivo em grafias diferentes (barra invertida, "./" na frente) e o mesmo.
+ * 0.3.3, item 5: e o "../" no meio do caminho (a/../b) tambem.
+ */
 function grafiaUnica(p) {
-  return String(p).replace(/\\/g, '/').replace(/^(\.\/)+/, '');
+  return path.posix.normalize(String(p).replace(/\\/g, '/')).replace(/^(\.\/)+/, '');
+}
+
+/**
+ * 0.3.3, item 5: as duas grafias sao o mesmo arquivo. Iguais depois de grafiaUnica, sim. Diferindo so
+ * na caixa, quem diz e o disco: os dois existem e tem o mesmo dev+ino (sistema de arquivos que nao
+ * distingue a caixa); num que distingue, sao dois nomes e nao se juntam. Sem olhar a plataforma.
+ */
+function mesmoArquivo(a, b) {
+  const x = grafiaUnica(a);
+  const y = grafiaUnica(b);
+  if (x === y) return true;
+  if (x.toLowerCase() !== y.toLowerCase()) return false;
+  try {
+    const sx = fs.statSync(path.resolve(cwd, x), { bigint: true });
+    const sy = fs.statSync(path.resolve(cwd, y), { bigint: true });
+    return sx.dev === sy.dev && sx.ino === sy.ino;
+  } catch (err) {
+    // Um dos dois nao existe (ou nao se le): o disco nao confirma que sejam o mesmo arquivo.
+    return false;
+  }
+}
+
+/** A classe do estado.js: letras, numeros, "_" e "-". */
+function validarSessao(valor, origem) {
+  if (!/^[a-zA-Z0-9_-]+$/.test(valor)) {
+    falhar('ERRO: o valor de ' + origem + ' (' + valor + ') nao serve de id de sessao. Use so letras, numeros, ' +
+      '"_" e "-" (exemplo: --sessao minha-sessao) e rode de novo.\n');
+  }
 }
 
 /**
  * 0.3.2, itens 2 e 3: a sessao vem de --sessao ou do ambiente, e vai crua para o fechada.json e para o
- * contador. Valor que falta ou fora da classe do estado.js (letras, numeros, "_" e "-") para aqui, antes
- * de escolher a base: o erro nao pode depender de a revisao ter fechado.
+ * contador. 0.3.3, item 4: o --sessao e entrada de quem roda - sem valor, ou fora da classe, para aqui,
+ * antes de escolher a base, fechando a revisao ou nao. O valor do AMBIENTE so se valida onde vai ser
+ * usado (a revisao fecha e o fecho nao foi contado): ambiente ruim nao para uma ronda que nao fecha.
+ * Devolve { valor, origem }; valor null = nenhuma sessao.
  */
 function sessaoDoUso() {
   const i = process.argv.indexOf('--sessao');
-  let valor = null;
-  let origem = '';
   if (i !== -1) {
-    valor = process.argv[i + 1];
-    origem = '--sessao';
+    const valor = process.argv[i + 1];
     if (!valor || valor.startsWith('--')) {
       falhar('ERRO: --sessao sem valor. Passe o id da sessao: --sessao <id>, ou tire a flag para usar ' +
         'CLAUDE_CODE_SESSION_ID.\n');
     }
-  } else if (process.env.CLAUDE_CODE_SESSION_ID) {
-    valor = process.env.CLAUDE_CODE_SESSION_ID;
-    origem = 'CLAUDE_CODE_SESSION_ID';
+    validarSessao(valor, '--sessao');
+    return { valor: valor, origem: '--sessao' };
   }
-  if (valor !== null && !/^[a-zA-Z0-9_-]+$/.test(valor)) {
-    falhar('ERRO: o valor de ' + origem + ' (' + valor + ') nao serve de id de sessao. Use so letras, numeros, ' +
-      '"_" e "-" (exemplo: --sessao minha-sessao) e rode de novo.\n');
+  if (process.env.CLAUDE_CODE_SESSION_ID) {
+    return { valor: process.env.CLAUDE_CODE_SESSION_ID, origem: 'CLAUDE_CODE_SESSION_ID' };
   }
-  return valor;
+  return { valor: null, origem: '' };
 }
 
 /**
@@ -100,7 +153,7 @@ function escolherBase() {
       // Rondas 1 e 2 da T4: a plana e a revisao de um arquivo (o do mapa.json); a de outro, ou a sem
       // mapa que diga de qual, nao se apura calada.
       const doAntigo = arquivoDaBase(revisao);
-      if (doAntigo && grafiaUnica(doAntigo) === grafiaUnica(rel)) return revisao;
+      if (doAntigo && mesmoArquivo(doAntigo, rel)) return revisao;
       falhar('ERRO: a revisao no formato antigo (pastas numeradas soltas em revisao/) ' +
         (doAntigo ? 'e de ' + doAntigo + ', nao de ' + rel : 'nao diz de qual arquivo e') +
         '. Apure-a sem --arquivo.\n');
@@ -149,6 +202,7 @@ const baseRel = path.relative(cwd, base).split(path.sep).join('/');
 const arquivoRevisado = arquivoDaBase(base, pastas);
 const mapas = [];
 const semMapa = [];
+const semVeredito = [];
 const ilegiveis = [];
 const invalidos = [];
 const rondas = pastas
@@ -160,8 +214,22 @@ const rondas = pastas
     if (!mapa) semMapa.push(Number(e.name));
     mapas.push(mapa);
     const dir = path.join(base, e.name, 'vereditos');
-    let arquivos = [];
-    try { arquivos = fs.readdirSync(dir).filter(function (f) { return f.endsWith('.json'); }); } catch (err) { arquivos = []; }
+    // 0.3.3, item 1: ronda sem nenhum veredito (pasta ausente, ou sem .json) nao e ronda seca, e voto
+    // que falta - e o readdir nao zera mais em qualquer erro: a causa vai na mensagem.
+    const dirRel = [baseRel, e.name, 'vereditos'].join('/') + '/';
+    let arquivos = null;
+    try { arquivos = fs.readdirSync(dir).filter(function (f) { return f.endsWith('.json'); }); } catch (err) {
+      if (err && err.code === 'ENOENT') arquivos = [];
+      else semVeredito.push('ERRO: nao consegui ler ' + dirRel + ' (' + err.message + '). Confira essa pasta e ' +
+        'rode este comando de novo.');
+    }
+    if (arquivos === null) return [];
+    if (arquivos.length === 0) {
+      semVeredito.push('ERRO: a ronda ' + Number(e.name) + ' nao tem nenhum veredito: ' + dirRel + ' nao existe ou ' +
+        'nao tem nenhum .json. Grave os vereditos dela (Passo 2 do /esquadro:revisar) ou, se a ronda foi preparada ' +
+        'por engano, apague a pasta ' + [baseRel, e.name].join('/') + '/, e rode este comando de novo.');
+      return [];
+    }
     return arquivos.map(function (f) {
       const nome = [baseRel, e.name, 'vereditos', f].join('/');
       let vd;
@@ -179,11 +247,14 @@ const rondas = pastas
 // ronda como seca. Um voto que falta nao e voto a favor: para aqui, antes de apurar e de
 // contar a revisao como fechada. D223 e D228 (ronda 2 do 8c.10): o que se le mas nao e
 // veredito tambem e voto que falta, e para do mesmo jeito.
-if (ilegiveis.length || invalidos.length) {
+if (semVeredito.length || ilegiveis.length || invalidos.length) {
+  for (const i of semVeredito) process.stdout.write(i + '\n');
   for (const i of ilegiveis) process.stdout.write('ERRO: veredito ilegivel em ' + i + '\n');
   for (const i of invalidos) process.stdout.write('ERRO: veredito invalido em ' + i + '\n');
-  process.stdout.write('Regrave cada um como o JSON do veredito - lente, melhor (A, B ou empate) e a ' +
-    'lista de achados - e rode este comando de novo.\n');
+  if (ilegiveis.length || invalidos.length) {
+    process.stdout.write('Regrave cada um como o JSON do veredito - lente, melhor (A, B ou empate) e a ' +
+      'lista de achados - e rode este comando de novo.\n');
+  }
   process.exit(1);
 }
 
@@ -198,13 +269,22 @@ if (fs.existsSync(arqRefutados)) {
       'ou apague o arquivo se nao ha refutacao, e rode este comando de novo.\n');
     process.exit(1);
   }
+  // 0.3.3, item 3: o que se le mas nao e lista virava [] calado no apurar, e a refutacao sumia.
+  if (!Array.isArray(refutados)) {
+    process.stdout.write('ERRO: ' + baseRel + '/refutados.json nao e uma lista (veio ' +
+      (refutados === null ? 'null' : typeof refutados) + '). A forma e uma lista de refutacoes, e [] quando nao ' +
+      'ha refutacao. Corrija o arquivo e rode este comando de novo.\n');
+    process.exit(1);
+  }
 }
 
 let r;
 try {
   r = veredito.apurar(rondas, { mapas: mapas, refutados: refutados });
 } catch (err) {
-  process.stdout.write('ERRO: ' + err.message + '\n');
+  // 0.3.3, item 7: o erro diz o defeito; a linha seguinte diz onde corrigir e o que fazer depois.
+  process.stdout.write('ERRO: ' + err.message + '\n' + 'Corrija a refutacao em ' + baseRel + '/refutados.json ' +
+    '(ou o veredito que o erro cita) e rode este comando de novo.\n');
   process.exit(1);
 }
 const descartados = [];
@@ -239,7 +319,9 @@ if (r.encerrar) {
   if (previa && previa.ronda === r.ronda) {
     contada = { jaContada: true, sessao: previa.sessao };
   } else {
-    const sessao = sessaoPedida || 'sem-sessao';
+    // 0.3.3, item 4: o valor do ambiente so se valida aqui, onde vai ser usado - antes de contar e de gravar.
+    if (sessaoPedida.origem === 'CLAUDE_CODE_SESSION_ID') validarSessao(sessaoPedida.valor, sessaoPedida.origem);
+    const sessao = sessaoPedida.valor || 'sem-sessao';
     // Conta antes de gravar: fechada.json existir quer dizer que o fecho foi contado.
     let n;
     try { n = estado.incrementar(sessao, 'revisao_fechada'); } catch (err) {
@@ -253,6 +335,13 @@ if (r.encerrar) {
         'Corrija a gravacao nessa pasta antes de rodar de novo: rodar agora conta o fecho outra vez.\n');
     }
     contada = { sessao: sessao, revisao_fechada: n };
+    // 0.3.3, item 8: sem sessao o fecho cai em "sem-sessao", que nenhuma sessao le. O aviso nao manda rodar
+    // de novo: o fechada.json ja registra o fecho e rodar de novo nao o recontaria.
+    if (!sessaoPedida.valor) {
+      contada.aviso = 'o fecho nao entrou no contador de nenhuma sessao: sem --sessao e sem CLAUDE_CODE_SESSION_ID ' +
+        'ele foi contado em "sem-sessao". Ele ja esta registrado em ' + baseRel + '/fechada.json e nao precisa ser ' +
+        'refeito; na proxima revisao, passe --sessao <id>.';
+    }
   }
 }
 

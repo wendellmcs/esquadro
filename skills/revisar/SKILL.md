@@ -87,13 +87,18 @@ troca de chat, e nada mais no plugin o incrementa. Ele descobre a sessão sozinh
 `--sessao <id>` só se precisar forçar (o id leva só letras, números, `_` e `-`; sem valor ou com outro
 caractere, o script para com erro). A saída traz `revisaoFechadaContada` para você conferir.
 Rodar o script de novo numa revisão já fechada **não conta outra vez**: o fecho fica registrado na
-base (`fechada.json`) e a saída diz que já foi contada. Ronda nova depois do fecho é outro fecho.
+base (`fechada.json`) e a saída diz que já foi contada. Preparar de novo um arquivo cuja revisão já
+fechou começa **revisão nova**: o `preparar-revisao.js` move a base inteira para
+`.claude/esquadro/revisao-fechada/<arquivo>/<carimbo>/` (nada se apaga; a saída diz o destino em
+`arquivada`) e a ronda volta a ser a 1, com o teto de 3 inteiro. O fecho da revisão nova conta de novo.
 
 ## Passo 4 — rondas seguintes
 
 - **Ronda 1 descobre; as seguintes verificam.**
 - A ronda 2 chama **só as lentes que acharam P0 ou P1**, com o briefing reformulado em pergunta
   específica sobre o próprio achado. Ordem de grandeza: **9 → 4 → 2**.
+- Se nenhuma lente achou P0 ou P1, a ronda seguinte chama **ao menos uma** (a de correção): ronda sem
+  nenhum veredito não é ronda seca, e o `apurar-ronda.js` para com erro.
 - Antes de cada nova ronda, corrija o que a anterior achou e rode `preparar-revisao.js` de novo.
 
 ## Passo 5 — parar

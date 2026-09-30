@@ -193,7 +193,9 @@ test('D244/defeito 3: P1 do lado novo continua molhando', () => {
 
 test('D244/defeito 3: a mesma linha do mesmo lado e o mesmo achado, mesmo com o rotulo trocado', () => {
   // ronda 1: trabalho = A; ronda 2: trabalho = B. Mesmo lugar do lado novo, rotulo diferente.
-  const r = v.apurar([[P1('A.txt', 10)], [P1('B.txt', 10)], []], { mapas: [TRAB_A, TRAB_B, TRAB_A] });
+  // 0.3.3, item 1: a ronda seca e um veredito sem achados; `[]` (ronda sem veredito) agora e erro, era o proprio
+  // defeito. O medidor mudou de proposito: a fixture troca `[]` por um veredito vazio, o mesmo sentido de antes.
+  const r = v.apurar([[P1('A.txt', 10)], [P1('B.txt', 10)], [veredito('design', [])]], { mapas: [TRAB_A, TRAB_B, TRAB_A] });
   assert.strictEqual(r.encerrar, true);
   assert.strictEqual(r.motivo, 'duas rondas secas seguidas: aprovado', JSON.stringify(r));
 });
@@ -206,7 +208,8 @@ test('D244/defeito 3: arquivo citado com caminho ainda acha o lado', () => {
 test('D244/defeito 3: refutado com prova nao molha; sem prova e recusado', () => {
   const vd = P1('A.txt', 7);
   const ref = [{ ronda: 1, lente: 'design', arquivo: 'A.txt', linha: 7, severidade: 'P1', prova: 'css/01.css:12 define o token' }];
-  const r = v.apurar([[vd], []], { mapas: [TRAB_A, TRAB_A], refutados: ref });
+  // 0.3.3, item 1: a 2a ronda seca era `[]`; agora e um veredito sem achados (ronda sem veredito e erro).
+  const r = v.apurar([[vd], [veredito('design', [])]], { mapas: [TRAB_A, TRAB_A], refutados: ref });
   assert.strictEqual(r.motivo, 'duas rondas secas seguidas: aprovado', JSON.stringify(r));
   assert.throws(() => v.apurar([[vd]], { mapas: [TRAB_A],
     refutados: [{ ronda: 1, lente: 'design', arquivo: 'A.txt', linha: 7 }] }), /prova/);
@@ -303,4 +306,17 @@ test('D246: refutacao exige severidade e so derruba o achado dela', () => {
     assert.throws(() => v.apurar([[vd]], { mapas: [TRAB_A], refutados: [Object.assign({}, ref, { severidade: sev })] }),
       /severidade/, JSON.stringify(sev));
   }
+});
+
+// 0.3.3, item 1: ronda sem nenhum veredito contava como seca, e duas dessas fechavam aprovado
+// (`apurar([[], []])`, placar 0/0/0). Voto que falta nao e voto a favor: recusa e diz qual ronda.
+test('0.3.3/item 1: ronda sem nenhum veredito e recusada e diz qual ronda; nao e ronda seca', () => {
+  const seca = [veredito('correcao', [])];
+  assert.throws(() => v.apurar([[], []]), /ronda 1 sem nenhum veredito/);
+  assert.throws(() => v.apurar([[]]), /ronda 1 sem nenhum veredito/);
+  assert.throws(() => v.apurar([seca, []]), /ronda 2 sem nenhum veredito/);
+  assert.throws(() => v.apurar([seca, seca, []]), /ronda 3 sem nenhum veredito/);
+  assert.throws(() => v.apurar([[P1('A.txt', 1)], undefined]), /ronda 2 sem nenhum veredito/);
+  // controle: a ronda seca de verdade e um veredito sem achados, e segue fechando aprovado
+  assert.strictEqual(v.apurar([seca, seca]).motivo, 'duas rondas secas seguidas: aprovado');
 });

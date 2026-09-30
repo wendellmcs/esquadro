@@ -111,3 +111,18 @@ test('config: design.json ausente devolve null - o modulo e opcional', () => {
   });
   assert.strictEqual(config.carregarDesign(null), null);
 });
+
+// --- 0.3.3, item 27: o caminho de um arquivo de .claude/esquadro/ mora aqui, e o reinjecao o usa. ---
+
+test("config: caminhoEmEsquadro monta <projeto>/.claude/esquadro/<nome> (0.3.3, item 27)", () => {
+  const cwd = path.join(os.tmpdir(), "qualquer-projeto");
+  assert.strictEqual(config.caminhoEmEsquadro(cwd, "projeto.json"), path.join(cwd, ".claude", "esquadro", "projeto.json"));
+  assert.strictEqual(config.caminhoEmEsquadro(cwd, "regras.md"), path.join(cwd, ".claude", "esquadro", "regras.md"));
+});
+
+test("config: carregarProjeto le o arquivo que caminhoEmEsquadro aponta (0.3.3, item 27)", () => {
+  comProjeto(JSON.stringify({ nome: "a" }), (cwd) => {
+    assert.ok(fs.existsSync(config.caminhoEmEsquadro(cwd, "projeto.json")), "o caminho exportado e o do arquivo de verdade");
+    assert.strictEqual(config.carregarProjeto(cwd).nome, "a");
+  });
+});

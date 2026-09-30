@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.3.3 — revisao que nao aprova sem voto, e revisao nova que comeca do zero
+
+Dois defeitos da revisao cega, e o acabamento dos pontos que a revisao da 0.3.2 deixou registrados.
+Nenhum portao novo. Os comportamentos novos vem com teste; a suite inteira roda com `npm test`.
+
+- **Ronda sem voto nao e ronda seca.** Uma ronda sem nenhum veredito contava como seca, e duas
+  assim aprovavam a revisao sem nenhum inspetor lido. Agora o `apurar-ronda.js` para com erro que
+  diz qual ronda e o que fazer (gravar os vereditos dela, ou apagar a pasta da ronda preparada por
+  engano); a pasta de vereditos que nao se le para com a causa, em vez de contar como vazia. Se
+  nenhuma lente achou nada grave, a ronda seguinte chama ao menos uma.
+- **Revisao nova de arquivo ja revisado comeca do zero.** Preparar de novo um arquivo cuja revisao
+  ja fechou herdava as rondas antigas e o teto gasto. Agora o `preparar-revisao.js` move a revisao
+  fechada inteira para `.claude/esquadro/revisao-fechada/<arquivo>/<carimbo>/` (nada se apaga), diz
+  para onde ela foi e comeca na ronda 1.
+- **Apuracao da revisao.** `refutados.json` que nao e lista e `mapa.json` presente mas corrompido
+  param com erro que cita o arquivo; antes viravam lista vazia e ronda sem mapa, calados. O arquivo
+  revisado e reconhecido tambem com `../` no meio do caminho e, quando o disco diz que e o mesmo
+  arquivo, com outra caixa. O id de sessao que vem do ambiente so e conferido quando o fecho vai ser
+  contado. Erro da apuracao diz onde corrigir; fecho contado sem sessao avisa que nao entrou no
+  contador de nenhuma e como evitar na proxima (`--sessao <id>`).
+- **Preparo da revisao.** Git que falha ao ler o `HEAD` (processo morto, objeto que nao se le) nao
+  passa mais por arquivo novo; repositorio sem commit segue tratando tudo como novo. Arquivo maior
+  que o limite no `HEAD` tem mensagem propria, sem "rode de novo". A regua do projeto e lida antes
+  de criar a pasta e gravada junto com o pacote, e "nenhuma regua declarada" so aparece quando nao
+  ha regua. Arquivo com nome comecando por `--` e aceito, e `--semente ''` e erro de uso. O aviso do
+  formato antigo procura o id em todas as pastas numeradas, e as mensagens de git ausente e de id
+  nao achado dizem o proximo passo.
+- **Portao de escopo.** Link simbolico em `escopos/` cujo destino fica fora do projeto nao entra na
+  lista de frentes (antes a linha do objetivo do destino aparecia no aviso). Marcador `-` sozinho
+  na linha nao e item. Frente que nao se le diz que nao se leu, com o codigo do erro, em vez de
+  "(sem objetivo)". As mensagens do intocavel e da trava 5 dizem onde a lista mora e o que a
+  ampliacao do escopo conta, em tom neutro.
+- **Reinjecao.** O aviso do `projeto.json` diz a causa (nao se le, com o codigo do erro; JSON
+  quebrado; nao e objeto) e que `/esquadro:init` de novo o regrava com as respostas dadas. Regras
+  ou plano que nao se leem viram uma linha com a causa, em vez de sumir calados. Plano apontado para
+  fora do projeto nao se le. Cada valor do `projeto.json` entra numa linha so, com limite de tamanho.
+
 ## 0.3.2 — mensagens que dizem o que fazer, e erro que nao passa calado
 
 Acabamento dos pontos que a revisao da 0.3.1 deixou registrados. Nenhum portao novo. Os

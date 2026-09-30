@@ -25,7 +25,9 @@ function nomeSeguro(frente) {
  * travessao, `--`, ` - ` ou `#`.
  */
 function caminhoDoItem(t) {
-  const s = t.replace(/^[-*+]\s+/, '').trim();
+  // 0.3.3, item 23: marcador sozinho na linha (`-`, `*`, `+`) nao e item; sem o `$`, o marcador sem
+  // texto sobrava como o caminho `-`.
+  const s = t.replace(/^[-*+](?:\s+|$)/, '').trim();
   const crase = s.match(/^`+([^`]+)`+/);
   if (crase) return crase[1].trim();
   const corte = s.search(/\s+(?:\(|\u2014|--\s|-\s|#)/);
@@ -144,6 +146,8 @@ function ampliou(antes, depois) {
 // da spec, entao cada mensagem diz o que eles guardam. "trava N" fica: e o nome publico (README)
 // e os testes o prendem.
 const TRAVA_ESCOPO = 'esquadro - portao de escopo (trava 4 - o escopo da tarefa).';
+// 0.3.3, item 21: a trava 5 tem a sua constante ao lado da 4, com o mesmo texto de antes (os testes o prendem).
+const TRAVA_OUTRA_FRENTE = 'esquadro - outra frente de trabalho (trava 5 - arquivo de outra frente).';
 const O_QUE_E_MARCHA = 'o nivel de rigor que o projeto.json da a este caminho';
 
 function motivoSemEscopo(alvo, marcha, arquivo) {
@@ -238,14 +242,27 @@ function avisoHeranca(cwd, frente) {
   return partes.join('\n\n');
 }
 
+/**
+ * 0.3.3, item 24: o objetivo de uma frente, em uma linha. Arquivo que nao se le diz que nao se leu
+ * (com o codigo do erro): e outra coisa que a frente que nao declara objetivo, e quem le a lista
+ * precisa saber qual das duas e.
+ */
+function objetivoDaFrente(arquivoAbsoluto) {
+  try {
+    const esc = parse(fs.readFileSync(arquivoAbsoluto, 'utf8'));
+    return ascii(esc.objetivo || '(sem objetivo)').slice(0, 200);
+  } catch (e) {
+    return 'nao se leu o arquivo (' + ascii((e && e.code) || 'erro') + ')';
+  }
+}
+
 /** A linha da frente vinculada, ou null quando nao ha vinculo, ou a frente sumiu do disco. */
 function linhaDoVinculo(cwd, frente) {
   if (!frente) return null;
   const arquivo = arquivoEmVigor(cwd, frente);
   if (arquivo === ARQUIVO) return null;
-  const esc = carregar(cwd, frente);
   return 'esquadro: esta sessao esta vinculada a frente ' + nomeSeguro(frente) + ' (' + arquivo +
-    ') - objetivo: ' + ascii((esc && esc.objetivo) || '(sem objetivo)').slice(0, 200) +
+    ') - objetivo: ' + objetivoDaFrente(path.join(cwd, arquivo)) +
     '. Se a tarefa mudou, reescreva ' + arquivo + ' antes de editar.';
 }
 
@@ -272,7 +289,20 @@ function linhaDaHeranca(cwd) {
 function ehArquivo(cwd, e) {
   if (e.isFile()) return true;
   if (!e.isSymbolicLink()) return false;
-  try { return fs.statSync(path.join(cwd, PASTA_FRENTES, e.name)).isFile(); } catch (x) { return false; }
+  const caminho = path.join(cwd, PASTA_FRENTES, e.name);
+  try {
+    if (!fs.statSync(caminho).isFile()) return false;
+    // 0.3.3, item 22: o link so vale se o destino REAL fica dentro do projeto; senao a linha do objetivo
+    // de um arquivo de fora entraria no texto da abertura. `path.relative` do realpath do projeto: fora
+    // = comeca com `..` (como pasta) ou e absoluto (outro disco).
+    const rel = path.relative(fs.realpathSync(cwd), fs.realpathSync(caminho));
+    return !(/^\.\.(?:[\\/]|$)/.test(rel) || path.isAbsolute(rel));
+  } catch (x) {
+    // 0.3.3, item 19: cai aqui o link quebrado (o destino sumiu), o link sem permissao para ler o destino
+    // e o destino que nao se resolve. Fica FORA da lista de proposito: frente que nao se le nao tem
+    // objetivo a mostrar, e a lista existe para dizer o que as frentes fazem.
+    return false;
+  }
 }
 
 /**
@@ -295,15 +325,15 @@ function blocoDeFrentes(cwd, frente) {
     const vinculado = nomes.indexOf(exato) !== -1
       ? exato
       : nomes.filter(function (n) { return n.toLowerCase() === exato.toLowerCase(); })[0];
+    // 0.3.3, item 20: `vinculado` fica `undefined` quando nenhum nome casa (o arquivo vinculado nao esta na
+    // lista); nenhum `n` e igual a `undefined`, entao nada sai da lista, que e o certo.
     nomes = nomes.filter(function (n) { return n !== vinculado; });
   }
   if (!nomes.length) return null;
   const linhas = ['esquadro: frentes de trabalho existentes:'];
   for (const n of nomes) {
     const nome = n.slice(0, n.length - 3);
-    let esc = null;
-    try { esc = parse(fs.readFileSync(path.join(cwd, PASTA_FRENTES, n), 'utf8')); } catch (e) { esc = null; }
-    linhas.push('  - ' + ascii(nome) + ': ' + ascii((esc && esc.objetivo) || '(sem objetivo)').slice(0, 200));
+    linhas.push('  - ' + ascii(nome) + ': ' + objetivoDaFrente(path.join(cwd, PASTA_FRENTES, n)));
   }
   linhas.push('Editar o arquivo da frente vincula esta sessao a ela; sem vinculo vale ' + ARQUIVO + '.');
   return linhas.join('\n');
@@ -314,7 +344,8 @@ function motivoIntocavel(alvo) {
   return [
     'esquadro - intocavel.',
     '',
-    'O arquivo ' + alvo + ' esta na lista de intocaveis de projeto.json.',
+    // 0.3.3, item 25: diz onde a lista mora (o nome do campo e `intocaveis`).
+    'O arquivo ' + alvo + ' esta na lista "intocaveis" de .claude/esquadro/projeto.json.',
     'Nem o escopo declarado libera este caminho.',
     '',
     'Mexer nele e decisao do dono do projeto, nao julgamento seu.',
@@ -326,14 +357,17 @@ function motivoOutraFrente(alvo, arquivo) {
   alvo = ascii(alvo);
   arquivo = arquivo || ARQUIVO;
   return [
-    'esquadro - outra frente de trabalho (trava 5 - arquivo de outra frente).',
+    TRAVA_OUTRA_FRENTE,
     '',
     'O arquivo ' + alvo + ' JA aparecia modificado no git status quando esta sessao abriu.',
     'Todo arquivo modificado e nao commitado pertence a outra frente (outra tarefa em andamento neste repositorio) ate prova em contrario.',
-    'Nao e rascunho abandonado, e nao e convite.',
+    // 0.3.3, item 25: tom neutro; diz o que o arquivo e, sem listar o que ele nao e.
+    'Trate-o como trabalho de outra tarefa em andamento: nao o altere por conta propria.',
     '',
     'Se precisar mesmo tocar nele, isso e decisao do dono. Depois de ele autorizar,',
-    'liste o caminho exato em ' + arquivo + ', na secao "## Dentro", e a passagem e contada.'
+    // 0.3.3, item 25: o que se conta e a ampliacao do escopo (contador escopo_ampliado, em
+    // portao-escopo.js), que o portao do fecho mostra no fim do turno (portao-fecho.js).
+    'liste o caminho exato em ' + arquivo + ', na secao "## Dentro". Essa ampliacao do escopo e contada e aparece no fecho do turno.'
   ].join('\n');
 }
 

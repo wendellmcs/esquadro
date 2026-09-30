@@ -3,6 +3,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const texto = require('./texto.js');
 
+/** 0.3.3, item 27: o caminho de um arquivo de <projeto>/.claude/esquadro/. Uma montagem so, para quem le e para quem diagnostica. */
+function caminhoEmEsquadro(cwd, nome) {
+  return path.join(cwd, '.claude', 'esquadro', nome);
+}
+
 /**
  * Le <projeto>/.claude/esquadro/<nome>. Ausente ou corrompido -> null. JSON escrito no
  * Windows costuma vir com BOM, e sem semBom o JSON.parse estoura e o modulo se desliga EM
@@ -12,7 +17,7 @@ const texto = require('./texto.js');
 function lerJson(cwd, nome) {
   if (!cwd) return null;
   try {
-    const bruto = fs.readFileSync(path.join(cwd, '.claude', 'esquadro', nome), 'utf8');
+    const bruto = fs.readFileSync(caminhoEmEsquadro(cwd, nome), 'utf8');
     const obj = JSON.parse(texto.semBom(bruto));
     return obj && typeof obj === 'object' ? obj : null;
   } catch (e) {
@@ -50,4 +55,4 @@ function raizDoProjeto(cwd) {
   }
 }
 
-module.exports = { carregarProjeto, carregarDesign, raizDoProjeto };
+module.exports = { carregarProjeto, carregarDesign, raizDoProjeto, caminhoEmEsquadro };

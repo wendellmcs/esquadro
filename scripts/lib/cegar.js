@@ -55,6 +55,11 @@ function idDoArquivo(rel) {
   return /^\d+$/.test(id) ? '_' + id : id;
 }
 
+// 0.3.3, item 18: a regra do id em texto, para os avisos dos scripts. Mora ao lado do idDoArquivo, e um
+// teste prende que o texto e a funcao concordam.
+const REGRA_DO_ID = 'o caminho do arquivo revisado com cada / trocado por __ e cada caractere fora de ' +
+  'letras, numeros, ".", "_" e "-" trocado por _';
+
 /** A base das rondas de um arquivo: <revisao>/<id>. As rondas moram em <base>/<n>/. */
 function baseDoArquivo(revisao, rel) {
   return path.join(revisao, idDoArquivo(rel));
@@ -74,4 +79,4 @@ function temPastaNumeradaSolta(revisao) {
   }
 }
 
-module.exports = { semente, rotular, proximaRonda, idDoArquivo, baseDoArquivo, temPastaNumeradaSolta };
+module.exports = { semente, rotular, proximaRonda, idDoArquivo, REGRA_DO_ID, baseDoArquivo, temPastaNumeradaSolta };

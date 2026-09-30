@@ -6,6 +6,8 @@ const regraLib = require('./regra.js');
 const escopoLib = require('./escopo.js');
 const planoLib = require('./plano.js');
 const estado = require('./estado.js');
+const caminhoLib = require('./caminho.js');
+const textoLib = require('./texto.js');
 
 // A2: compactacao preserva o sentido e destroi a literalidade.
 // Depois dela eu sei que existe uma regra de escopo, e nao sei mais QUAL e o escopo.
@@ -17,11 +19,48 @@ function bloco(titulo, linhas) {
 
 const NAO_DECLARADO = 'nao declarado';
 
+// 0.3.3, item 30: o valor vem de um arquivo que o dono edita a mao. Numa linha so (uma quebra de linha
+// dentro dele injetaria linhas no texto reinjetado) e com teto de tamanho.
+const LIMITE_DO_VALOR = 200;
+
+function umaLinha(v) {
+  const t = String(v).replace(/[\r\n]+/g, ' ').trim();
+  return t.length > LIMITE_DO_VALOR ? t.slice(0, LIMITE_DO_VALOR - 3) + '...' : t;
+}
+
 /** Texto nao vazio, ou a confissao de que o campo nao foi declarado. Nunca `null`
  *  cru: reinjetar "quem decide: null" seria pior que reinjetar nada - o agente le
  *  `null` como se fosse um valor. */
 function declarado(v) {
-  return typeof v === 'string' && v.trim() ? v.trim() : NAO_DECLARADO;
+  return typeof v === 'string' && v.trim() ? umaLinha(v) : NAO_DECLARADO;
+}
+
+/** 0.3.3, itens 26/28: o codigo do erro (EISDIR, EACCES...), ou o nome dele quando nao ha codigo. So ASCII. */
+function codigoDoErro(e) {
+  return escopoLib.ascii((e && (e.code || e.name)) || 'erro');
+}
+
+/**
+ * 0.3.3, itens 26 e 31: por que o projeto.json que existe nao se le, e o que fazer. `null` quando ele
+ * nao existe (o normal antes do /esquadro:init) ou quando, olhando de novo, ele se le.
+ */
+function causaDoProjetoIlegivel(cwd) {
+  let bruto;
+  try {
+    bruto = fs.readFileSync(config.caminhoEmEsquadro(cwd, 'projeto.json'), 'utf8');
+  } catch (e) {
+    if (e && e.code === 'ENOENT') return null;
+    return {
+      causa: 'erro de leitura: ' + codigoDoErro(e),
+      fazer: 'Confira a permissao do arquivo (ou se ele e uma pasta). ' +
+        'Se ele puder ser escrito, /esquadro:init de novo o regrava com as respostas dadas.'
+    };
+  }
+  const corrija = 'Corrija o JSON ou rode /esquadro:init de novo (o init regrava o projeto.json com as respostas dadas).';
+  let obj;
+  try { obj = JSON.parse(textoLib.semBom(bruto)); } catch (e) { return { causa: 'JSON quebrado', fazer: corrija }; }
+  if (!obj || typeof obj !== 'object') return { causa: 'nao e um objeto JSON', fazer: corrija };
+  return null;
 }
 
 /**
@@ -49,7 +88,7 @@ function contexto(cwd) {
 
   const fontes = (Array.isArray(p.fontesCanonicas) ? p.fontesCanonicas : [])
     .filter(function (f) { return typeof f === 'string' && f.trim(); })
-    .map(function (f) { return f.trim(); });
+    .map(umaLinha);
 
   const plat = p.plataforma && typeof p.plataforma === 'object' ? p.plataforma : {};
   const shell = declarado(plat.shell);
@@ -81,10 +120,13 @@ function nucleo(cwd) {
     // 0.3.2, item 16: projeto.json PRESENTE e ilegivel (JSON quebrado, ou nao e objeto) faz o
     // config devolver null, igual ao ausente - e a reinjecao saia calada, sem o contexto.
     // Ausente segue como sempre (o normal antes do /esquadro:init); ilegivel avisa e diz o que fazer.
-    if (!ctx && fs.existsSync(path.join(cwd, '.claude', 'esquadro', 'projeto.json'))) {
+    // 0.3.3, itens 26 e 31: o aviso diz a causa de verdade (nao se le, JSON quebrado ou nao e um objeto) e
+    // o que fazer, inclusive o que o init faz com o arquivo.
+    const ilegivel = ctx ? null : causaDoProjetoIlegivel(cwd);
+    if (ilegivel) {
       linhas.push(
-        'ATENCAO: .claude/esquadro/projeto.json existe mas nao se le (JSON quebrado ou nao e um objeto), ' +
-        'entao o contexto declarado nao entra aqui. Corrija o JSON ou rode /esquadro:init de novo.',
+        'ATENCAO: .claude/esquadro/projeto.json existe mas nao se le (' + ilegivel.causa + '), ' +
+        'entao o contexto declarado nao entra aqui. ' + ilegivel.fazer,
         ''
       );
     }
@@ -98,7 +140,12 @@ function nucleo(cwd) {
     );
     return linhas.join('\n') + '\n';
   } catch (e) {
-    return null;
+    // 0.3.3, item 28: regras.md ausente segue calado (nada a reinjetar, o normal antes do init). Qualquer outra
+    // falha vira uma linha curta com a causa e o que fazer - a abertura nao pode lancar, mas tambem nao pode
+    // deixar o agente sem regra achando que nao ha regra.
+    if (e && e.code === 'ENOENT') return null;
+    return 'esquadro: as regras deste projeto nao se leram (' + codigoDoErro(e) + '), entao nada delas entra nesta sessao. ' +
+      'Confira .claude/esquadro/regras.md (permissao, ou se e uma pasta) e abra a sessao de novo.\n';
   }
 }
 
@@ -135,7 +182,13 @@ function montar(cwd, sessionId, origem) {
   }
 
   const ativo = planoLib.lerAtivo(cwd);
-  if (ativo) {
+  // 0.3.3, item 29: plano fora do projeto nao se le (o titulo de tarefa de um arquivo de fora nao entra no
+  // contexto); uma linha diz que foi ignorado.
+  if (ativo && typeof ativo.arquivo === 'string' && ativo.arquivo !== '' &&
+      caminhoLib.relativoAoProjeto(ativo.arquivo, cwd) === null) {
+    estadoPartes.push(bloco('ESTADO - plano em execucao',
+      ['Plano ativo ignorado: ' + umaLinha(ativo.arquivo) + ' fica fora do projeto e nao foi lido.']));
+  } else if (ativo) {
     try {
       const tarefas = planoLib.parseTarefas(fs.readFileSync(path.join(cwd, ativo.arquivo), 'utf8'));
       const aberta = tarefas.filter(function (t) { return t.abertos > 0; })[0];
@@ -148,7 +201,13 @@ function montar(cwd, sessionId, origem) {
         linhas.push('Todas as tarefas com os passos marcados.');
       }
       estadoPartes.push(bloco('ESTADO - plano em execucao', linhas));
-    } catch (e) { /* plano ilegivel nao derruba a abertura */ }
+    } catch (e) {
+      // 0.3.3, item 28: plano que nao se le nao derruba a abertura, mas diz que nao se leu (e por que).
+      estadoPartes.push(bloco('ESTADO - plano em execucao', [
+        'Plano: ' + umaLinha(ativo.arquivo),
+        'O plano nao se leu (' + codigoDoErro(e) + '): confira se o arquivo existe e se le, ou abra o plano de novo.'
+      ]));
+    }
   }
 
   const c = s.contadores || {};

@@ -440,6 +440,11 @@ test('0.3.2/item 13: link simbolico que aponta para arquivo entra na lista de fr
       if (q.endsWith('/escopos/link-pasta.md')) return { isFile: () => false };
       if (q.endsWith('/escopos/link-quebrado.md')) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
       return orig.call(fs, p, opcoes);
+    },
+    // 0.3.3, item 22: o link para arquivo entra so se o destino real fica dentro do projeto.
+    realpathSync: (orig) => function (p, opcoes) {
+      if (noPosix(p).endsWith('/escopos/link-arquivo.md')) return path.join(orig.call(fs, dir), 'alvo', 'x.md');
+      return orig.call(fs, p, opcoes);
     }
   };
   try {
@@ -527,4 +532,161 @@ test('0.3.2/item 14: em disco que diferencia caixa de verdade, Foo.md e foo.md f
     assert.ok(a.includes('  - foo: pequena'), 'foo.md e outra frente: ' + a);
     assert.ok(!a.includes('  - Foo:'), a);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ---------------------------------------------------- 0.3.3 (T3: itens 19 a 25)
+// 19 e 20 sao so comentario (o catch de ehArquivo e o `vinculado` que pode ser undefined): nao ha
+// comportamento novo para prender, o motivo esta escrito no proprio comentario.
+
+test('0.3.3/item 21: a linha de abertura da trava 5 e exatamente a de sempre (a constante nao mudou o texto)', () => {
+  const linhas = escopo.motivoOutraFrente('src/a.js').split('\n');
+  assert.strictEqual(linhas[0], 'esquadro - outra frente de trabalho (trava 5 - arquivo de outra frente).');
+  const trava4 = escopo.motivoDeclaradoFora('src/a.js', 'src/**').split('\n')[0];
+  assert.strictEqual(trava4, 'esquadro - portao de escopo (trava 4 - o escopo da tarefa).');
+});
+
+test('0.3.3/item 22: link simbolico cujo destino real fica FORA do projeto nao entra na lista, e o objetivo do destino nao vaza', () => {
+  const dir = projetoTmp({});
+  const raiz = fs.realpathSync(dir);
+  const dentroDoProjeto = path.join(raiz, 'alvo', 'x.md');
+  const foraDoProjeto = path.join(path.dirname(raiz), 'fora-do-projeto-esquadro', 'x.md');
+  const remendos = {
+    readdirSync: (orig) => function (p, opcoes) {
+      if (noPosix(p).endsWith('/.claude/esquadro/escopos')) {
+        return [entrada('link-dentro.md', 'link'), entrada('link-fora.md', 'link')];
+      }
+      return orig.call(fs, p, opcoes);
+    },
+    statSync: (orig) => function (p, opcoes) {
+      if (/\/escopos\/link-(dentro|fora)\.md$/.test(noPosix(p))) return { isFile: () => true };
+      return orig.call(fs, p, opcoes);
+    },
+    realpathSync: (orig) => function (p, opcoes) {
+      const q = noPosix(p);
+      if (q.endsWith('/escopos/link-dentro.md')) return dentroDoProjeto;
+      if (q.endsWith('/escopos/link-fora.md')) return foraDoProjeto;
+      return orig.call(fs, p, opcoes);
+    },
+    readFileSync: (orig) => function (p, opcoes) {
+      const q = noPosix(p);
+      if (q.endsWith('/escopos/link-dentro.md')) return '**Objetivo:** objetivo de dentro\n## Dentro\n- a.js\n';
+      if (q.endsWith('/escopos/link-fora.md')) return '**Objetivo:** SEGREDO-DO-DESTINO\n## Dentro\n- b.js\n';
+      return orig.call(fs, p, opcoes);
+    }
+  };
+  try {
+    const a = comFsRemendado(remendos, () => escopo.avisoHeranca(dir, null));
+    assert.ok(a.includes('  - link-dentro: objetivo de dentro'), 'link para destino dentro do projeto entra: ' + a);
+    assert.ok(!a.includes('link-fora'), 'link para fora do projeto fica fora da lista: ' + a);
+    assert.ok(!a.includes('SEGREDO-DO-DESTINO'), 'o objetivo do destino nao pode vazar: ' + a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('0.3.3/item 22: destino real que nao se resolve (realpath falha) tambem fica fora da lista', () => {
+  const dir = projetoTmp({});
+  const remendos = {
+    readdirSync: (orig) => function (p, opcoes) {
+      if (noPosix(p).endsWith('/.claude/esquadro/escopos')) return [entrada('link-sem-real.md', 'link')];
+      return orig.call(fs, p, opcoes);
+    },
+    statSync: (orig) => function (p, opcoes) {
+      if (noPosix(p).endsWith('/escopos/link-sem-real.md')) return { isFile: () => true };
+      return orig.call(fs, p, opcoes);
+    },
+    realpathSync: (orig) => function (p, opcoes) {
+      if (noPosix(p).endsWith('/escopos/link-sem-real.md')) throw Object.assign(new Error('ELOOP'), { code: 'ELOOP' });
+      return orig.call(fs, p, opcoes);
+    }
+  };
+  try {
+    const a = comFsRemendado(remendos, () => escopo.avisoHeranca(dir, null));
+    assert.strictEqual(a, null, 'sem frente que se resolva, sem bloco: ' + a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('0.3.3/item 22: link simbolico de verdade para fora do projeto (pula sem privilegio para criar link)', (t) => {
+  const dir = projetoTmp({});
+  const fora = projetoTmp({ 'x.md': '**Objetivo:** SEGREDO-REAL\n## Dentro\n- a.js\n' });
+  try {
+    const pasta = path.join(dir, '.claude', 'esquadro', 'escopos');
+    fs.mkdirSync(pasta, { recursive: true });
+    try {
+      fs.symlinkSync(path.join(fora, 'x.md'), path.join(pasta, 'link-fora.md'), 'file');
+    } catch (e) {
+      t.skip('nao deu para criar link simbolico neste disco/usuario (' + (e && e.code) + ')');
+      return;
+    }
+    const a = escopo.avisoHeranca(dir, null);
+    assert.ok(!a || !a.includes('SEGREDO-REAL'), 'objetivo do destino vazou: ' + a);
+    assert.ok(!a || !a.includes('link-fora'), a);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(fora, { recursive: true, force: true });
+  }
+});
+
+test('0.3.3/item 23: marcador de lista sozinho (sem texto) nao vira caminho', () => {
+  const e = escopo.parse([
+    '## Dentro',
+    '-',
+    '- src/a.js',
+    '*',
+    '+',
+    '- ',
+    '## Fora de escopo',
+    '-',
+    '- src/b.js'
+  ].join('\n'));
+  assert.deepStrictEqual(e.dentro, ['src/a.js']);
+  assert.deepStrictEqual(e.fora, ['src/b.js']);
+  // Controle: `-` com texto segue sendo item, e caminho que comeca com hifen nao perde o hifen.
+  assert.deepStrictEqual(escopo.parse('## Dentro\n- -x.js\n').dentro, ['-x.js']);
+});
+
+test('0.3.3/item 24: frente vinculada que nao se le diz que nao se leu (com o codigo), e nao "(sem objetivo)"', () => {
+  const dir = projetoTmp({});
+  try {
+    // Uma PASTA chamada foo.md: existe (o vinculo a enxerga), mas ler da EISDIR.
+    fs.mkdirSync(path.join(dir, '.claude', 'esquadro', 'escopos', 'foo.md'), { recursive: true });
+    const a = escopo.avisoHeranca(dir, 'foo');
+    assert.ok(a.includes('vinculada a frente foo'), a);
+    assert.ok(/nao se leu o arquivo \(EISDIR\)/.test(a), 'tem de dizer a causa: ' + a);
+    assert.ok(!a.includes('(sem objetivo)'), 'ilegivel nao e "sem objetivo": ' + a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('0.3.3/item 24: frente da lista que nao se le diz que nao se leu; a que nao declara objetivo segue "(sem objetivo)"', () => {
+  const dir = projetoTmp({
+    '.claude/esquadro/escopos/boa.md': '**Objetivo:** fechar a onda\n## Dentro\n- a.js\n',
+    '.claude/esquadro/escopos/muda.md': '## Dentro\n- b.js\n',
+    '.claude/esquadro/escopos/ruim.md': '**Objetivo:** nao importa\n'
+  });
+  const remendos = {
+    readFileSync: (orig) => function (p, opcoes) {
+      if (noPosix(p).endsWith('/escopos/ruim.md')) throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+      return orig.call(fs, p, opcoes);
+    }
+  };
+  try {
+    const a = comFsRemendado(remendos, () => escopo.avisoHeranca(dir, null));
+    assert.ok(a.includes('  - boa: fechar a onda'), a);
+    assert.ok(a.includes('  - muda: (sem objetivo)'), 'sem objetivo declarado segue igual: ' + a);
+    assert.ok(/  - ruim: nao se leu o arquivo \(EACCES\)/.test(a), 'ilegivel tem de dizer a causa: ' + a);
+    assert.ok(!/  - ruim: \(sem objetivo\)/.test(a), a);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('0.3.3/item 25: as mensagens dos portoes dizem o que guardam, sem jargao nem tom de bronca', () => {
+  const intocavel = escopo.motivoIntocavel('.env');
+  assert.ok(intocavel.includes('lista "intocaveis" de .claude/esquadro/projeto.json'), intocavel);
+  assert.ok(!intocavel.includes('intocaveis de projeto.json'), intocavel);
+  assert.ok(intocavel.startsWith('esquadro - intocavel.'), 'o cabecalho fica: ' + intocavel);
+
+  const outra = escopo.motivoOutraFrente('src/a.js', '.claude/esquadro/escopo.md');
+  assert.ok(!/rascunho abandonado/.test(outra) && !/convite/.test(outra), 'tom: ' + outra);
+  assert.ok(/trabalho de outra tarefa em andamento/.test(outra), 'tem de dizer de quem e o arquivo: ' + outra);
+  assert.ok(!/a passagem e contada/.test(outra), 'jargao: ' + outra);
+  // O que a passagem conta de verdade: a ampliacao do escopo (contador escopo_ampliado), que o
+  // portao do fecho mostra como "o escopo foi ampliado Nx neste turno".
+  assert.ok(/ampliacao do escopo e contada e aparece no fecho do turno/.test(outra), outra);
 });
