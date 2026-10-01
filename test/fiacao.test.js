@@ -45,7 +45,7 @@ function escrever(dir, rel, conteudo) {
 
 // ---------------------------------------------------------------- A1: a fiacao
 
-test('fiacao: auditar.js enxerga uma skill real e devolve as seis chaves (R-T27-02)', () => {
+test('fiacao: auditar.js enxerga uma skill real e devolve exatamente as chaves do relatorio (R-T27-02)', () => {
   const dir = temp('auditar');
   try {
     escrever(dir, path.join('.claude', 'skills', 'zelador', 'SKILL.md'),
@@ -55,9 +55,11 @@ test('fiacao: auditar.js enxerga uma skill real e devolve as seis chaves (R-T27-
     assert.strictEqual(r.status, 0, r.stderr);
 
     const saida = JSON.parse(r.stdout);
-    for (const chave of ['peso', 'skills', 'sobreposicoes', 'contradicoes', 'foraDaRubrica', 'delegaveis']) {
-      assert.ok(Object.prototype.hasOwnProperty.call(saida, chave), 'faltou a chave ' + chave);
-    }
+    // 0.3.5 (D291 §4): o nome dizia "seis" com sete chaves, e o teste so conferia presenca - chave
+    // nova ou sumida passava calada. Agora e o conjunto exato.
+    assert.deepStrictEqual(Object.keys(saida).sort(),
+      ['contradicoes', 'delegaveis', 'foraDaRubrica', 'memoria', 'peso', 'regras', 'skills', 'sobreposicoes'],
+      'as chaves do relatorio mudaram: ' + Object.keys(saida).join(', '));
     // lerSkills() achou a skill, e instrucoes.contar() contou os itens dela.
     assert.deepStrictEqual(saida.skills, ['zelador'], r.stdout);
     assert.strictEqual(saida.peso.total, 2, 'os dois itens de lista da SKILL.md');
@@ -405,6 +407,23 @@ test('fiacao: o comandosLiberados continua liberando o cd solto, e o cd_solto na
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('fiacao: travas.destrutivo false desliga tambem o cd solto, como o README e o init dizem (D295)', () => {
+  const dir = temp('cd-trava');
+  try {
+    // controle: com a trava ligada o mesmo comando e negado como cd solto
+    escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'),
+      JSON.stringify({ plataforma: PLATAFORMA_LINUX, travas: { destrutivo: true } }));
+    const ligada = motivoNegado(chamar(dir, 'cd8', 'Bash', 'cd sub && git status'));
+    assert.ok(ligada && /cd solto/i.test(ligada), 'controle: a trava ligada tinha de negar o cd solto: ' + ligada);
+
+    escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'),
+      JSON.stringify({ plataforma: PLATAFORMA_LINUX, travas: { destrutivo: false } }));
+    const r = chamar(dir, 'cd9', 'Bash', 'cd sub && git status');
+    assert.strictEqual(r.stdout, '', 'D295: a chave desliga o cd solto junto: ' + r.stdout);
+    assert.strictEqual(lerSessao(dir, 'cd9'), null, 'desligado nao enche balde');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('fiacao: idioma errado e comando destrutivo respondem ANTES do cd solto, no balde de sempre (D286)', () => {
   const dir = temp('cd-ordem');
   try {
@@ -427,6 +446,182 @@ test('fiacao: idioma errado e comando destrutivo respondem ANTES do cd solto, no
     s = lerSessao(dir, 'cd7');
     assert.strictEqual(s.contadores.comando_destrutivo, 1, JSON.stringify(s));
     assert.strictEqual(s.contadores.cd_solto, undefined, 'o balde do cd solto nao pode encher: ' + JSON.stringify(s));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ---- 0.3.5/T2 (D294): tabela do PowerShell ou regra dela que nao se le -> o comando PASSA e sai
+// aviso, uma vez por sessao. A tabela ruim vem de uma COPIA do plugin (scripts/ e modelos/) numa
+// pasta temporaria: o modelos/shell-win32.json do repositorio nao se toca.
+
+/** Copia scripts/ e modelos/ para uma pasta nova, com a tabela do win32 trocada por `conteudo`. */
+function pluginComTabela(conteudo) {
+  const base = temp('plugin-tabela');
+  fs.cpSync(path.join(RAIZ, 'scripts'), path.join(base, 'scripts'), { recursive: true });
+  fs.cpSync(path.join(RAIZ, 'modelos'), path.join(base, 'modelos'), { recursive: true });
+  if (conteudo === null) fs.rmSync(path.join(base, 'modelos', 'shell-win32.json'));
+  else fs.writeFileSync(path.join(base, 'modelos', 'shell-win32.json'), conteudo, 'utf8');
+  return base;
+}
+
+function rodarNoPlugin(plugin, script, dir, entrada) {
+  const r = spawnSync(process.execPath, [path.join(plugin, 'scripts', script)], {
+    cwd: dir, encoding: 'utf8', input: JSON.stringify(entrada),
+    env: Object.assign({}, process.env, { ESQUADRO_TMP: path.join(dir, '_sessoes') })
+  });
+  assert.strictEqual(r.status, 0, r.stderr);
+  return r;
+}
+
+function chamarNoPlugin(plugin, dir, id, ferramenta, comando) {
+  return rodarNoPlugin(plugin, 'portao-destrutivo.js', dir,
+    { session_id: id, cwd: dir, tool_name: ferramenta, tool_input: { command: comando } });
+}
+
+/** O aviso que o portao devolveu ao PERMITIR com aviso, ou null (calado ou negado). */
+function avisoPermitido(r) {
+  let j = null;
+  try { j = JSON.parse(r.stdout); } catch (e) { return null; }
+  const h = j && j.hookSpecificOutput;
+  if (!h || h.permissionDecision !== undefined || !j.systemMessage) return null;
+  return { usuario: j.systemMessage, agente: h.additionalContext, evento: h.hookEventName };
+}
+
+test('fiacao: tabela do PowerShell ilegivel - o comando passa com aviso, UMA vez por sessao, e o fecho nao o traz de volta (D294)', () => {
+  const plugin = pluginComTabela('{ "quando": ');
+  const dir = temp('tabela-ilegivel');
+  try {
+    comPlataforma(dir, PLATAFORMA_WIN);
+    const r1 = chamarNoPlugin(plugin, dir, 'tb1', 'PowerShell', 'npm test');
+    const a = avisoPermitido(r1);
+    assert.ok(a, 'tinha de permitir COM aviso (systemMessage, sem permissionDecision): ' + JSON.stringify(r1.stdout));
+    assert.strictEqual(a.evento, 'PreToolUse');
+    assert.ok(a.usuario.includes('shell-win32.json') && /SyntaxError/.test(a.usuario), a.usuario);
+    assert.ok(/desligada/i.test(a.usuario), a.usuario);
+    assert.ok(a.agente && a.agente.includes('shell-win32.json'), 'o agente tambem tem de saber: ' + a.agente);
+    assert.ok(!motivoNegado(r1), 'nada se nega por arquivo estragado');
+
+    const s1 = lerSessao(dir, 'tb1');
+    assert.strictEqual(s1.contadores.shell_tabela_quebrada, 1, JSON.stringify(s1));
+    assert.strictEqual(s1.avisouTabelaShell, true, JSON.stringify(s1));
+
+    // o 2o comando da mesma sessao passa calado e o balde nao sobe
+    const r2 = chamarNoPlugin(plugin, dir, 'tb1', 'PowerShell', 'npm run build');
+    assert.strictEqual(r2.stdout, '', 'o aviso e de uma vez por sessao: ' + r2.stdout);
+    assert.strictEqual(lerSessao(dir, 'tb1').contadores.shell_tabela_quebrada, 1);
+
+    // o fecho do turno zera o contador do turno, mas a marca de "ja avisei" e da SESSAO.
+    // Sem trabalho marcado o fecho nao regrava o estado e a marca sobrevivia de graca (sessao 3).
+    rodarNoPlugin(plugin, 'marcar-trabalho.js', dir, { session_id: 'tb1', cwd: dir, tool_name: 'Write' });
+    rodarNoPlugin(plugin, 'portao-fecho.js', dir,
+      { session_id: 'tb1', cwd: dir, hook_event_name: 'Stop', last_assistant_message: 'Anotado.' });
+    assert.strictEqual(lerSessao(dir, 'tb1').avisouTabelaShell, true, 'o fecho perdeu a marca da sessao');
+    const r3 = chamarNoPlugin(plugin, dir, 'tb1', 'PowerShell', 'npm test');
+    assert.strictEqual(r3.stdout, '', 'o aviso voltou depois do fecho: ' + r3.stdout);
+    // outra sessao avisa de novo
+    assert.ok(avisoPermitido(chamarNoPlugin(plugin, dir, 'tb2', 'PowerShell', 'npm test')), 'sessao nova tem de avisar');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(plugin, { recursive: true, force: true });
+  }
+});
+
+test('fiacao: seis comandos ao mesmo tempo na mesma sessao avisam UMA vez so (D294)', async () => {
+  const { spawn } = require('node:child_process');
+  const plugin = pluginComTabela('{ "quando": ');
+  const dir = temp('tabela-paralelo');
+  try {
+    comPlataforma(dir, PLATAFORMA_WIN);
+    const entrada = JSON.stringify({ session_id: 'tb11', cwd: dir, tool_name: 'PowerShell', tool_input: { command: 'npm test' } });
+    const saidas = await Promise.all(Array.from({ length: 6 }, () => new Promise((resolve) => {
+      const f = spawn(process.execPath, [path.join(plugin, 'scripts', 'portao-destrutivo.js')], {
+        cwd: dir, env: Object.assign({}, process.env, { ESQUADRO_TMP: path.join(dir, '_sessoes') })
+      });
+      let out = '';
+      f.stdout.on('data', (d) => { out += d; });
+      f.on('close', () => resolve(out));
+      f.stdin.end(entrada);
+    })));
+    assert.strictEqual(saidas.filter((o) => o !== '').length, 1, JSON.stringify(saidas));
+    assert.strictEqual(lerSessao(dir, 'tb11').contadores.shell_tabela_quebrada, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(plugin, { recursive: true, force: true });
+  }
+});
+
+test('fiacao: tabela do PowerShell que falta (ENOENT) tambem passa com aviso (D294)', () => {
+  const plugin = pluginComTabela(null);
+  const dir = temp('tabela-ausente');
+  try {
+    comPlataforma(dir, PLATAFORMA_WIN);
+    const a = avisoPermitido(chamarNoPlugin(plugin, dir, 'tb3', 'PowerShell', 'head -5 notas.txt'));
+    assert.ok(a, 'sem tabela o `head` passa, e com aviso');
+    assert.ok(a.usuario.includes('ENOENT'), a.usuario);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(plugin, { recursive: true, force: true });
+  }
+});
+
+test('fiacao: regra invalida passa com aviso que cita o achado dela; as outras regras seguem negando (D294)', () => {
+  const tabela = JSON.parse(fs.readFileSync(path.join(RAIZ, 'modelos', 'shell-win32.json'), 'utf8'));
+  tabela.regras.push({ padrao: '(aberto', achado: 'regra-quebrada', sugestao: 'x', motivo: 'y' });
+  const plugin = pluginComTabela(JSON.stringify(tabela));
+  const dir = temp('tabela-regra');
+  try {
+    comPlataforma(dir, PLATAFORMA_WIN);
+    const a = avisoPermitido(chamarNoPlugin(plugin, dir, 'tb4', 'PowerShell', 'npm test'));
+    assert.ok(a, 'tinha de avisar');
+    assert.ok(a.usuario.includes('regra-quebrada'), a.usuario);
+    assert.ok(!/nao se leu/.test(a.usuario), 'o arquivo se leu: so a regra quebrou: ' + a.usuario);
+    assert.strictEqual(lerSessao(dir, 'tb4').contadores.shell_tabela_quebrada, 1);
+
+    // controle: a tabela valida por inteiro nega, e quem nega e a tabela (balde de idioma)
+    const n = chamarNoPlugin(plugin, dir, 'tb5', 'PowerShell', 'head -5 notas.txt');
+    assert.ok(/idioma de shell errado/i.test(motivoNegado(n) || ''), n.stdout);
+    assert.strictEqual(lerSessao(dir, 'tb5').contadores.shell_idioma_errado, 1);
+    assert.strictEqual(lerSessao(dir, 'tb5').contadores.shell_tabela_quebrada, undefined,
+      'negou, nao avisou: o balde do aviso nao sobe');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(plugin, { recursive: true, force: true });
+  }
+});
+
+test('fiacao: o aviso da tabela so existe onde a tabela valeria; tabela legivel passa calada (D294)', () => {
+  const plugin = pluginComTabela('{ "quando": ');
+  const dir = temp('tabela-controle');
+  try {
+    // projeto linux: a tabela do win32 nao vale, nao ha o que avisar
+    comPlataforma(dir, PLATAFORMA_LINUX);
+    const l = chamarNoPlugin(plugin, dir, 'tb6', 'Bash', 'npm test');
+    assert.strictEqual(l.stdout, '', l.stdout);
+    assert.strictEqual(lerSessao(dir, 'tb6'), null, 'nao enche balde nem marca a sessao');
+    // win32 na ferramenta Bash (Git Bash): a tabela tambem nao vale
+    comPlataforma(dir, PLATAFORMA_WIN);
+    assert.strictEqual(chamarNoPlugin(plugin, dir, 'tb7', 'Bash', 'npm test').stdout, '');
+    assert.strictEqual(lerSessao(dir, 'tb7'), null);
+    // o escape declarado do dono (travas.destrutivo === false) continua desligando o portao inteiro
+    escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'),
+      JSON.stringify({ plataforma: PLATAFORMA_WIN, travas: { destrutivo: false } }));
+    assert.strictEqual(chamarNoPlugin(plugin, dir, 'tb8', 'PowerShell', 'npm test').stdout, '');
+    assert.strictEqual(lerSessao(dir, 'tb8'), null);
+    // controle positivo: a mesma pasta, ligada, avisa (o calado acima nao e portao quebrado)
+    comPlataforma(dir, PLATAFORMA_WIN);
+    assert.ok(avisoPermitido(chamarNoPlugin(plugin, dir, 'tb9', 'PowerShell', 'npm test')));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(plugin, { recursive: true, force: true });
+  }
+});
+
+test('fiacao: com a tabela real legivel o portao no win32 passa calado e sem estado (D294)', () => {
+  const dir = temp('tabela-real');
+  try {
+    comPlataforma(dir, PLATAFORMA_WIN);
+    const r = chamar(dir, 'tb10', 'PowerShell', 'npm test');
+    assert.strictEqual(r.stdout, '', r.stdout);
+    assert.strictEqual(lerSessao(dir, 'tb10'), null);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

@@ -546,7 +546,7 @@ frente de trabalho".
 |---|---|---|
 | `fecho` | Fechar o turno dizendo que está pronto sem colar evidência (trava 3) | `travas.fecho: false` |
 | `escopo` | Gravar fora do escopo declarado em `.claude/esquadro/escopo.md` (trava 4) | **não tem botão** — ver abaixo |
-| `destrutivo` | Comando destrutivo no Bash ou no PowerShell (trava 5) | `travas.destrutivo: false` |
+| `destrutivo` | Comando destrutivo **e** `cd` solto no Bash ou no PowerShell (trava 5; a chave desliga os dois juntos) | `travas.destrutivo: false` |
 | `outraFrente` | Gravar em arquivo que já estava modificado quando a sessão abriu, **e** que não está no escopo declarado (trava 5) | `travas.outraFrente: false` |
 | *roteamento por custo* | Despachar um agente da **metade cara** da escada num trabalho cujo escopo declarado só toca caminho de marcha `rapida` | **não é trava** — deixe `agentes.escada` com menos de dois nomes |
 

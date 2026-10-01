@@ -72,12 +72,23 @@ const CARGA_LINHAS = 200;
 const CARGA_BYTES = 25000;
 const CARGA_FONTE = 'documentacao oficial do Claude Code, memory.md: carrega as primeiras 200 linhas ou 25 KB do MEMORY.md, o que vier primeiro';
 const CARGA_NOTA = '"25 KB" lido como 25.000 bytes; a doc nao diz se sao 25.000 ou 25.600 (o menor avisa antes)';
-const METODO_MEMORIA = 'linha = trecho terminado em \\n (o \\n final nao abre linha nova; \\r do fim nao conta no tamanho da linha); bytes em UTF-8, do arquivo inteiro; fora da carga = linhas depois da 200a e bytes depois dos 25.000';
+const METODO_MEMORIA = 'linha = trecho terminado em \\n (o \\n final nao abre linha nova; \\r do fim nao conta no tamanho da linha); bytes em UTF-8, do arquivo inteiro; ' +
+  'fora da carga: linhas e bytes saem do mesmo corte, o que vier primeiro. ' +
+  'Cortou por linhas: linhas de fora = as depois da 200a, bytes de fora = os do inicio da linha 201 em diante. ' +
+  'Cortou por bytes: bytes de fora = os depois dos 25.000, linhas de fora = as que nao cabem inteiras nos 25.000 (a linha cortada no meio conta como de fora)';
 
 function naoMedida(causa, motivo, caminho) {
   const m = { medida: false, causa: causa, motivo: motivo };
   if (caminho) m.caminho = caminho;
   return m;
+}
+
+// A dica do erro de leitura depende do codigo: "confira o caminho" so serve a quem errou o caminho.
+function dicaDeLeitura(codigo) {
+  if (codigo === 'ENOENT' || codigo === 'ENOTDIR') return 'confira o caminho passado em --memoria';
+  if (codigo === 'EISDIR') return 'o caminho passado em --memoria e uma pasta, passe o arquivo MEMORY.md';
+  if (codigo === 'EACCES' || codigo === 'EPERM') return 'confira a permissao de leitura do arquivo passado em --memoria';
+  return 'confira o arquivo passado em --memoria';
 }
 
 // Mede o MEMORY.md contra o limite de carga. Nunca some calada: sem caminho ou sem leitura
@@ -91,7 +102,7 @@ function medirMemoria(caminho) {
     buf = fs.readFileSync(caminho);
   } catch (e) {
     const codigo = (e && e.code) || 'ERRO';
-    return naoMedida(codigo, 'nao medida: nao consegui ler ' + caminho + ' (' + codigo + '); confira o caminho passado em --memoria', caminho);
+    return naoMedida(codigo, 'nao medida: nao consegui ler ' + caminho + ' (' + codigo + '); ' + dicaDeLeitura(codigo), caminho);
   }
 
   const bytes = buf.length;
@@ -118,6 +129,22 @@ function medirMemoria(caminho) {
   else if (estouraLinhas) primeiro = 'linhas';
   else if (estouraBytes) primeiro = 'bytes';
 
+  // As duas medidas de "fora" saem do MESMO corte, o que vier primeiro (`primeiro`).
+  let fora = { linhas: 0, bytes: 0 };
+  if (primeiro === 'linhas') {
+    fora = { linhas: linhas - CARGA_LINHAS, bytes: bytes - inicios[CARGA_LINHAS] };
+  } else if (primeiro === 'bytes') {
+    // Linha dentro = comeca antes do byte 25.000 e o texto dela (sem o \n) termina ate ele. A cortada no meio conta como fora.
+    let dentro = 0;
+    while (dentro < linhas) {
+      const fim = dentro + 1 < linhas ? inicios[dentro + 1] : bytes;
+      const texto = fim > inicios[dentro] && buf[fim - 1] === 10 ? fim - 1 : fim;
+      if (inicios[dentro] >= CARGA_BYTES || texto > CARGA_BYTES) break;
+      dentro++;
+    }
+    fora = { linhas: linhas - dentro, bytes: bytes - CARGA_BYTES };
+  }
+
   return {
     medida: true,
     caminho: caminho,
@@ -127,19 +154,38 @@ function medirMemoria(caminho) {
     limite: { linhas: CARGA_LINHAS, bytes: CARGA_BYTES, fonte: CARGA_FONTE, nota: CARGA_NOTA },
     cabe: !estouraLinhas && !estouraBytes,
     primeiro: primeiro,
-    foraDaCarga: { linhas: Math.max(0, linhas - CARGA_LINHAS), bytes: Math.max(0, bytes - CARGA_BYTES) },
+    foraDaCarga: fora,
     metodo: METODO_MEMORIA
   };
 }
 
+// Le o regras.md do projeto. Nunca cala: devolve a lista e o estado da leitura (chave `regras`, no
+// molde da `memoria`). Sem o arquivo (ENOENT) e "nao lidas", mas nao e erro: o projeto pode nao ter regras.
+function lerRegras(cwd) {
+  const relativo = '.claude/esquadro/regras.md';
+  try {
+    const lista = regraLib.parseRegras(fs.readFileSync(path.join(cwd, '.claude', 'esquadro', 'regras.md'), 'utf8'));
+    return { lista: lista, estado: { lidas: true, total: lista.length } };
+  } catch (e) {
+    const codigo = (e && e.code) || 'ERRO';
+    const motivo = codigo === 'ENOENT'
+      ? 'regras nao lidas: o projeto nao tem ' + relativo + '; as contradicoes entre regras nao foram conferidas (o /esquadro:init cria esse arquivo)'
+      : 'regras nao lidas: nao consegui ler ' + relativo + ' (' + codigo + '); as contradicoes entre regras nao foram conferidas. Confira o arquivo e rode /esquadro:auditar de novo';
+    return { lista: [], estado: { lidas: false, causa: codigo, motivo: motivo } };
+  }
+}
+
 // `opcoes.memoria`: caminho do MEMORY.md, passado pela skill. A medida sai a parte, na chave
-// `memoria`; o teto de instrucao (`peso`) nao a soma (D288).
+// `memoria`; o teto de instrucao (`peso`) nao a soma (D288). Valor que nao e texto (so pela API: o
+// auditar.js ja filtra) nao vira caminho: vira "nao medida" com a causa `caminho-invalido`.
 function auditar(cwd, projeto, opcoes) {
   const skills = lerSkills(cwd);
-  const caminhoMemoria = opcoes && opcoes.memoria ? path.resolve(cwd, String(opcoes.memoria)) : null;
-  let regras = [];
-  try { regras = regraLib.parseRegras(fs.readFileSync(path.join(cwd, '.claude', 'esquadro', 'regras.md'), 'utf8')); }
-  catch (e) { regras = []; }
+  const pedida = opcoes ? opcoes.memoria : null;
+  const memoria = pedida && typeof pedida !== 'string'
+    ? naoMedida('caminho-invalido', 'nao medida: --memoria precisa de um caminho em texto (recebi ' + (Array.isArray(pedida) ? 'lista' : typeof pedida) + ')')
+    : medirMemoria(pedida ? path.resolve(cwd, pedida) : null);
+  const lidas = lerRegras(cwd);
+  const regras = lidas.lista;
 
   const foraDaRubrica = [];
   for (const s of skills) {
@@ -153,9 +199,10 @@ function auditar(cwd, projeto, opcoes) {
     skills: skills.map(function (s) { return s.nome; }),
     sobreposicoes: sobreposicoes(skills),
     contradicoes: contradicoes(regras),
+    regras: lidas.estado,
     foraDaRubrica: foraDaRubrica,
     delegaveis: ambiente.detectar(cwd).delegaveis,
-    memoria: medirMemoria(caminhoMemoria)
+    memoria: memoria
   };
 }
 

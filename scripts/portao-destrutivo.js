@@ -59,6 +59,29 @@ io.blindar(function () {
       return io.negarFerramenta(shell.motivoCdSolto(comando, solto));
     }
 
+    // 0.3.5/D294: tabela do PowerShell (ou regra dela) que nao se le -> o comando PASSA e sai aviso,
+    // uma vez por SESSAO. Nada se nega por arquivo estragado. Molde do portao-apelido: `systemMessage`
+    // chega ao USUARIO e `additionalContext` ao agente; sem `permissionDecision` (um "allow" pularia
+    // a pergunta de permissao que o usuario veria normalmente).
+    const quebra = shell.problemasDaTabela(projeto && projeto.plataforma, e.tool_name);
+    if (quebra.length && !estado.ler(e.session_id).avisouTabelaShell) {
+      // a marca e lida de novo DENTRO do alterar (com a trava): dois comandos ao mesmo tempo nao avisam duas vezes
+      let jaAvisou = true;
+      estado.alterar(e.session_id, function (s) {
+        jaAvisou = !!s.avisouTabelaShell;
+        s.avisouTabelaShell = true;
+        return s;
+      });
+      if (!jaAvisou) {
+        estado.incrementar(e.session_id, 'shell_tabela_quebrada');
+        const texto = shell.avisoTabela(quebra);
+        return io.permitir({
+          systemMessage: texto,
+          hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: texto }
+        });
+      }
+    }
+
     io.permitir();
   });
 });

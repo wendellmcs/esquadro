@@ -95,7 +95,9 @@ function calado(r) {
 function avisou(r, causa) {
   semBarrar(r);
   assert.ok(r.json && typeof r.json.systemMessage === 'string', 'nao gravou e nao avisou: ' + r.stdout);
-  assert.ok(/grave esta lente a mao, como antes/i.test(r.json.systemMessage), r.json.systemMessage);
+  // 0.3.5 (C): o aviso diz o que fazer, em vez de supor que o leitor conhece o procedimento ("como antes").
+  assert.ok(/grave esta lente a mao: salve o JSON do inspetor como .+\.json \(skill revisar, Passo 2\)/i.test(r.json.systemMessage), r.json.systemMessage);
+  assert.ok(!/como antes/i.test(r.json.systemMessage), r.json.systemMessage);
   if (causa) assert.ok(causa.test(r.json.systemMessage), String(causa) + ' fora de: ' + r.json.systemMessage);
 }
 
@@ -493,6 +495,81 @@ test('gravar-veredito: em nenhum caminho de aviso ha decision block, e o exit e 
       assert.ok(!/"decision"/.test(r.stdout), r.stdout);
       assert.ok(!/block/.test(r.stdout), r.stdout);
     }
+  } finally { limpar(p); }
+});
+
+// ------------------------------------------------ 0.3.5 T3: as mensagens do gravador
+// Cada teste abaixo foi escrito antes da mudanca e visto falhar contra o codigo da 0.3.4.
+
+/** Roda o script com um modulo pre-carregado que faz fs.existsSync lancar para a marca do inspetor. */
+function rodarComExcecao(p, entrada) {
+  const pre = path.join(p.dir, 'pre-excecao.js');
+  fs.writeFileSync(pre, "const fs = require('node:fs'); const orig = fs.existsSync;\n" +
+    "fs.existsSync = function (x) { if (String(x).endsWith('.marca')) throw new Error('falha de teste'); return orig.apply(this, arguments); };\n");
+  const r = spawnSync(process.execPath, ['--require', pre, SCRIPT], opcoes(p, entrada));
+  let json = null;
+  if (r.stdout && r.stdout.trim()) { try { json = JSON.parse(r.stdout); } catch (e) { json = null; } }
+  return { status: r.status, json: json, stdout: r.stdout, stderr: r.stderr };
+}
+
+test('gravar-veredito (B): excecao inesperada traz a lente quando o JSON se le', () => {
+  const p = projeto();
+  try {
+    const vd = veredito(p, { lente: 'borda', achados: [] });
+    const r = rodarComExcecao(p, stop(p, JSON.stringify(vd)));
+    avisou(r, /falha de teste/);
+    assert.ok(/lente borda/.test(r.json.systemMessage), 'a lente nao entrou no aviso: ' + r.json.systemMessage);
+    assert.ok(!/nao soube qual lente/.test(r.json.systemMessage), r.json.systemMessage);
+    assert.deepStrictEqual(arquivosEm(p), []);
+  } finally { limpar(p); }
+});
+
+test('gravar-veredito (B): excecao inesperada sem JSON legivel diz que nao se soube qual lente', () => {
+  const p = projeto();
+  try {
+    for (const msg of ['Veredito entregue.', '']) {
+      const r = rodarComExcecao(p, stop(p, msg));
+      avisou(r, /falha de teste/);
+      assert.ok(/nao soube qual lente/.test(r.json.systemMessage), 'faltou dizer que a lente e desconhecida: ' + r.json.systemMessage);
+      assert.ok(!/da lente /.test(r.json.systemMessage), r.json.systemMessage);
+    }
+  } finally { limpar(p); }
+});
+
+test('gravar-veredito (C): o aviso diz onde e como gravar: <pasta>/<lente>.json, e cita a skill revisar', () => {
+  const p = projeto();
+  try {
+    // lente conhecida e pasta conhecida: o caminho do arquivo vem pronto
+    fs.writeFileSync(path.join(p.vereditos, 'correcao.json'), JSON.stringify(veredito(p, { melhor: 'B', achados: [] })), 'utf8');
+    const r = rodar(p, stop(p, JSON.stringify(veredito(p))));
+    avisou(r, /ja existe correcao\.json/);
+    assert.ok(r.json.systemMessage.includes(path.join(p.vereditos, 'correcao.json')), r.json.systemMessage);
+    // lente e pasta desconhecidas: diz o molde, sem inventar nome
+    const sem = rodar(p, stop(p, 'Veredito entregue.', { agent_id: 'sem-json' }));
+    avisou(sem, /JSON/);
+    assert.ok(/<pasta[^>]*>\/<lente>\.json/.test(sem.json.systemMessage), sem.json.systemMessage);
+  } finally { limpar(p); }
+});
+
+test('gravar-veredito (E): handback que avisa e nao grava a marca diz que o aviso pode se repetir', () => {
+  const p = projeto();
+  try {
+    // a pasta do estado nao se cria: ja existe um ARQUIVO onde ficaria a pasta "esquadro"
+    fs.mkdirSync(p.estado, { recursive: true });
+    fs.writeFileSync(path.join(p.estado, 'esquadro'), 'x', 'utf8');
+    const r = rodar(p, handback(p, 'sem json nenhum'));
+    avisou(r, /JSON/);
+    assert.ok(/pode se repetir/.test(r.json.systemMessage), 'faltou dizer que o aviso pode voltar: ' + r.json.systemMessage);
+  } finally { limpar(p); }
+});
+
+test('gravar-veredito (E): marca gravada -> o aviso do handback nao fala em repetir; gravou sem aviso -> segue calado', () => {
+  const p = projeto();
+  try {
+    const r = rodar(p, handback(p, 'sem json nenhum'));
+    avisou(r, /JSON/);
+    assert.ok(!/pode se repetir/.test(r.json.systemMessage), r.json.systemMessage);
+    calado(rodar(p, handback(p, JSON.stringify(veredito(p)), { agent_id: 'outro' })));
   } finally { limpar(p); }
 });
 

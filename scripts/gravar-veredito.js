@@ -73,9 +73,16 @@ function pastaDaRonda(campo, raiz) {
   return { pasta: abs };
 }
 
+/** O que fazer quando o hook nao gravou: o arquivo (ou o molde dele), como manda a skill revisar, Passo 2. */
+function comoGravar(lente, destino) {
+  const chave = lente ? chaveDaLente(lente) : null;
+  const arquivo = (chave || '<lente>') + '.json';
+  return 'Grave esta lente a mao: salve o JSON do inspetor como ' +
+    (destino ? path.join(destino, arquivo) : '<pasta vereditos da ronda>/' + arquivo) + ' (skill revisar, Passo 2).';
+}
+
 function aviso(causa, lente, destino) {
-  return 'esquadro: nao gravei o veredito' + (lente ? ' da lente ' + lente : '') + ': ' + causa +
-    '. Grave esta lente a mao, como antes' + (destino ? ' (em ' + destino + ')' : '') + '.';
+  return 'esquadro: nao gravei o veredito' + (lente ? ' da lente ' + lente : '') + ': ' + causa + '. ' + comoGravar(lente, destino);
 }
 
 function semPasta(vd) {
@@ -84,8 +91,8 @@ function semPasta(vd) {
   return copia;
 }
 
-/** Devolve o aviso, ou null quando gravou ou quando ja estava gravado igual. */
-function gravar(mensagem, raiz) {
+/** Grava o veredito e devolve o aviso (texto), ou null quando gravou ou quando ja estava gravado igual. */
+function avisoDaGravacao(mensagem, raiz) {
   if (typeof mensagem !== 'string' || mensagem.trim() === '') return aviso('a resposta do inspetor veio vazia');
   const vd = extrairJson(mensagem);
   if (!vd) return aviso('nao achei o JSON do veredito na resposta do inspetor');
@@ -120,14 +127,33 @@ function marcaDoInspetor(e) {
   return path.join(path.dirname(base), path.basename(base, '.json') + '.veredito-' + limpo(e.agent_id) + '.marca');
 }
 
+// Aviso de quando a marca do handback nao se grava: sem ela o SubagentStop nao sabe que o handback ja avisou.
+const MARCA_FALHOU = 'Nao consegui gravar a marca deste inspetor: o aviso pode se repetir quando o subagente terminar.';
+
+/** A resposta do inspetor, conforme o evento: SubagentStop ou handback (o resto nao e deste script). */
+function mensagemDe(e) {
+  if (e.hook_event_name === 'SubagentStop') return e.last_assistant_message;
+  if (e.hook_event_name === 'PostToolUse') {
+    if (e.tool_name && e.tool_name !== 'SubagentHandback') return undefined;
+    return e.tool_input && typeof e.tool_input === 'object' ? e.tool_input.message : undefined;
+  }
+  return undefined;
+}
+
+/** A lente do JSON da resposta, para o aviso de excecao; null quando a resposta nao se le. Nunca lanca. */
+function lenteDaResposta(e) {
+  try {
+    const mensagem = mensagemDe(e);
+    const vd = typeof mensagem === 'string' ? extrairJson(mensagem) : null;
+    return vd && typeof vd.lente === 'string' && vd.lente.trim() ? vd.lente.trim().slice(0, 60) : null;
+  } catch (x) { return null; }
+}
+
 function tratar(e) {
   if (e.agent_type !== AGENTE) return null;
-  let mensagem;
-  if (e.hook_event_name === 'SubagentStop') mensagem = e.last_assistant_message;
-  else if (e.hook_event_name === 'PostToolUse') {
-    if (e.tool_name && e.tool_name !== 'SubagentHandback') return null;
-    mensagem = e.tool_input && typeof e.tool_input === 'object' ? e.tool_input.message : undefined;
-  } else return null;
+  if (e.hook_event_name !== 'SubagentStop' && e.hook_event_name !== 'PostToolUse') return null;
+  if (e.hook_event_name === 'PostToolUse' && e.tool_name && e.tool_name !== 'SubagentHandback') return null;
+  const mensagem = mensagemDe(e);
 
   const marca = marcaDoInspetor(e);
   // O handback vem antes do SubagentStop e ja tratou este inspetor (gravou, ou avisou): o
@@ -135,10 +161,13 @@ function tratar(e) {
   if (e.hook_event_name === 'SubagentStop' && marca && fs.existsSync(marca)) return null;
 
   const raiz = config.raizDoProjeto(typeof e.cwd === 'string' && e.cwd ? e.cwd : process.cwd());
-  const resultado = gravar(mensagem, raiz);
+  const resultado = avisoDaGravacao(mensagem, raiz);
 
   if (e.hook_event_name === 'PostToolUse' && marca) {
-    try { fs.mkdirSync(path.dirname(marca), { recursive: true }); fs.writeFileSync(marca, '1', 'utf8'); } catch (x) { /* so perde o silencio */ }
+    try { fs.mkdirSync(path.dirname(marca), { recursive: true }); fs.writeFileSync(marca, '1', 'utf8'); } catch (x) {
+      // so perde o silencio: o SubagentStop vai ler de novo. Se ha aviso, diz que ele pode vir duas vezes.
+      if (resultado) return resultado + ' ' + MARCA_FALHOU;
+    }
   }
   return resultado;
 }
@@ -147,7 +176,10 @@ io.blindar(function () {
   io.lerEntrada(function (e) {
     let resultado;
     try { resultado = tratar(e); } catch (erro) {
-      resultado = 'esquadro: nao consegui gravar o veredito (' + (erro && erro.message) + '). Grave esta lente a mao, como antes.';
+      const lente = lenteDaResposta(e);
+      resultado = 'esquadro: nao consegui gravar o veredito ' +
+        (lente ? 'da lente ' + lente : '(nao soube qual lente: a resposta do inspetor nao trazia um JSON legivel)') +
+        ' - erro inesperado (' + (erro && erro.message) + '). ' + comoGravar(lente, null);
     }
     if (resultado) process.stderr.write(resultado + '\n');
     io.permitir(resultado ? { systemMessage: resultado } : undefined);

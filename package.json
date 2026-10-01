@@ -1,6 +1,6 @@
 {
   "name": "esquadro",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "private": true,
   "type": "commonjs",
   "description": "Portoes deterministicos que obrigam o agente a provar em vez de afirmar.",

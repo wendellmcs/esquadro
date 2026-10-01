@@ -32,6 +32,8 @@ function baldesNoCodigo() {
 /** Baldes que CONTAM sem negar: existem de proposito e nao sao bloqueio. */
 const SO_CONTAM = new Set(['agentes_despachados', 'revisao_fechada', 'escopo_ampliado',
   // O gatilho 3 avisa e deixa passar (decisao 15): conta, nunca bloqueia.
-  'apelido_divergente']);
+  'apelido_divergente',
+  // D294: tabela do PowerShell que nao se le avisa e deixa passar: conta, nunca bloqueia.
+  'shell_tabela_quebrada']);
 
 module.exports = { baldesNoCodigo, SO_CONTAM };

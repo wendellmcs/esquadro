@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.3.5 — o `cd` solto lido de uma vez, a tabela do PowerShell que avisa e a auditoria que nao cala
+
+Tudo o que a revisao da 0.3.4 deixou registrado. Nenhum portao novo. Os comportamentos novos vem com
+teste; a suite inteira roda com `npm test`.
+
+- **O `cd` solto se acha numa leitura so do comando.** O detector era uma pilha de filtros, e cada
+  um errava o que o outro ja tinha tirado ou ainda nao. Agora o comando se le de uma vez, no idioma
+  da ferramenta: aspas (com `$'...'` no Bash), comentario, heredoc e here-string, subshell e cada elo
+  de cano no Bash, a subexpressao `$( )` do PowerShell (que roda, mesmo dentro de aspa dupla), chave
+  de hashtable, e se a palavra esta mesmo em posicao de comando. Passam a ser negados: o `cd` depois
+  de um `<<EOF` escrito em comentario, `"$(Set-Location X)"`, o `cd` no braco de um `case`,
+  `` c`d `` e o `cd` depois de uma aspa `$'...'`. Deixam de ser negados: `@{ cd = 1 }`,
+  `Push-Location` sem caminho, `sl\`, `then` e `do` como argumento, `pushd X; ...; popd` no Bash,
+  `echo a | cd X` e a definicao de uma funcao com `cd` (chamar a funcao segue negado). Um `popd`
+  depois de `&&` ou `||` nao conta como volta garantida.
+- **A tabela do PowerShell que nao se le avisa, em vez de calar.** Se `modelos/shell-win32.json` nao
+  se le, ou uma regra dela nao compila, a trava de idioma se desligava calada. Agora o comando passa
+  e sai um aviso, uma vez por sessao, com o arquivo ou a regra e a causa. A tabela tambem passou a
+  ler as aspas como o PowerShell le. O contador ganhou o balde `shell_tabela_quebrada`, que so conta:
+  sao **18 baldes** de contador: 13 que negam, 5 que so contam.
+- **A auditoria diz quando nao leu as regras.** Um `regras.md` que nao se le dava "nenhuma
+  contradicao". Agora a saida ganha a chave `regras`: lidas, ou nao lidas com a causa e o que fazer.
+  A medida do `MEMORY.md` conta linhas e bytes fora da carga a partir do mesmo corte, e a dica de
+  erro muda com a causa (caminho, pasta no lugar do arquivo, permissao).
+- **Os avisos do gravador de vereditos dizem o que fazer.** O aviso traz a lente quando ela se le, e
+  explica como gravar a mao (salvar o JSON do inspetor como `<pasta>/<lente>.json`), em vez de
+  "como antes".
+- **`destrutivo: false` no `projeto.json` desliga tambem o `cd` solto**, como ja fazia; agora o
+  README e o `init` dizem isso, e um teste prende.
+
 ## 0.3.4 — vereditos gravados sozinhos, `cd` solto negado e a memoria medida
 
 Tres pontos medidos no uso da 0.3.3. Os comportamentos novos vem com teste; a suite inteira roda com

@@ -89,6 +89,11 @@ serve para qual papel, e quanto ele aceita pagar. Com os fatos na mão, a pergun
    disparam no mesmo momento significam que **nenhuma das duas dispara de forma confiável.**
 3. **Contradições.** Mesmo gatilho, ações diferentes. Isto não é preferência: é o agente escolhendo
    sozinho qual regra obedecer, que é o mesmo que não ter regra.
+
+   3b. **Regras lidas.** A chave `regras`, ao lado das contradições: `lidas: true` com o `total` de
+   regras, ou `lidas: false` com a `causa`. **`contradicoes: []` só quer dizer "nenhuma contradição"
+   quando `lidas` é `true`.** Com `lidas: false`, diga "regras não lidas" e a `causa` — `ENOENT` é o
+   projeto sem `.claude/esquadro/regras.md`, o que não é erro, mas também não é "nada a cortar".
 4. **Fora da rubrica.** Itens que violam `modelos/boa-skill.md` na parte mecânica.
 5. **Delegáveis.** O que outro plugin instalado já resolve e este projeto reimplementou.
 6. **Cicatriz.** Para cada item de instrução: existe decisão, incidente ou achado atrás dele?

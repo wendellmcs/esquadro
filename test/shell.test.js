@@ -274,9 +274,11 @@ test("shell/cdSolto: PowerShell 'it''s' sao dois literais seguidos e o cd depois
   assert.strictEqual(shell.cdSolto("echo 'it''s; cd x'", 'PowerShell'), null);
 });
 
-test('shell/conferir: a tabela do win32 segue igual - o idioma so entra no cdSolto (T4)', () => {
-  // Com a semLiterais antiga, `\'` dentro de aspa simples nao fechava: o `&&` ficava escondido.
-  assert.deepStrictEqual(shell.conferir("echo 'C:\\a\\' && echo 'b'", WIN), []);
+test('shell/conferir: a tabela do win32 le as aspas do PowerShell - a barra nao escapa a simples (T4, T2/D294)', () => {
+  // 0.3.5/T2 (D294) MUDOU esta expectativa: com a semLiterais antiga (sem idioma), `\'` dentro de
+  // aspa simples nao fechava e o `&&` ficava escondido (era o assert `[]`). No PowerShell
+  // `'C:\a\'` fecha ali mesmo, e o `&&` depois dele e operador de verdade.
+  assert.deepStrictEqual(shell.conferir("echo 'C:\\a\\' && echo 'b'", WIN).map((p) => p.achado), ['&&']);
   // controle positivo: sem aspa o mesmo `&&` e achado
   assert.ok(shell.conferir('echo a && echo b', WIN).length > 0);
 });
@@ -434,4 +436,214 @@ test('D286: o texto que o exportar.js imprime usa forma que a trava aceita', () 
   assert.strictEqual(shell.cdSolto(impresso, 'Bash'), null, 'a trava nega o que o exportar imprime (Bash): ' + impresso);
   assert.strictEqual(shell.cdSolto(impresso, 'PowerShell'), null, 'a trava nega o que o exportar imprime (PowerShell): ' + impresso);
   assert.ok(!/\bcd\b/.test(impresso), 'sobrou cd no texto impresso: ' + impresso);
+});
+
+// 0.3.5/D293: o leitor do `cd` e uma leitura unica do comando. Os 13 casos do plano (1.1) e os 5
+// controles, um teste por caso. Barra e crase saem de fromCharCode para o texto ser exatamente o da tabela.
+const BARRA = String.fromCharCode(92);
+const CRASE = String.fromCharCode(96);
+
+// controles: iguais antes e depois da reescrita
+test('0.3.5/C1: cd x && git status nega (Bash)', () => {
+  assert.ok(shell.cdSolto('cd x && git status', 'Bash'));
+});
+test('0.3.5/C2: subshell com cd passa (Bash)', () => {
+  assert.strictEqual(shell.cdSolto('( cd x && git status )', 'Bash'), null);
+});
+test('0.3.5/C3: Push-Location com try/finally Pop-Location passa (PowerShell)', () => {
+  assert.strictEqual(shell.cdSolto("Push-Location -LiteralPath 'x' -ErrorAction Stop; try { ls } finally { Pop-Location }", 'PowerShell'), null);
+});
+test('0.3.5/C4: Set-Location x nega (PowerShell)', () => {
+  assert.ok(shell.cdSolto('Set-Location x', 'PowerShell'));
+});
+test('0.3.5/C5: funcao definida e chamada no mesmo comando nega (Bash)', () => {
+  assert.ok(shell.cdSolto('f() { cd X; }; f', 'Bash'));
+});
+
+// falsos negativos: tinham de negar e passavam
+test('0.3.5/FN1: <<EOF dentro de comentario nao abre heredoc e o cd da linha seguinte nega (Bash)', () => {
+  assert.ok(shell.cdSolto('# veja <<EOF\ncd x', 'Bash'));
+});
+test('0.3.5/FN2: $( ) dentro de aspa dupla RODA no PowerShell e nega', () => {
+  assert.ok(shell.cdSolto('"$(Set-Location X)"', 'PowerShell'));
+});
+test('0.3.5/FN3: cd no braco de case nega (Bash)', () => {
+  assert.ok(shell.cdSolto('case $x in a) cd y;; esac', 'Bash'));
+});
+test('0.3.5/FN4: crase dentro da palavra escapa o caractere e c`d e cd (PowerShell)', () => {
+  assert.ok(shell.cdSolto('c' + CRASE + 'd x', 'PowerShell'));
+});
+test("0.3.5/FN5: aspa ANSI-C $'it\'s' tem escape e o cd depois nega (Bash)", () => {
+  assert.ok(shell.cdSolto("echo $'it" + BARRA + "'s'; cd x; echo 'ok'", 'Bash'));
+});
+
+// falsos positivos: tinham de passar e negavam
+test('0.3.5/FP1: chave de hashtable @{ cd = 1 } nao e comando (PowerShell)', () => {
+  assert.strictEqual(shell.cdSolto('$h = @{ cd = 1 }', 'PowerShell'), null);
+});
+test('0.3.5/FP2: Push-Location sem caminho so empilha a pasta atual (PowerShell, medido no 5.1)', () => {
+  assert.strictEqual(shell.cdSolto('Push-Location', 'PowerShell'), null);
+});
+test('0.3.5/FP3: sl seguido de barra nao e comando no 5.1, mas cd seguido de barra e', () => {
+  assert.strictEqual(shell.cdSolto('sl' + BARRA, 'PowerShell'), null);
+  const r = shell.cdSolto('cd' + BARRA, 'PowerShell');
+  assert.ok(r && r.achado === 'cd', JSON.stringify(r));
+});
+test('0.3.5/FP4: then como argumento de echo nao e palavra-chave (Bash)', () => {
+  assert.strictEqual(shell.cdSolto('echo then cd x', 'Bash'), null);
+});
+test('0.3.5/FP5: pushd X; ls; popd tem a pilha e passa (Bash)', () => {
+  assert.strictEqual(shell.cdSolto('pushd X; ls; popd', 'Bash'), null);
+});
+test('0.3.5/FP6: cada elo de cano e subshell no bash (echo a | cd X)', () => {
+  assert.strictEqual(shell.cdSolto('echo a | cd X', 'Bash'), null);
+});
+test('0.3.5/FP7: definir funcao nao roda o corpo (Bash)', () => {
+  assert.strictEqual(shell.cdSolto('f() { cd X; }', 'Bash'), null);
+});
+test('0.3.5/FP8: do como argumento de echo nao e palavra-chave (Bash)', () => {
+  assert.strictEqual(shell.cdSolto('echo do cd X', 'Bash'), null);
+});
+
+// obrigatorios alem da tabela (plano 3, T1)
+test('0.3.5/T1: $( ) no Bash e subshell, mesmo dentro de aspa dupla', () => {
+  assert.strictEqual(shell.cdSolto('"$(cd x)"', 'Bash'), null);
+});
+test('0.3.5/T1: a | cd X | b passa (cada elo e subshell)', () => {
+  assert.strictEqual(shell.cdSolto('a | cd X | b', 'Bash'), null);
+});
+test('0.3.5/T1: pushd X sem popd nega; popd sobrando passa (Bash)', () => {
+  const r = shell.cdSolto('pushd X', 'Bash');
+  assert.ok(r && r.achado === 'pushd', JSON.stringify(r));
+  assert.strictEqual(shell.cdSolto('popd; ls', 'Bash'), null);
+});
+// T4 (ronda 2, correcao): popd depois de && ou || so roda se o comando de antes der certo (ou
+// errado); quando nao roda, a sessao fica na pasta do pushd. Pop condicional nao desempilha.
+test('0.3.5/T4: popd depois de && ou || nao desempilha: pushd sobra e nega (Bash)', () => {
+  for (const c of ['pushd sub && npm test && popd', 'pushd sub && npm test || popd',
+    'pushd sub; npm test && popd', 'pushd sub; npm test || popd', 'pushd sub && npm test &&\npopd']) {
+    const r = shell.cdSolto(c, 'Bash');
+    assert.ok(r && r.achado === 'pushd', JSON.stringify(c) + ' -> ' + JSON.stringify(r));
+  }
+});
+test('0.3.5/T4: popd depois de ; ou de quebra de linha desempilha e passa (Bash)', () => {
+  for (const c of ['pushd sub && npm test; popd', 'pushd sub && npm test\npopd', 'pushd sub || exit 1; make; popd',
+    'pushd sub && (make)\npopd']) {
+    assert.strictEqual(shell.cdSolto(c, 'Bash'), null, JSON.stringify(c));
+  }
+});
+test('0.3.5/T1: cd fora do braco do case nega (Bash)', () => {
+  assert.ok(shell.cdSolto('case $x in a) ls;; esac; cd y', 'Bash'));
+});
+test('0.3.5/T1: then e do como argumento de echo depois de ; passam (Bash)', () => {
+  assert.strictEqual(shell.cdSolto('ls; echo then cd x', 'Bash'), null);
+  assert.strictEqual(shell.cdSolto('ls; echo do cd x', 'Bash'), null);
+});
+test('0.3.5/T1: palavra-chave em posicao de comando segue valendo (if/then, for/do)', () => {
+  assert.ok(shell.cdSolto('if true; then cd x; fi', 'Bash'));
+  assert.ok(shell.cdSolto('for i in 1; do cd x; done', 'Bash'));
+});
+
+// ---- 0.3.5/T2 (D294): a tabela que nao se le avisa; o `conferir` le as aspas como o PowerShell
+
+const TABELA_REAL = fs.readFileSync(path.join(__dirname, '..', 'modelos', 'shell-win32.json'), 'utf8');
+
+/**
+ * Carrega uma COPIA do shell.js ao lado de um modelos/shell-win32.json escolhido pelo teste (o
+ * caminho da tabela e relativo ao __dirname). `conteudo === null` = sem o arquivo.
+ */
+function shellComTabela(conteudo) {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-shell-tabela-'));
+  fs.mkdirSync(path.join(base, 'scripts', 'lib'), { recursive: true });
+  fs.mkdirSync(path.join(base, 'modelos'), { recursive: true });
+  fs.copyFileSync(path.join(__dirname, '..', 'scripts', 'lib', 'shell.js'), path.join(base, 'scripts', 'lib', 'shell.js'));
+  if (conteudo !== null) fs.writeFileSync(path.join(base, 'modelos', 'shell-win32.json'), conteudo, 'utf8');
+  try { return require(path.join(base, 'scripts', 'lib', 'shell.js')); } finally { fs.rmSync(base, { recursive: true, force: true }); }
+}
+
+test('0.3.5/T2: aspa simples com barra no PowerShell nao esconde o que vem depois', () => {
+  // `'a\'` e um literal inteiro no PowerShell (a barra nao escapa); o `head` depois do `;` e comando
+  const p = shell.conferir("Write-Output 'a\\'; head -3 x; Write-Output 'b'", WIN, 'PowerShell');
+  assert.deepStrictEqual(p.map((x) => x.achado), ['head']);
+});
+
+test('0.3.5/T2: aspa dupla dentro de aspa simples nao esconde a palavra entre os dois literais', () => {
+  // 'x"' e "z'" sao dois literais; o `head` entre eles e argumento solto (a tabela e textual)
+  const p = shell.conferir('Write-Output \'x"\' head "z\'"', WIN, 'PowerShell');
+  assert.deepStrictEqual(p.map((x) => x.achado), ['head']);
+});
+
+test('0.3.5/T2: o que esta DENTRO de literal com barra ou aspa cruzada continua nao sendo apontado', () => {
+  assert.deepStrictEqual(shell.conferir("Write-Output 'a\\' 'head' 'b'", WIN, 'PowerShell'), []);
+  assert.deepStrictEqual(shell.conferir('Write-Output \'x"\' "tail" "z\'"', WIN, 'PowerShell'), []);
+  // controle: o que a tabela ja negava segue negado, com e sem literal por perto
+  assert.deepStrictEqual(shell.conferir("Write-Output 'oi'; ls | head", WIN, 'PowerShell').map((x) => x.achado), ['head']);
+  assert.deepStrictEqual(shell.conferir('git status && git log', WIN, 'PowerShell').map((x) => x.achado), ['&&']);
+});
+
+test('0.3.5/T2: tabela real legivel nao tem problema, e a lista so vale onde a tabela valeria', () => {
+  assert.deepStrictEqual(shell.problemasDaTabela(WIN, 'PowerShell'), []);
+  assert.deepStrictEqual(shell.problemasDaTabela(WIN), []);
+  const ruim = shellComTabela('{ nao e json');
+  assert.strictEqual(ruim.problemasDaTabela(WIN, 'PowerShell').length, 1);
+  // fora do win32 e na ferramenta Bash a tabela nao vale: nada a avisar
+  assert.deepStrictEqual(ruim.problemasDaTabela(LINUX, 'PowerShell'), []);
+  assert.deepStrictEqual(ruim.problemasDaTabela(WIN, 'Bash'), []);
+  assert.deepStrictEqual(ruim.problemasDaTabela(null, 'PowerShell'), []);
+});
+
+test('0.3.5/T2: tabela ilegivel expoe o arquivo e a causa, e o conferir segue sem negar', () => {
+  const quebrada = shellComTabela('{ "quando": ');
+  const p = quebrada.problemasDaTabela(WIN, 'PowerShell');
+  assert.strictEqual(p.length, 1, JSON.stringify(p));
+  assert.strictEqual(p[0].tipo, 'arquivo');
+  assert.ok(p[0].onde.endsWith('shell-win32.json'), JSON.stringify(p[0]));
+  assert.ok(/SyntaxError/.test(p[0].causa), JSON.stringify(p[0]));
+  assert.deepStrictEqual(quebrada.conferir('ls | head', WIN, 'PowerShell'), [], 'sem tabela nao se nega');
+
+  const ausente = shellComTabela(null);
+  const a = ausente.problemasDaTabela(WIN, 'PowerShell');
+  assert.strictEqual(a.length, 1);
+  assert.strictEqual(a[0].causa, 'ENOENT', JSON.stringify(a[0]));
+
+  // arquivo que e JSON mas nao e tabela (lista no lugar de objeto) tambem nao se le
+  const lista = shellComTabela('[]');
+  assert.strictEqual(lista.problemasDaTabela(WIN, 'PowerShell').length, 1);
+  assert.deepStrictEqual(lista.conferir('ls | head', WIN, 'PowerShell'), []);
+});
+
+test('0.3.5/T2: regra com RegExp invalida expoe o achado dela, e as outras regras seguem valendo', () => {
+  const tabela = JSON.parse(TABELA_REAL);
+  tabela.regras.push({ padrao: '(aberto', achado: 'regra-quebrada', sugestao: 'x', motivo: 'y' });
+  tabela.regrasPowerShell51[0] = { padrao: '[', achado: '&&', sugestao: 'x', motivo: 'y' };
+  const s = shellComTabela(JSON.stringify(tabela));
+  const p = s.problemasDaTabela(WIN, 'PowerShell');
+  assert.deepStrictEqual(p.map((x) => x.achado), ['regra-quebrada', '&&'], JSON.stringify(p));
+  assert.ok(p.every((x) => x.tipo === 'regra' && x.causa), JSON.stringify(p));
+  // controle: o que a tabela negava segue negado
+  assert.deepStrictEqual(s.conferir('ls | head', WIN, 'PowerShell').map((x) => x.achado), ['head']);
+  // a regra do PowerShell 5.1 so entra no conjunto do shell powershell
+  assert.deepStrictEqual(s.problemasDaTabela({ so: 'win32', shell: 'bash' }, 'PowerShell').map((x) => x.achado),
+    ['regra-quebrada']);
+});
+
+test('0.3.5/T2: regra sem padrao em texto nao vira "casa tudo": e problema, e nao nega', () => {
+  const tabela = JSON.parse(TABELA_REAL);
+  tabela.regras = [{ achado: 'sem-padrao', sugestao: 'x', motivo: 'y' }, null];
+  const s = shellComTabela(JSON.stringify(tabela));
+  assert.deepStrictEqual(s.conferir('echo oi', WIN, 'PowerShell'), []);
+  assert.deepStrictEqual(s.problemasDaTabela(WIN, 'PowerShell').map((x) => x.achado), ['sem-padrao', '(sem achado)']);
+});
+
+test('0.3.5/T2: o texto do aviso nomeia o arquivo ou a regra e a causa, em ASCII', () => {
+  const quebrada = shellComTabela('{ "quando": ');
+  const t = quebrada.avisoTabela(quebrada.problemasDaTabela(WIN, 'PowerShell'));
+  assert.ok(t.includes('shell-win32.json') && /SyntaxError/.test(t), t);
+  assert.ok(/desligada/i.test(t), t);
+  const tabela = JSON.parse(TABELA_REAL);
+  tabela.regras.push({ padrao: '(aberto', achado: 'regra-quebrada', sugestao: 'x', motivo: 'y' });
+  const s = shellComTabela(JSON.stringify(tabela));
+  const r = s.avisoTabela(s.problemasDaTabela(WIN, 'PowerShell'));
+  assert.ok(r.includes('regra-quebrada'), r);
+  for (const x of [t, r]) assert.ok(/^[\x20-\x7E\n]+$/.test(x), 'aviso tem de ser ASCII: ' + x);
 });

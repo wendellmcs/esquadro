@@ -118,7 +118,8 @@ test('memoria: acima de 200 linhas diz quantas ficam de fora, e que foram as lin
     assert.strictEqual(m.bytes, 500);
     assert.strictEqual(m.cabe, false);
     assert.strictEqual(m.primeiro, 'linhas');
-    assert.deepStrictEqual(m.foraDaCarga, { linhas: 50, bytes: 0 });
+    // 0.3.5 (H): as duas medidas saem do mesmo corte; cortou por linhas, os bytes de fora sao os da linha 201 em diante (500 - 400).
+    assert.deepStrictEqual(m.foraDaCarga, { linhas: 50, bytes: 100 });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -130,7 +131,8 @@ test('memoria: acima de 25.000 bytes com menos de 200 linhas diz quantos bytes f
     assert.strictEqual(m.bytes, 50 * 601);
     assert.strictEqual(m.cabe, false);
     assert.strictEqual(m.primeiro, 'bytes');
-    assert.deepStrictEqual(m.foraDaCarga, { linhas: 0, bytes: 50 * 601 - 25000 });
+    // 0.3.5 (H): cortou por bytes, as linhas de fora sao as que nao cabem inteiras: 41 cabem, a 42a e cortada no meio (50 - 41).
+    assert.deepStrictEqual(m.foraDaCarga, { linhas: 9, bytes: 50 * 601 - 25000 });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -140,11 +142,13 @@ test('memoria: estourando os dois, "primeiro" e o limite que corta antes', () =>
     // 300 linhas de 100 bytes: a linha 201 comeca no byte 20.200 (antes de 25.000) -> linhas primeiro.
     const a = aud.medirMemoria(memoria(dir, linhas(300, 100)));
     assert.strictEqual(a.primeiro, 'linhas');
-    assert.deepStrictEqual(a.foraDaCarga, { linhas: 100, bytes: 300 * 101 - 25000 });
+    // 0.3.5 (H): cortou por linhas -> bytes de fora = os da linha 201 (byte 20.200) em diante.
+    assert.deepStrictEqual(a.foraDaCarga, { linhas: 100, bytes: 300 * 101 - 20200 });
     // 300 linhas de 200 bytes: a linha 201 comeca no byte 40.200 (depois de 25.000) -> bytes primeiro.
     const b = aud.medirMemoria(memoria(dir, linhas(300, 200)));
     assert.strictEqual(b.primeiro, 'bytes');
-    assert.deepStrictEqual(b.foraDaCarga, { linhas: 100, bytes: 300 * 201 - 25000 });
+    // 0.3.5 (H): cortou por bytes -> cabem 124 linhas inteiras nos 25.000 bytes; as outras 176 ficam de fora.
+    assert.deepStrictEqual(b.foraDaCarga, { linhas: 300 - 124, bytes: 300 * 201 - 25000 });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -261,5 +265,151 @@ test('memoria: auditar.js --memoria mede; sem o argumento, ou com ele vazio, diz
     const falta = rodar(['--memoria', path.join(dir, 'nada.md')]);
     assert.strictEqual(falta.memoria.causa, 'ENOENT');
     assert.deepStrictEqual(com.peso, sem.peso, 'o peso nao muda com a memoria');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ---------------------------------------------------------------- 0.3.5 T3: a auditoria que nao cala
+// Cada teste abaixo foi escrito antes da mudanca e visto falhar contra o codigo da 0.3.4.
+
+function regrasMd(dir, conteudo) {
+  const alvo = path.join(dir, '.claude', 'esquadro', 'regras.md');
+  fs.mkdirSync(path.dirname(alvo), { recursive: true });
+  fs.writeFileSync(alvo, conteudo);
+  return alvo;
+}
+
+/** Roda `fn` com fs.readFileSync trocado por uma versao que falha com `codigo` so para o MEMORY.md. */
+function comLeituraQueFalha(codigo, fn) {
+  const original = fs.readFileSync;
+  fs.readFileSync = function (p) {
+    if (/MEMORY\.md$/.test(String(p))) { const e = new Error(codigo); e.code = codigo; throw e; }
+    return original.apply(fs, arguments);
+  };
+  try { return fn(); } finally { fs.readFileSync = original; }
+}
+
+test('regras (A): regras.md lido diz lidas e o total; contradicoes segue existindo', () => {
+  const dir = pasta('regras-lidas');
+  try {
+    regrasMd(dir, '- ao fechar tarefa -> colar a saida\n- ao fechar tarefa -> resumir\n- ao editar -> rodar git status\nprosa solta -> sem item de lista\n');
+    const r = aud.auditar(dir, {});
+    assert.deepStrictEqual(r.regras, { lidas: true, total: 3 });
+    assert.strictEqual(r.contradicoes.length, 1);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('regras (A): sem regras.md diz "nao lidas" com ENOENT e o motivo, sem ser erro', () => {
+  const dir = pasta('regras-ausente');
+  try {
+    const r = aud.auditar(dir, {});
+    assert.strictEqual(r.regras.lidas, false);
+    assert.strictEqual(r.regras.causa, 'ENOENT');
+    assert.ok(/regras\.md/.test(r.regras.motivo), r.regras.motivo);
+    assert.ok(!/erro/i.test(r.regras.motivo), 'ausencia nao e erro: ' + r.regras.motivo);
+    // T4 (ronda 1, microcopy): o motivo diz o que fazer, nao so o que nao rodou.
+    assert.ok(/\/esquadro:init/.test(r.regras.motivo), 'faltou dizer o que fazer: ' + r.regras.motivo);
+    assert.deepStrictEqual(r.contradicoes, []);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('regras (A): regras.md que existe e nao se le diz "nao lidas" com o codigo, e nao vira "nenhuma contradicao" calada', () => {
+  const dir = pasta('regras-ilegivel');
+  try {
+    // uma pasta no lugar do arquivo: existe, e nao se le (EISDIR, nao ENOENT)
+    fs.mkdirSync(path.join(dir, '.claude', 'esquadro', 'regras.md'), { recursive: true });
+    const r = aud.auditar(dir, {});
+    assert.strictEqual(r.regras.lidas, false);
+    assert.strictEqual(r.regras.causa, 'EISDIR');
+    assert.ok(/EISDIR/.test(r.regras.motivo) && /regras\.md/.test(r.regras.motivo), r.regras.motivo);
+    assert.ok(/rode \/esquadro:auditar de novo/.test(r.regras.motivo), 'faltou dizer o que fazer: ' + r.regras.motivo);
+    assert.deepStrictEqual(r.contradicoes, []);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('regras (A): auditar.js tambem traz a chave regras', () => {
+  const dir = pasta('regras-cli');
+  try {
+    regrasMd(dir, '- ao editar -> rodar git status\n');
+    const r = spawnSync(process.execPath, [SCRIPT], { cwd: dir, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.deepStrictEqual(JSON.parse(r.stdout).regras, { lidas: true, total: 1 });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('memoria (F): a dica do erro depende do codigo (caminho, pasta, permissao)', () => {
+  const dir = pasta('dica');
+  try {
+    const enoent = aud.medirMemoria(path.join(dir, 'nada', 'MEMORY.md'));
+    assert.ok(/confira o caminho/.test(enoent.motivo), enoent.motivo);
+    const pastaNoLugar = aud.medirMemoria(dir);
+    assert.strictEqual(pastaNoLugar.causa, 'EISDIR');
+    assert.ok(/e uma pasta/.test(pastaNoLugar.motivo) && /passe o arquivo/.test(pastaNoLugar.motivo), pastaNoLugar.motivo);
+    assert.ok(!/confira o caminho/.test(pastaNoLugar.motivo), 'pasta nao e "caminho errado": ' + pastaNoLugar.motivo);
+    for (const codigo of ['EACCES', 'EPERM']) {
+      const m = comLeituraQueFalha(codigo, function () { return aud.medirMemoria(path.join(dir, 'MEMORY.md')); });
+      assert.strictEqual(m.causa, codigo);
+      assert.ok(/permissao/.test(m.motivo), codigo + ': ' + m.motivo);
+      assert.ok(!/confira o caminho/.test(m.motivo), codigo + ' nao e caminho errado: ' + m.motivo);
+    }
+    const enotdir = comLeituraQueFalha('ENOTDIR', function () { return aud.medirMemoria(path.join(dir, 'MEMORY.md')); });
+    assert.ok(/confira o caminho/.test(enotdir.motivo), enotdir.motivo);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('memoria (G): opcoes.memoria que nao e texto vira "nao medida" com caminho-invalido, nunca o caminho "true"', () => {
+  const dir = pasta('naotexto');
+  try {
+    // um arquivo chamado "true" na pasta: se true virasse o caminho, ele seria lido e medido
+    fs.writeFileSync(path.join(dir, 'true'), 'x\n');
+    for (const invalido of [true, 5, {}, ['MEMORY.md']]) {
+      const m = aud.auditar(dir, {}, { memoria: invalido }).memoria;
+      assert.strictEqual(m.medida, false, JSON.stringify(invalido));
+      assert.strictEqual(m.causa, 'caminho-invalido', JSON.stringify(invalido));
+      assert.ok(/nao medida/.test(m.motivo) && /--memoria/.test(m.motivo), m.motivo);
+    }
+    // o que ja valia segue valendo: vazio = sem-caminho, texto = mede
+    assert.strictEqual(aud.auditar(dir, {}, { memoria: '' }).memoria.causa, 'sem-caminho');
+    assert.strictEqual(aud.auditar(dir, {}, { memoria: 'true' }).memoria.medida, true);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('memoria (H): linhas cortam primeiro -> os bytes de fora contam a partir do byte onde a linha 201 comeca', () => {
+  const dir = pasta('corte-linhas');
+  try {
+    // 300 linhas de 101 bytes: a linha 201 comeca no byte 20.200 (antes de 25.000) -> linhas cortam.
+    const a = aud.medirMemoria(memoria(dir, linhas(300, 100)));
+    assert.strictEqual(a.primeiro, 'linhas');
+    assert.deepStrictEqual(a.foraDaCarga, { linhas: 100, bytes: 300 * 101 - 200 * 101 });
+    // so as linhas estouram: 250 linhas de 2 bytes = 500; a linha 201 comeca no byte 400.
+    const b = aud.medirMemoria(memoria(dir, linhas(250, 1)));
+    assert.strictEqual(b.primeiro, 'linhas');
+    assert.deepStrictEqual(b.foraDaCarga, { linhas: 50, bytes: 100 });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('memoria (H): bytes cortam primeiro -> as linhas de fora sao as que nao cabem inteiras nos 25.000 bytes', () => {
+  const dir = pasta('corte-bytes');
+  try {
+    // 50 linhas de 601 bytes: cabem 41 inteiras (24.641); a 42a comeca no byte 24.641 e e cortada no meio -> conta como fora.
+    const a = aud.medirMemoria(memoria(dir, linhas(50, 600)));
+    assert.strictEqual(a.primeiro, 'bytes');
+    assert.deepStrictEqual(a.foraDaCarga, { linhas: 9, bytes: 50 * 601 - 25000 });
+    // 300 linhas de 201 bytes: a linha 201 comeca no byte 40.200 -> bytes cortam; cabem 124 inteiras.
+    const b = aud.medirMemoria(memoria(dir, linhas(300, 200)));
+    assert.strictEqual(b.primeiro, 'bytes');
+    assert.deepStrictEqual(b.foraDaCarga, { linhas: 300 - 124, bytes: 300 * 201 - 25000 });
+    // 25 linhas de 1.000 bytes = 25.000 exatos, mais "y\n": a linha 26 comeca no byte 25.000 e e a unica de fora.
+    const c = aud.medirMemoria(memoria(dir, linhas(25, 999) + 'y\n'));
+    assert.strictEqual(c.primeiro, 'bytes');
+    assert.deepStrictEqual(c.foraDaCarga, { linhas: 1, bytes: 2 });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('memoria (H): o metodo diz que a linha cortada no meio conta como de fora', () => {
+  const dir = pasta('metodo-corte');
+  try {
+    const m = aud.medirMemoria(memoria(dir, linhas(3, 3)));
+    assert.ok(/cortada no meio/.test(m.metodo) && /fora/.test(m.metodo), m.metodo);
+    assert.ok(/mesmo corte/.test(m.metodo), 'as duas medidas saem do mesmo corte: ' + m.metodo);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
