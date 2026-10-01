@@ -243,7 +243,7 @@ test('publicacao: a linha "So logica" do revisar diz LENTES.length - 1, e a lent
 const TRAVA_DO_BALDE = {
   fecho_sem_evidencia: 3, subitem_pendente: 3,
   fora_do_escopo: 4, sem_escopo: 4, intocavel: 4,
-  comando_destrutivo: 5, shell_idioma_errado: 5, outra_frente: 5,
+  comando_destrutivo: 5, shell_idioma_errado: 5, outra_frente: 5, cd_solto: 5,
   agente_caro_em_marcha_rapida: 6, criou_sem_buscar: 7, catraca_afrouxada: 8,
   // o modulo de design nega, mas e opcional e nao e trava: so existe com design.json
   token_fora_do_sistema: null

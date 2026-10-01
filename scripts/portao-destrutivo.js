@@ -45,9 +45,20 @@ io.blindar(function () {
     }
 
     const r = destrutivo.classificar(comando, projeto);
-    if (!r.destrutivo) return io.permitir();
+    if (r.destrutivo) {
+      estado.incrementar(e.session_id, 'comando_destrutivo');
+      return io.negarFerramenta(destrutivo.motivo(comando, r));
+    }
 
-    estado.incrementar(e.session_id, 'comando_destrutivo');
-    io.negarFerramenta(destrutivo.motivo(comando, r));
+    // 0.3.4/item 2 (D286): por ULTIMO, depois do escape e dos dois portoes acima - o que ja era
+    // negado segue negado pelo mesmo motivo e no mesmo balde. O `cd` solto deixa a pasta errada
+    // para o comando seguinte; a mensagem mostra a forma certa.
+    const solto = shell.cdSolto(comando, e.tool_name, projeto && projeto.plataforma);
+    if (solto) {
+      estado.incrementar(e.session_id, 'cd_solto');
+      return io.negarFerramenta(shell.motivoCdSolto(comando, solto));
+    }
+
+    io.permitir();
   });
 });

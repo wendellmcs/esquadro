@@ -44,7 +44,8 @@ que não encontrou — **não** invente elogio. Inspetor que só elogia é inspe
 
 ```json
 {
-  "lente": "<a lente que voce recebeu>",
+  "lente": "<a chave da lente que voce recebeu, entre parenteses no briefing>",
+  "vereditos": "<a pasta de vereditos que o briefing passou, copiada sem mexer>",
   "melhor": "A | B | empate",
   "porQue": "<uma frase, citando arquivo:linha>",
   "achados": [
@@ -58,6 +59,10 @@ que não encontrou — **não** invente elogio. Inspetor que só elogia é inspe
   ]
 }
 ```
+
+O campo `vereditos` é só o caminho que o briefing passou: copie-o sem mexer e **não abra** a pasta. É por
+ele que o hook do plugin sabe onde gravar o seu veredito; sem ele (ou com um caminho errado), o veredito
+não é gravado e volta a ser gravado à mão.
 
 Se não achou nada: `"achados": []`. Isso é resposta legítima e barata — **é melhor do que inventar.**
 

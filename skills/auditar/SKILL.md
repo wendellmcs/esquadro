@@ -11,7 +11,12 @@ os que importam**. Esta skill não acrescenta: ela poda.
 
 ## Passo 1 — medir
 
-    node "${CLAUDE_PLUGIN_ROOT}/scripts/auditar.js"
+    node "${CLAUDE_PLUGIN_ROOT}/scripts/auditar.js" --memoria "<pasta de memória>/MEMORY.md"
+
+**O caminho do `MEMORY.md` é você quem passa**, e o script não o adivinha: a pasta de memória
+persistente está na sua própria instrução de sistema (a seção de memória dá o caminho da pasta); o
+arquivo é `MEMORY.md` dentro dela. **Sessão sem memória persistente: rode sem o argumento.** A chave
+`memoria` da saída volta "não medida" com a causa, e o relatório diz isso — não some calada.
 
 ## Passo 1b — o catálogo de modelos ainda é o que este projeto supõe?
 
@@ -73,6 +78,13 @@ serve para qual papel, e quanto ele aceita pagar. Com os fatos na mão, a pergun
 
 1. **Peso contra o teto.** Total, os três arquivos que mais pesam, e o método da contagem ao lado do
    número. Número sem método é opinião com casas decimais.
+
+   1b. **Memória carregada.** A chave `memoria`, **à parte do peso** — ela não soma no teto. Mostre
+   linhas, bytes, a maior linha (número e bytes) e **o que fica de fora da carga**: só as primeiras
+   200 linhas ou 25 KB do `MEMORY.md` entram na sessão, o que vier primeiro, e o que passa disso o
+   agente nunca vê. Diga qual limite cortou primeiro (`primeiro`) e que "25 KB" foi lido como
+   25.000 bytes (a nota vem na saída). Se vier `medida: false`, diga "memória não medida" e a
+   `causa`; não invente número.
 2. **Sobreposições.** Pares de skills cujos gatilhos disputam a mesma situação. Duas skills que
    disparam no mesmo momento significam que **nenhuma das duas dispara de forma confiável.**
 3. **Contradições.** Mesmo gatilho, ações diferentes. Isto não é preferência: é o agente escolhendo

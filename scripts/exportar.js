@@ -146,7 +146,7 @@ function main() {
   console.log('');
   console.log('Confira ANTES de commitar:');
   console.log('  node "' + path.join(destinoPedido, 'scripts', 'sanitar.js') + '" --raiz "' + destinoPedido + '"');
-  console.log('  cd "' + destinoPedido + '" && npm test');
+  console.log('  npm --prefix "' + destinoPedido + '" test');
   process.exit(0);
 }
 

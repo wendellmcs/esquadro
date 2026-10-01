@@ -307,6 +307,129 @@ test('fiacao: o portao de shell responde ANTES do de comando destrutivo (R-T23-0
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// ---- 0.3.4/item 2 (D286): o `cd` solto e negado, com balde proprio e depois das outras conferencias
+
+const PLATAFORMA_LINUX = { so: 'linux', shell: 'bash' };
+
+function chamar(dir, id, ferramenta, comando) {
+  const r = rodar('portao-destrutivo.js', dir,
+    { session_id: id, cwd: dir, tool_name: ferramenta, tool_input: { command: comando } });
+  assert.strictEqual(r.status, 0, r.stderr);
+  return r;
+}
+
+test('fiacao: portao nega o cd solto no Bash, ensina o subshell e conta no balde cd_solto (D286)', () => {
+  const dir = temp('cd-bash');
+  try {
+    comPlataforma(dir, PLATAFORMA_LINUX);
+    const r = chamar(dir, 'cd1', 'Bash', 'cd sub && git status');
+    const motivo = motivoNegado(r);
+    assert.ok(motivo, 'o portao tinha de ter negado; stdout: ' + JSON.stringify(r.stdout));
+    assert.ok(/cd solto/i.test(motivo), motivo);
+    assert.ok(motivo.includes('( cd '), 'faltou a forma certa (subshell): ' + motivo);
+    assert.ok(motivo.includes('cd sub && git status'), 'faltou o comando negado: ' + motivo);
+
+    const s = lerSessao(dir, 'cd1');
+    assert.ok(s, 'o portao tinha de ter gravado estado de sessao');
+    assert.strictEqual(s.contadores.cd_solto, 1, JSON.stringify(s));
+    assert.strictEqual(s.contadores.shell_idioma_errado, undefined, 'cd solto nao e idioma errado: ' + JSON.stringify(s));
+    assert.strictEqual(s.contadores.comando_destrutivo, undefined, JSON.stringify(s));
+
+    chamar(dir, 'cd1', 'Bash', 'echo a; pushd sub');
+    assert.strictEqual(lerSessao(dir, 'cd1').contadores.cd_solto, 2, 'a segunda negacao tem de somar no mesmo balde');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('fiacao: portao nega o cd solto no PowerShell e ensina Push-Location com Pop-Location (D286)', () => {
+  const dir = temp('cd-ps');
+  try {
+    comPlataforma(dir, PLATAFORMA_WIN);
+    // `npm test` nao esta na tabela do idioma: quem nega aqui e o cd solto
+    const r = chamar(dir, 'cd2', 'PowerShell', 'Set-Location sub; npm test');
+    const motivo = motivoNegado(r);
+    assert.ok(motivo, 'o portao tinha de ter negado; stdout: ' + JSON.stringify(r.stdout));
+    assert.ok(/cd solto/i.test(motivo), motivo);
+    assert.ok(motivo.includes('Push-Location -LiteralPath') && motivo.includes('Pop-Location'), motivo);
+    assert.ok(!motivo.includes('( cd '), 'o PowerShell nao recebe o subshell do Bash: ' + motivo);
+    assert.strictEqual(lerSessao(dir, 'cd2').contadores.cd_solto, 1);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('fiacao: o cd solto e negado em qualquer plataforma declarada, e sem plataforma nenhuma (D286)', () => {
+  // A trava nao e a tabela do win32: a pasta persiste nos dois.
+  for (const plataforma of [PLATAFORMA_LINUX, { so: 'darwin', shell: 'zsh' }, PLATAFORMA_WIN, null]) {
+    const dir = temp('cd-plataforma');
+    try {
+      if (plataforma) comPlataforma(dir, plataforma);
+      const r = chamar(dir, 'cd3', 'Bash', 'cd sub && git status');
+      assert.ok(motivoNegado(r), JSON.stringify(plataforma) + ' -> ' + JSON.stringify(r.stdout));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+test('fiacao: chamada sem tool_name - a plataforma declarada escolhe o idioma do cd solto (D286)', () => {
+  const dir = temp('cd-sem-ferramenta');
+  try {
+    comPlataforma(dir, PLATAFORMA_WIN);
+    const ps = motivoNegado(chamar(dir, 'cd8', undefined, 'Set-Location sub; npm test'));
+    assert.ok(ps && ps.includes('Push-Location -LiteralPath'), 'win32/powershell tinha de ler como PowerShell: ' + ps);
+    comPlataforma(dir, PLATAFORMA_LINUX);
+    const sh = motivoNegado(chamar(dir, 'cd9', undefined, 'cd sub && npm test'));
+    assert.ok(sh && sh.includes('( cd '), 'linux/bash tinha de ler como Bash: ' + sh);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('fiacao: o subshell e o PowerShell com Pop-Location passam calados e sem encher balde (D286)', () => {
+  const dir = temp('cd-passa');
+  try {
+    comPlataforma(dir, PLATAFORMA_WIN);
+    const b = chamar(dir, 'cd4', 'Bash', '( cd sub && git status )');
+    assert.strictEqual(b.stdout, '', 'o subshell tem de passar calado: ' + b.stdout);
+    const p = chamar(dir, 'cd4', 'PowerShell',
+      "Push-Location -LiteralPath 'sub' -ErrorAction Stop; try { npm test } finally { Pop-Location }");
+    assert.strictEqual(p.stdout, '', 'a forma medida tem de passar calada: ' + p.stdout);
+    assert.strictEqual(lerSessao(dir, 'cd4'), null, 'permitir nao enche balde de contador');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('fiacao: o comandosLiberados continua liberando o cd solto, e o cd_solto nao conta (D286)', () => {
+  const dir = temp('cd-liberado');
+  try {
+    escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'),
+      JSON.stringify({ plataforma: PLATAFORMA_LINUX, comandosLiberados: ['^cd sub && git status$'] }));
+    const r = chamar(dir, 'cd5', 'Bash', 'cd sub && git status');
+    assert.strictEqual(r.stdout, '', 'o escape declarado tinha de liberar: ' + r.stdout);
+    assert.strictEqual(lerSessao(dir, 'cd5'), null, 'liberado nao enche balde');
+    // controle: o escape e por padrao - outro cd solto continua negado
+    assert.ok(motivoNegado(chamar(dir, 'cd5', 'Bash', 'cd outra && git status')), 'o escape nao podia liberar tudo');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('fiacao: idioma errado e comando destrutivo respondem ANTES do cd solto, no balde de sempre (D286)', () => {
+  const dir = temp('cd-ordem');
+  try {
+    // idioma: `head` no PowerShell 5.1, junto de um cd solto
+    comPlataforma(dir, PLATAFORMA_WIN);
+    const i = chamar(dir, 'cd6', 'PowerShell', 'Set-Location sub; head -5 notas.txt');
+    const mi = motivoNegado(i);
+    assert.ok(mi && /idioma de shell errado/i.test(mi), 'respondeu o portao errado: ' + mi);
+    let s = lerSessao(dir, 'cd6');
+    assert.strictEqual(s.contadores.shell_idioma_errado, 1, JSON.stringify(s));
+    assert.strictEqual(s.contadores.cd_solto, undefined, 'o balde do cd solto nao pode encher: ' + JSON.stringify(s));
+
+    // destrutivo: `rm -rf build` na ferramenta Bash, junto de um cd solto
+    comPlataforma(dir, PLATAFORMA_LINUX);
+    assert.strictEqual(destrutivoLib.classificar('cd sub && rm -rf build', null).destrutivo, true,
+      'o comando de controle tem de ser destrutivo');
+    const d = chamar(dir, 'cd7', 'Bash', 'cd sub && rm -rf build');
+    const md = motivoNegado(d);
+    assert.ok(md && !/cd solto/i.test(md), 'respondeu o portao errado: ' + md);
+    s = lerSessao(dir, 'cd7');
+    assert.strictEqual(s.contadores.comando_destrutivo, 1, JSON.stringify(s));
+    assert.strictEqual(s.contadores.cd_solto, undefined, 'o balde do cd solto nao pode encher: ' + JSON.stringify(s));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('fiacao: abertura avisa quando OUTRA sessao detem o plano ativo (R-T25-01, F17)', () => {
   const dir = temp('plano-outro');
   try {

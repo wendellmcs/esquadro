@@ -51,16 +51,22 @@ Leia as lentes do arquivo, **não de memória**. Despache todos no mesmo disparo
 
 Briefing de cada um, exatamente nesta forma:
 
-> Sua lente é **<titulo>**: <pergunta>.
+> Sua lente é **<titulo>** (`<chave>`): <pergunta>.
 > Leia apenas estes dois arquivos: `<caminho de A.txt>` e `<caminho de B.txt>`.
 > Leia também `<caminho de regua.md>`: é a régua do projeto. Achado de valor fora da régua cita o valor dela.
+> Pasta de vereditos: `<caminho de vereditos>`. Não a abra: copie o caminho, sem mexer, no campo `vereditos` do JSON, e ponha a chave da lente (`<chave>`) no campo `lente`.
 > Não abra o repositório. Não abra `mapa.json`. Devolva só o JSON do seu formato.
 
 A linha da régua só entra quando a saída do Passo 1 traz `regua` com um caminho. Quando traz
 `semRegua`, diga ao usuário que a revisão rodou **sem régua do projeto** — o inspetor julgou pelo
 bom senso, não pelo sistema declarado.
 
-Grave cada resposta no caminho `vereditos` da saída do Passo 1, como `<lente>.json`.
+**Quem grava é o hook** (`scripts/gravar-veredito.js`, no `SubagentStop` do inspetor e no handback do subagente): ele
+tira o JSON da resposta e o grava em `<lente>.json` na pasta `vereditos` que o inspetor devolveu, conferindo que é
+a de uma ronda. Ele nunca barra e nunca sobrescreve arquivo que já existe. Antes do Passo 3, **confira que há um
+arquivo por lente despachada** em `vereditos/` (lista a pasta e conta). O que o hook avisou que não gravou, ou que
+não está lá, grave à mão, como `<lente>.json` (a chave da lente), com o JSON que o inspetor devolveu, no caminho
+`vereditos` da saída do Passo 1.
 
 **Declare ao usuário quantos agentes rodaram.** Custo é informação dele, não detalhe seu.
 

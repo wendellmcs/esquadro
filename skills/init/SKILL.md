@@ -388,7 +388,7 @@ Enquanto não sair `OK`, o projeto está com proteção incompleta, e ele precis
 ## Passo 7b — emitir os agentes deste projeto
 
 **Rode os três geradores (7b, 7c e 7d) de dentro da raiz absoluta do Passo 0, no mesmo comando** —
-`cd -- '<raiz>' && node …` no bash, `Set-Location -LiteralPath '<raiz>'; node …` no PowerShell. Eles
+`( cd -- '<raiz>' && node … )` no bash, `Push-Location -LiteralPath '<raiz>' -ErrorAction Stop; try { node … } finally { Pop-Location }` no PowerShell. Eles
 não recebem a raiz: leem o `projeto.json` e gravam na pasta atual, e a pasta atual pode voltar
 sozinha entre um comando e outro. Medido: fora da raiz, dizem *"rode /esquadro:init primeiro"* logo
 depois de o init gravar; dentro de outro projeto já configurado, propõem gravar **nele**. Antes de

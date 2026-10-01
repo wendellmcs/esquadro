@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.4 — vereditos gravados sozinhos, `cd` solto negado e a memoria medida
+
+Tres pontos medidos no uso da 0.3.3. Os comportamentos novos vem com teste; a suite inteira roda com
+`npm test`.
+
+- **Os vereditos da revisao cega se gravam sozinhos.** Um hook novo (`gravar-veredito.js`) le a
+  resposta do inspetor pelos dois caminhos que o Claude Code entrega (`SubagentStop` e o
+  `SubagentHandback`) e grava `<lente>.json` na pasta de vereditos da ronda. O inspetor devolve a
+  chave da lente e a pasta que o briefing passou; o hook so grava se ela for a `vereditos` de uma
+  ronda de verdade, com `A.txt` e `B.txt` ao lado. Nunca sobrescreve, nunca barra o inspetor e nunca
+  cala: o que nao gravou vira aviso com a causa e a pasta, para gravar a mao como antes.
+- **`cd` solto e negado nas ferramentas Bash e PowerShell.** A pasta atual persiste de uma chamada
+  para a outra, e o `git` seguinte age no repositorio errado. O portao agora nega o `cd` no nivel de
+  cima do comando e mostra a forma que devolve a pasta: subshell no Bash, `Push-Location` com
+  `Pop-Location` no PowerShell, ou `git -C`/`npm --prefix`. Texto entre aspas, comentario e corpo de
+  heredoc nao contam; o escape e o `comandosLiberados` do `projeto.json`. As tres instrucoes do
+  proprio plugin que usavam `cd` solto mudaram para a forma aceita. O contador ganhou o balde
+  `cd_solto`: sao **17 baldes** de contador: 13 que negam, 4 que so contam.
+- **A auditoria mede o `MEMORY.md`.** Com `--memoria <caminho>` (a skill passa o caminho), a saida
+  ganha a chave `memoria`: linhas, bytes, maior linha e o que fica fora da carga da sessao, contra o
+  limite da documentacao (as primeiras 200 linhas ou 25 KB, lido como 25.000 bytes). A medida sai a
+  parte e nao soma no teto de instrucao. Sem caminho, ou arquivo que nao se le, diz "nao medida" e a
+  causa.
+
 ## 0.3.3 — revisao que nao aprova sem voto, e revisao nova que comeca do zero
 
 Dois defeitos da revisao cega, e o acabamento dos pontos que a revisao da 0.3.2 deixou registrados.

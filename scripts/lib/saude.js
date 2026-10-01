@@ -22,7 +22,7 @@ const BALDES_DE_BLOQUEIO = [
   'fora_do_escopo', 'sem_escopo', 'comando_destrutivo', 'shell_idioma_errado',
   'fecho_sem_evidencia', 'subitem_pendente', 'outra_frente', 'intocavel',
   'token_fora_do_sistema', 'agente_caro_em_marcha_rapida',
-  'criou_sem_buscar', 'catraca_afrouxada'
+  'criou_sem_buscar', 'catraca_afrouxada', 'cd_solto'
 ];
 
 function soma(contadores, chaves) {

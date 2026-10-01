@@ -112,10 +112,10 @@ O modo não interativo (`-p` / print) **executa os hooks normalmente**, inclusiv
 fecho de sessão. Dá para provar um hook por agente, sem a mão do dono.
 
 ```
-cd <pasta descartavel, fora de qualquer repositorio>
-mkdir -p <pasta de estado que o hook usa>
-claude -p "<pedido>" --plugin-dir "<caminho>" --permission-mode acceptEdits
-cat <pasta de estado>/<arquivo de contador>
+( cd <pasta descartavel, fora de qualquer repositorio>
+  mkdir -p <pasta de estado que o hook usa>
+  claude -p "<pedido>" --plugin-dir "<caminho>" --permission-mode acceptEdits
+  cat <pasta de estado>/<arquivo de contador> )
 ```
 
 `--permission-mode acceptEdits` é necessário: sem ele o pedido que cria arquivo trava pedindo
