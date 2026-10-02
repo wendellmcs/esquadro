@@ -99,6 +99,8 @@ function avisosDeTipo(projeto) {
   if ('travas' in projeto && (!projeto.travas || typeof projeto.travas !== 'object' || Array.isArray(projeto.travas))) {
     avisos.push('travas tem de ser objeto');
   }
+  const deQualidade = require('./qualidade.js').avisoDeTipo(projeto);
+  if (deQualidade) avisos.push(deQualidade);
   return avisos;
 }
 

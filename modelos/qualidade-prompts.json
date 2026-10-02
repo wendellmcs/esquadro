@@ -1,0 +1,99 @@
+{
+  "versao": 1,
+  "prompts": [
+    {
+      "id": "explicar-1",
+      "tipo": "explicar",
+      "idioma": "pt",
+      "texto": "O que e um indice composto num banco de dados e quando ele ajuda? Explique para quem conhece SQL basico.",
+      "arquivos": {}
+    },
+    {
+      "id": "explicar-2",
+      "tipo": "explicar",
+      "idioma": "pt",
+      "texto": "Qual a diferenca entre fila e topico em mensageria? Quando eu escolho cada um?",
+      "arquivos": {}
+    },
+    {
+      "id": "explicar-3",
+      "tipo": "explicar",
+      "idioma": "pt",
+      "texto": "Por que um teste que passa na minha maquina pode falhar no servidor de integracao continua? Me explique as causas mais comuns.",
+      "arquivos": {}
+    },
+    {
+      "id": "diagnosticar-1",
+      "tipo": "diagnosticar",
+      "idioma": "pt",
+      "texto": "Rodei o build do front e deu este erro. O que aconteceu e como eu corrijo?\n\nTypeError: Cannot read properties of undefined (reading 'map')\n    at renderLista (src/lista.js:14:23)\n    at montarPagina (src/pagina.js:41:5)\n    at Object.<anonymous> (src/index.js:3:1)",
+      "arquivos": {}
+    },
+    {
+      "id": "diagnosticar-2",
+      "tipo": "diagnosticar",
+      "idioma": "en",
+      "texto": "My deploy failed with the error below. What does it mean and what should I do?\n\nError: listen EADDRINUSE: address already in use :::3000\n    at Server.setupListenHandle [as _listen2] (node:net:1817:16)\n    at listenInCluster (node:net:1865:12)",
+      "arquivos": {}
+    },
+    {
+      "id": "diagnosticar-3",
+      "tipo": "diagnosticar",
+      "idioma": "pt",
+      "texto": "Tentei fazer push e apareceu isto. O que significa e o que eu faco agora?\n\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs to 'origin'\nhint: Updates were rejected because the remote contains work that you do\nhint: not have locally.",
+      "arquivos": {}
+    },
+    {
+      "id": "ferramentas-1",
+      "tipo": "ferramentas",
+      "idioma": "pt",
+      "texto": "A funcao aplicarDesconto em src/preco.js esta devolvendo valores errados no carrinho. Ache o problema, corrija e me diga o que mudou.",
+      "arquivos": {
+        "README.md": "# Loja\n\nCalculo de preco do carrinho. O desconto e percentual: 10 significa 10 por cento.\n",
+        "src/preco.js": "'use strict';\n\n// Aplica um desconto percentual ao preco. aplicarDesconto(200, 10) deve dar 180.\nfunction aplicarDesconto(preco, percentual) {\n  return preco - percentual / 100;\n}\n\nfunction somarItens(itens) {\n  return itens.reduce(function (total, item) { return total + item.preco * item.quantidade; }, 0);\n}\n\nmodule.exports = { aplicarDesconto, somarItens };\n"
+      }
+    },
+    {
+      "id": "ferramentas-2",
+      "tipo": "ferramentas",
+      "idioma": "pt",
+      "texto": "Quais arquivos de src/ usam a funcao lerConfig e o que acontece em cada um deles se o config.json nao existir?",
+      "arquivos": {
+        "src/config.js": "'use strict';\nconst fs = require('fs');\n\nfunction lerConfig(caminho) {\n  const texto = fs.readFileSync(caminho, 'utf8');\n  return JSON.parse(texto);\n}\n\nmodule.exports = { lerConfig };\n",
+        "src/servidor.js": "'use strict';\nconst { lerConfig } = require('./config.js');\n\nfunction iniciar() {\n  const cfg = lerConfig('config.json');\n  console.log('porta', cfg.porta);\n}\n\nmodule.exports = { iniciar };\n",
+        "src/relatorio.js": "'use strict';\nconst { lerConfig } = require('./config.js');\n\nfunction titulo() {\n  let cfg;\n  try {\n    cfg = lerConfig('config.json');\n  } catch (e) {\n    cfg = { titulo: 'Relatorio' };\n  }\n  return cfg.titulo;\n}\n\nmodule.exports = { titulo };\n",
+        "src/util.js": "'use strict';\n\nfunction maiuscula(texto) {\n  return texto.charAt(0).toUpperCase() + texto.slice(1);\n}\n\nmodule.exports = { maiuscula };\n"
+      }
+    },
+    {
+      "id": "ferramentas-3",
+      "tipo": "ferramentas",
+      "idioma": "pt",
+      "texto": "Preciso de uma funcao ultimoDiaDoMes(ano, mes) em src/datas.js, no mesmo estilo do arquivo. Faca e me diga o que falta para eu usar.",
+      "arquivos": {
+        "src/datas.js": "'use strict';\n\n// Datas em texto AAAA-MM-DD.\nfunction formatar(data) {\n  const mes = String(data.getMonth() + 1).padStart(2, '0');\n  const dia = String(data.getDate()).padStart(2, '0');\n  return data.getFullYear() + '-' + mes + '-' + dia;\n}\n\nfunction somarDias(data, dias) {\n  const nova = new Date(data.getTime());\n  nova.setDate(nova.getDate() + dias);\n  return nova;\n}\n\nmodule.exports = { formatar, somarDias };\n"
+      }
+    },
+    {
+      "id": "decisao-1",
+      "tipo": "decisao",
+      "idioma": "pt",
+      "texto": "Meu time de 4 pessoas quer migrar um monolito para microsservicos. Devemos migrar agora ou esperar? Preciso decidir hoje.",
+      "arquivos": {}
+    },
+    {
+      "id": "decisao-2",
+      "tipo": "decisao",
+      "idioma": "en",
+      "texto": "We have to pick between building our own login system and using a hosted identity provider. We are 3 engineers with a 2-month deadline. What should we do?",
+      "arquivos": {}
+    },
+    {
+      "id": "decisao-3",
+      "tipo": "decisao",
+      "idioma": "pt",
+      "texto": "Tenho que escolher entre reescrever o modulo de relatorios ou so consertar os 5 bugs conhecidos. O que voce recomenda?",
+      "arquivos": {}
+    }
+  ]
+}

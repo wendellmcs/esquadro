@@ -32,8 +32,13 @@ io.blindar(function () {
     // A2: stdout de abertura de sessao entra como contexto que o Claude ve.
     // Roda em toda reabertura de proposito: e depois da compactacao que a regra
     // se perde, e e por isso que ela se reinjeta em vez de so se ler uma vez.
+    const projeto = config.carregarProjeto(cwd);
     const texto = require('./lib/reinjecao.js').montar(cwd, e.session_id, e.source);
     if (texto) process.stdout.write(texto);
+    // Qualidade de resposta: sai em toda abertura, com ou sem projeto.json, depois das regras;
+    // so `qualidadeDeResposta: false` no projeto desliga.
+    const qualidade = require('./lib/qualidade.js').bloco(projeto);
+    if (qualidade) process.stdout.write((texto ? '\n' : '') + qualidade);
     const heranca = require('./lib/escopo.js').avisoHeranca(cwd, estado.ler(e.session_id).frente);
     if (heranca) process.stdout.write('\n' + heranca + '\n');
 
@@ -42,7 +47,6 @@ io.blindar(function () {
     // validador ve. Confere-se UMA vez por sessao, aqui, porque exige listar o
     // repositorio e os portoes de custo zero nao podem pagar isso a cada escrita.
     const projetoLib = require('./lib/projeto.js');
-    const projeto = require('./lib/config.js').carregarProjeto(cwd);
     const inertes = projetoLib.intocaveisInertes(projeto, git.rastreados(cwd), cwd);
     if (inertes.length) {
       process.stdout.write('\n' + projetoLib.motivoInerte(inertes) + '\n');

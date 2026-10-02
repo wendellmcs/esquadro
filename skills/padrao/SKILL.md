@@ -301,8 +301,10 @@ Toda decisão que é de `{{campo:quemDecide}}`: **exatamente 3 opções (a, b, c
 
 Decisão tomada vai para `{{texto:ondeRegistrar}}` com data, na forma "não perguntar de novo".
 
-**O tamanho de cada opção é assunto da skill `economia`** — uma ou duas frases, com a consequência
-e o custo dentro dela. A `economia` encurta a forma, nunca a exigência.
+**O tamanho de cada opção:** continuam três opções, a recomendada em primeiro lugar e marcada. Cada
+opção cabe em uma ou duas frases, com a consequência prática e o custo dentro, nessa ordem — não a
+reconstrução do raciocínio técnico que levou até ela. Mais que duas frases é sinal de que a opção
+esconde duas escolhas, e elas se separam. Encurtar a forma nunca afrouxa a exigência.
 
 **Ação manual do dono é passo a passo clique a clique.** Quando a entrega exigir que ele mexa em
 console, painel, planilha ou navegador: numerar os passos, dizer **o que ele vai ver em cada tela**
@@ -325,8 +327,9 @@ Nunca reportar sucesso sem ter olhado a saída. Se o teste falhou, dizer que fal
 saem todas de uma vez, o ponto principal fica do mesmo tamanho que o secundário e o dono tem de
 garimpar. Abrir com a resposta direta em uma ou duas frases; a evidência serve para ele **conferir**,
 não para ele descobrir a resposta. Isso **não** afrouxa a exigência de evidência colada — muda o
-tamanho da prosa em volta dela, não a prova. A forma enxuta disso — preâmbulo zero e bloco
-de saída reduzido às linhas que carregam o número — está na skill `economia`.
+tamanho da prosa em volta dela, não a prova. A forma enxuta disso — conclusão na primeira
+linha e bloco de saída reduzido à linha que prova — está no bloco de qualidade de resposta que a abertura
+da sessão injeta (regras 1 e 5).
 
 **Relatório de subagente é alegação, não fato.** E medição própria vence parecer de lente, mesmo
 parecer caro, mesmo marcado P0 — ver a regra do medidor em

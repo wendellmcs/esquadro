@@ -451,3 +451,17 @@ test('projeto: re-init de config invalida nao inventa config valida', () => {
   const r = projeto.atualizar(null, { quemDecide: 'Ana' }, '2026-09-30');
   assert.strictEqual(projeto.validar(r.config).ok, false, 'meia config nao pode virar config inteira');
 });
+
+test('qualidadeDeResposta: validar aceita, atualizar preserva, avisosDeTipo avisa tipo errado', () => {
+  const base = projeto.montar({ plataforma: { so: 'linux', shell: 'bash' } }, {
+    modeloDeAmeaca: 'publico', fontesCanonicas: [], provaDePronto: 'make test',
+    intocaveis: [], quemDecide: 'time', marchas: { aaa: [], padrao: [], rapida: [] }
+  });
+  const com = Object.assign({}, base, { qualidadeDeResposta: false });
+  assert.strictEqual(projeto.validar(com).ok, true, 'a chave invalidou o projeto.json');
+  const novo = projeto.atualizar(com, { quemDecide: 'Bruno' }, '2026-10-01');
+  assert.strictEqual(novo.config.qualidadeDeResposta, false, 'o init apagou a chave');
+  assert.ok(projeto.avisosDeTipo(Object.assign({}, base, { qualidadeDeResposta: 'nao' }))
+    .includes('qualidadeDeResposta tem de ser true ou false'));
+  assert.ok(!projeto.avisosDeTipo(com).some((a) => /qualidadeDeResposta/.test(a)));
+});

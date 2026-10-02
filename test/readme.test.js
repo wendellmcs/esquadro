@@ -188,3 +188,17 @@ test('readme: o que nao foi testado em outro sistema esta DECLARADO', () => {
   assert.ok(/n[aã]o[^.]{0,24}testad/i.test(sis),
     'falta dizer, com estas palavras, que nao foi testado');
 });
+
+// ── o recurso de qualidade de resposta: o README mostra o bloco que a abertura injeta ──
+
+test('readme: o bloco da secao "Qualidade de resposta" e IGUAL a qualidade.BLOCO, e o numero de caracteres e o dele', () => {
+  const qualidade = require('../scripts/lib/qualidade.js');
+  const s = secao('Qualidade de resposta');
+  const blocos = Array.from(s.corpo.matchAll(/^```[^\n]*\n([\s\S]*?)^```[ \t]*$/gm)).map((m) => m[1]);
+  assert.strictEqual(blocos.length, 1, 'a secao tem de trazer exatamente um bloco de codigo: o bloco literal');
+  assert.strictEqual(blocos[0], qualidade.BLOCO,
+    'o bloco do README diverge do que a abertura injeta: foi copiado a mao, ou o texto mudou so de um lado');
+  const numeros = Array.from(s.corpo.matchAll(/(\d+) caracteres/g)).map((m) => Number(m[1]));
+  assert.deepStrictEqual(numeros, [qualidade.BLOCO.length],
+    'a secao cita ' + JSON.stringify(numeros) + ' caracteres e o bloco tem ' + qualidade.BLOCO.length);
+});

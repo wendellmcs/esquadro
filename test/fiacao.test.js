@@ -688,6 +688,137 @@ test('fiacao: abertura sem vinculo lista as frentes existentes e diz como se vin
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// ------------------------------- qualidade de resposta: a abertura imprime o bloco
+
+const qualidade = require('../scripts/lib/qualidade.js');
+const projetoLib = require('../scripts/lib/projeto.js');
+
+const REGRA_Q = 'ao editar -> rodar git status antes';
+const TITULO_Q = '# esquadro - qualidade';
+const ORIGENS_Q = ['startup', 'resume', 'clear', 'compact'];
+
+/** projeto.json valido (o do proprio init) + uma regra; `extra` entra na raiz do projeto.json. */
+function projetoComRegras(dir, extra) {
+  const projeto = Object.assign(
+    projetoLib.montar({}, { modeloDeAmeaca: 'interno', quemDecide: 'o dono' }), extra || {});
+  escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'), JSON.stringify(projeto));
+  escrever(dir, path.join('.claude', 'esquadro', 'regras.md'), '# Regras\n\n- ' + REGRA_Q + '\n');
+}
+
+/** Abertura com a entrada crua no stdin (o `rodar` do arquivo a embrulha em JSON.stringify). */
+function abrirComStdinCru(dir, bruto) {
+  return spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'abertura.js')], {
+    cwd: dir,
+    encoding: 'utf8',
+    input: bruto,
+    env: Object.assign({}, process.env, { ESQUADRO_TMP: path.join(dir, '_sessoes') })
+  });
+}
+
+test('fiacao: sem projeto.json a abertura imprime o bloco de qualidade e so ele, nas 4 origens', () => {
+  for (const origem of ORIGENS_Q) {
+    const dir = temp('qualidade-sem-projeto');
+    try {
+      const r = rodar('abertura.js', dir, { session_id: 'q1-' + origem, cwd: dir, source: origem });
+      assert.strictEqual(r.status, 0, r.stderr);
+      assert.strictEqual(r.stdout, qualidade.BLOCO, origem + ': ' + JSON.stringify(r.stdout));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+test('fiacao: o bloco de qualidade sai DEPOIS das regras do projeto', () => {
+  const dir = temp('qualidade-ordem');
+  try {
+    projetoComRegras(dir);
+    const r = rodar('abertura.js', dir, { session_id: 'q2', cwd: dir, source: 'startup' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const regra = r.stdout.indexOf(REGRA_Q);
+    const bloco = r.stdout.indexOf(TITULO_Q);
+    assert.ok(regra !== -1, 'as regras tinham de sair: ' + r.stdout);
+    assert.ok(bloco !== -1, 'o bloco tinha de sair: ' + r.stdout);
+    assert.ok(regra < bloco, 'as regras vem antes do bloco: ' + r.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('fiacao: qualidadeDeResposta false some com o bloco, e ligado e desligado + o bloco, byte a byte', () => {
+  const dir = temp('qualidade-desligar');
+  try {
+    // Com plano de OUTRA sessao, a abertura tem texto depois das regras: o "resto" a comparar.
+    escrever(dir, path.join('.claude', 'esquadro', 'plano-ativo.json'),
+      JSON.stringify({ arquivo: 'docs/plano-v9.md', sessionId: 'sessao-do-outro', tarefa: null }));
+    for (const origem of ORIGENS_Q) {
+      projetoComRegras(dir, { [qualidade.CHAVE]: false });
+      const desligado = rodar('abertura.js', dir, { session_id: 'q3d-' + origem, cwd: dir, source: origem });
+      assert.strictEqual(desligado.status, 0, desligado.stderr);
+      assert.ok(!desligado.stdout.includes(TITULO_Q), origem + ': o false nao desligou: ' + desligado.stdout);
+      assert.ok(desligado.stdout.includes(REGRA_Q), origem + ': as regras tinham de sair: ' + desligado.stdout);
+      assert.ok(desligado.stdout.includes('outra sessao detem o plano ativo'), origem + ': ' + desligado.stdout);
+
+      projetoComRegras(dir);
+      const ligado = rodar('abertura.js', dir, { session_id: 'q3l-' + origem, cwd: dir, source: origem });
+      assert.strictEqual(ligado.status, 0, ligado.stderr);
+
+      // i = fim do texto que a reinjecao monta (as regras e, em resume/clear/compact, o ESTADO): e onde o bloco
+      // entra. O que vem depois (o aviso do plano de outra sessao) tem de sair igual.
+      const i = desligado.stdout.indexOf('\n# esquadro - ATENCAO');
+      assert.ok(i > desligado.stdout.indexOf(REGRA_Q), origem + ': nao achei o fim do texto montado: ' + desligado.stdout);
+      assert.strictEqual(ligado.stdout,
+        desligado.stdout.slice(0, i) + '\n' + qualidade.BLOCO + desligado.stdout.slice(i), origem);
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('fiacao: qualidadeDeResposta com tipo errado ("nao") segue ligado: o bloco sai', () => {
+  const dir = temp('qualidade-tipo');
+  try {
+    projetoComRegras(dir, { [qualidade.CHAVE]: 'nao' });
+    const r = rodar('abertura.js', dir, { session_id: 'q4', cwd: dir, source: 'startup' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(r.stdout.includes(qualidade.BLOCO), r.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('fiacao: projeto.json com JSON quebrado: a abertura sai com 0 e o bloco de qualidade sai', () => {
+  const dir = temp('qualidade-json-quebrado');
+  try {
+    escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'), '{isso nao fecha');
+    const r = rodar('abertura.js', dir, { session_id: 'q5', cwd: dir, source: 'startup' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(r.stdout.includes(qualidade.BLOCO), r.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('fiacao: sessao numa subpasta herda o false do projeto acima (e sem o false, o bloco sai)', () => {
+  const dir = temp('qualidade-subpasta');
+  try {
+    fs.mkdirSync(path.join(dir, 'sub', 'fundo'), { recursive: true });
+    const sub = path.join(dir, 'sub', 'fundo');
+
+    projetoComRegras(dir, { [qualidade.CHAVE]: false });
+    const desligado = rodar('abertura.js', dir, { session_id: 'q6d', cwd: sub, source: 'startup' });
+    assert.strictEqual(desligado.status, 0, desligado.stderr);
+    assert.ok(desligado.stdout.includes(REGRA_Q), 'a subpasta tinha de achar o projeto acima: ' + desligado.stdout);
+    assert.ok(!desligado.stdout.includes(TITULO_Q), 'o false do projeto acima nao valeu: ' + desligado.stdout);
+
+    // controle positivo: a mesma subpasta, projeto sem a chave, o bloco sai
+    projetoComRegras(dir);
+    const ligado = rodar('abertura.js', dir, { session_id: 'q6l', cwd: sub, source: 'startup' });
+    assert.strictEqual(ligado.status, 0, ligado.stderr);
+    assert.ok(ligado.stdout.includes(qualidade.BLOCO), ligado.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('fiacao: abertura com stdin vazio ou JSON invalido sai com 0 e imprime o bloco de qualidade', () => {
+  for (const [nome, bruto] of [['vazio', ''], ['invalido', '{isso nao e json']]) {
+    const dir = temp('qualidade-stdin-' + nome);
+    try {
+      const r = abrirComStdinCru(dir, bruto);
+      assert.strictEqual(r.status, 0, nome + ': ' + r.stderr);
+      assert.strictEqual(r.stdout, qualidade.BLOCO, nome + ': ' + JSON.stringify(r.stdout));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
 // ------------------------------- ronda 1 do Passo 8b: ler tambem e procurar
 
 test('fiacao: o marcador escuta toda ferramenta de leitura que a busca conta (ronda 1 do 8b)', () => {

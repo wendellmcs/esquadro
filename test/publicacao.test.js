@@ -218,6 +218,43 @@ test('publicacao: a skill padrao conta as duas familias de lentes, com os numero
   }
 });
 
+/**
+ * O ritual de decisao tem DUAS metades - a decisao e o pronto - e a skill `padrao` carrega as duas
+ * sozinha desde que a `economia` saiu: a regra do tamanho das opcoes vive na secao da decisao, e a
+ * forma enxuta do pronto aponta para o bloco que a abertura injeta. Vinham do teste da `economia`;
+ * medido por mutacao la, olhar a skill inteira deixava apagar metade da fiacao com a suite verde.
+ * Cada uma e lida na SUA secao (entre `## `), nao por distancia em caracteres: o criterio estrutural
+ * nao e recalibrado toda vez que a secao cresce.
+ */
+function secaoDaPadrao(ancora) {
+  const manual = fs.readFileSync(path.join(RAIZ, 'skills', 'padrao', 'SKILL.md'), 'utf8');
+  const i = manual.indexOf(ancora);
+  assert.notStrictEqual(i, -1, 'sumiu a ancora do ritual: ' + ancora);
+  const antes = manual.slice(0, i).lastIndexOf('\n## ');
+  const depois = manual.indexOf('\n## ', i);
+  return manual.slice(antes === -1 ? 0 : antes, depois === -1 ? manual.length : depois);
+}
+
+test('publicacao: a padrao traz, na secao da decisao, a regra do tamanho das opcoes por inteiro', () => {
+  const s = secaoDaPadrao('Decisão tomada vai para');
+  assert.ok(/tr[êe]s op[çc][õo]es/i.test(s), 'sumiu a exigencia de tres opcoes');
+  assert.ok(/recomendada/i.test(s), 'sumiu a marcacao da recomendada');
+  assert.ok(/uma ou duas frases/i.test(s), 'sumiu o tamanho: uma ou duas frases por opcao');
+  assert.ok(/consequ[êe]ncia/i.test(s), 'a opcao tem de levar a consequencia dentro');
+  assert.ok(/custo/i.test(s), 'a opcao tem de levar o custo dentro');
+  assert.ok(/mais que duas frases[^.]*esconde duas escolhas[^.]*se separam/i.test(s),
+    'sumiu o sinal de que opcao com mais de duas frases esconde duas escolhas, e elas se separam');
+  assert.ok(!/economia/i.test(s), 'a secao da decisao ainda aponta para a skill que saiu');
+});
+
+test('publicacao: a padrao aponta, na secao do pronto, para o bloco de qualidade de resposta da abertura', () => {
+  const s = secaoDaPadrao('Evidência fresca');
+  assert.ok(/bloco de qualidade de resposta/i.test(s), 'o pronto nao aponta para o bloco de qualidade de resposta');
+  assert.ok(/abertura/i.test(s), 'o ponteiro tem de dizer que o bloco vem da abertura da sessao');
+  assert.ok(/regras 1 e 5/i.test(s), 'o ponteiro tem de dizer quais regras do bloco: 1 e 5');
+  assert.ok(!/economia/i.test(s), 'a secao do pronto ainda aponta para a skill que saiu');
+});
+
 // T2/item 13 da D257 (decisao do dono, 2026-09-29): arquivo so de logica - nao e de estilo e nao
 // monta tela - e revisado com as 9 de codigo sem a `design`. O numero nao e escrito a mao: e
 // LENTES.length - 1, e so faz sentido enquanto a `design` existir em LENTES. Na duvida, as 9.
@@ -329,16 +366,48 @@ test('publicacao: o limite de unidades do portao de design esta escrito, com as 
   }
 });
 
-test('publicacao: todo comando que o CHANGELOG anuncia existe como skill', () => {
-  const doDisco = new Set(fs.readdirSync(path.join(RAIZ, 'skills'), { withFileTypes: true })
-    .filter((e) => e.isDirectory()).map((e) => e.name));
+/**
+ * Comando citado no CHANGELOG e ausente do disco: so passa se o proprio CHANGELOG diz que
+ * ele saiu - uma linha com `/esquadro:<nome>` e "saiu" ou "aposentad", em QUALQUER entrada,
+ * nao so na do topo. Na versao seguinte a entrada do topo muda, a citacao antiga continua no
+ * historico, e o teste quebraria sem ninguem ter mexido em nada.
+ */
+function comandosInexistentes(changelog, doDisco) {
   const citados = new Set();
+  const aposentados = new Set();
   const re = /esquadro:([a-z-]+)/g;
   let m;
-  while ((m = re.exec(CHANGELOG)) !== null) citados.add(m[1]);
-  assert.ok(citados.size > 0, 'o CHANGELOG nao anuncia comando nenhum');
-  const inventados = Array.from(citados).filter((c) => !doDisco.has(c)).sort();
-  assert.deepStrictEqual(inventados, [], 'o CHANGELOG anuncia comando que nao existe');
+  while ((m = re.exec(changelog)) !== null) citados.add(m[1]);
+  for (const linha of changelog.split(/\r?\n/)) {
+    if (!/saiu|aposentad/i.test(linha)) continue;
+    for (const a of linha.matchAll(/\/esquadro:([a-z-]+)/g)) aposentados.add(a[1]);
+  }
+  return Array.from(citados).filter((c) => !doDisco.has(c) && !aposentados.has(c)).sort();
+}
+
+test('publicacao: todo comando que o CHANGELOG anuncia existe como skill, ou diz que saiu', () => {
+  const doDisco = new Set(fs.readdirSync(path.join(RAIZ, 'skills'), { withFileTypes: true })
+    .filter((e) => e.isDirectory()).map((e) => e.name));
+  assert.ok(/esquadro:([a-z-]+)/.test(CHANGELOG), 'o CHANGELOG nao anuncia comando nenhum');
+  assert.deepStrictEqual(comandosInexistentes(CHANGELOG, doDisco), [],
+    'o CHANGELOG anuncia comando que nao existe e nao diz que saiu');
+});
+
+test('publicacao: comando aposentado - o instrumento distingue inventado, aposentado sem aviso e com aviso', () => {
+  const disco = new Set(['init', 'padrao']);
+  // inventado: cita, nao existe, nao diz que saiu - segue falhando
+  assert.deepStrictEqual(comandosInexistentes('- **`/esquadro:fantasma`** novo.', disco), ['fantasma']);
+  // a economia ausente do disco, citada so no historico e sem a frase de saida: falha
+  const antiga = '## 0.3.0\n- **`/esquadro:economia`** poe o ritual no tamanho certo.\n';
+  assert.deepStrictEqual(comandosInexistentes(antiga, disco), ['economia']);
+  // com a frase de saida, em entrada que nao e a do topo: passa
+  const nova = '## 0.5.0\n- nada.\n\n## 0.4.0\n- A `/esquadro:economia` saiu: as regras viraram o bloco.\n\n' + antiga;
+  assert.deepStrictEqual(comandosInexistentes(nova, disco), []);
+  // "aposentad" tambem vale, e a frase de saida de um comando nao perdoa outro
+  assert.deepStrictEqual(comandosInexistentes(
+    '- `/esquadro:economia` foi aposentada.\n- `/esquadro:fantasma` existe.', disco), ['fantasma']);
+  // comando que esta no disco nunca falha
+  assert.deepStrictEqual(comandosInexistentes('- `/esquadro:init` pergunta.', disco), []);
 });
 
 // ── o texto que vai a publico ────────────────────────────────────────────

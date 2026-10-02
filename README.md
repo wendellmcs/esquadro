@@ -118,7 +118,23 @@ no Windows.
 
 **Depois, no seu projeto:** rode `/esquadro:init`. As travas 3 e 5 já estão de pé antes disso.
 
-**Para atualizar:**
+> ### ⚠️ Ligue a atualização automática — ela vem desligada
+>
+> O Claude Code só atualiza sozinho os plugins dos marketplaces oficiais da Anthropic. O
+> `esquadro-local` é de terceiros: começa com a atualização automática **desligada**, e o autor do
+> plugin não consegue ligá-la por você. Sem ligar, você fica na versão que instalou. Ligue uma vez:
+>
+> 1. Numa sessão do Claude Code, digite `/plugin` e aperte **Enter**.
+> 2. Vá até a aba **Marketplaces** (a tecla **Tab** troca de aba).
+> 3. Selecione `esquadro-local`.
+> 4. Escolha **Enable auto-update**.
+>
+> Daí em diante, a cada sessão nova o Claude Code confere o marketplace e baixa a versão nova
+> sozinho. A sessão que já estava aberta segue com a versão antiga e avisa
+> `Plugin updated: esquadro · Run /reload-plugins to apply`: rode `/reload-plugins` ou abra uma
+> sessão nova.
+
+**Para atualizar à mão** (sem a atualização automática, ou para pegar a versão nova agora):
 
 ```
 claude plugin marketplace update esquadro-local
@@ -388,7 +404,65 @@ e a decisao fica registrada - nao sai no meio de uma correcao.
 
 ---
 
-## Os seis comandos
+## Qualidade de resposta
+
+Toda sessão abre com um bloco de seis regras de clareza para as respostas que o agente escreve para você no chat:
+conclusão na primeira linha, sem preâmbulo, termo técnico explicado na primeira vez, uma linha entre
+ferramentas, evidência reduzida à linha que prova, e nada de repetir o que você acabou de ler. É texto
+injetado pela abertura da sessão, **ligado por padrão**. O bloco, literal:
+
+```
+# esquadro - qualidade de resposta (toda resposta no chat ao usuario)
+
+1. Conclusao na 1a linha. Sai: "Vou analisar o modulo". Fica: "A suite passou; falta teste em X". Em decisao, o que muda a escolha vem antes das opcoes.
+2. Sem preambulo nem cortesia. Sai: "Otima pergunta!". Bastidor da sessao (sandbox, permissao) so se o usuario tiver de agir.
+3. Termo tecnico explicado na 1a vez. Sai: "quebrou no CI". Fica: "quebrou no CI (a checagem automatica)".
+4. Entre ferramentas, uma linha: so fato novo. Sai: "Vou ler o arquivo". Fica: "Erro em a.js:12".
+5. Evidencia: no bloco, so a linha que prova. Sai: o log inteiro. Fica: "tests 12 | pass 12 | fail 0".
+6. Nao repetir o que o usuario acabou de ler ou decidir: citar onde esta. A resposta final fecha sozinha: o que mudou e o que falta, mesmo bloqueada.
+
+Valem no idioma de quem pergunta. Texto gravado em arquivo (plano, decisao, handoff) fica fora.
+Desligar neste projeto: "qualidadeDeResposta": false em .claude/esquadro/projeto.json.
+```
+
+O "Sai/Fica" de cada regra está no próprio bloco: o que cortar e o que escrever no lugar.
+
+- **Como desligar:** `"qualidadeDeResposta": false` em `.claude/esquadro/projeto.json`. Outro valor que não seja
+  verdadeiro ou falso segue ligado e gera o aviso "qualidadeDeResposta tem de ser true ou false".
+- **Não barra nada.** Não é uma trava: nenhuma resposta é negada por causa dele. É instrução, e instrução pode ser
+  pulada — por isso o recurso não entra na conta das oito travas.
+- **Funciona sem `/esquadro:init`.** Sem `projeto.json`, o bloco é tudo o que a abertura imprime.
+- **Subagente não recebe.** Inferido, não medido: a abertura roda na sessão principal, e o bloco chega a ela.
+- **Custo:** 992 caracteres por abertura, e nenhum por turno.
+
+### O placar da medição
+
+O bloco só entrou porque ganhou uma medição A/B cega. Doze perguntas congeladas em
+`modelos/qualidade-prompts.json` (explicar, diagnosticar, usar ferramentas e decidir, três de cada; dez em português,
+duas em inglês) foram respondidas em três condições: com o bloco, sem nada (a resposta padrão) e com o caveman. Cada
+par foi julgado por um inspetor que não sabe qual lado é qual, nas duas ordens. O voto só conta quando as duas ordens
+concordam e o inspetor cita a linha que prova; sem isso, é empate.
+
+| O bloco contra | Vitórias | Derrotas | Empates |
+|---|---|---|---|
+| caveman | 12 | 0 | 0 |
+| resposta padrão | 4 | 3 | 5 |
+
+Tokens de saída, somados nas 12 execuções de cada condição: resposta padrão **30462**, caveman **12732**, com o bloco
+**22888**. O bloco gasta cerca de um quarto a menos que a resposta padrão; o caveman gasta menos que os dois.
+
+- **Medido no Sonnet; no Opus, não medido.**
+- **A margem contra a resposta padrão é curta:** uma derrota a mais dava empate no placar, e empate não aprova.
+- **Sobreajuste possível:** o texto do bloco foi ajustado uma vez depois da primeira rodada, olhando as derrotas destas
+  mesmas doze perguntas, que não mudaram. A medição que aprovou é a mesma que orientou o ajuste.
+- **Sessão longa não foi medida:** cada pergunta é uma sessão nova. O efeito pode enfraquecer depois de muitos turnos;
+  a abertura reinjeta o bloco a cada compactação.
+- **O instrumento vem no plugin:** `node scripts/medir-qualidade.js --gerar --modelo <nome> --destino <pasta>`, depois
+  `--pares` e `--veredito` na pasta da rodada. O julgamento de cada par fica com o inspetor do plugin, o mesmo da revisão cega.
+
+---
+
+## Os cinco comandos
 
 | Comando | O que faz |
 |---|---|
@@ -397,14 +471,13 @@ e a decisao fica registrada - nao sai no meio de uma correcao.
 | `/esquadro:aprender` | Transforma uma correção sua em regra proposta no formato `gatilho -> ação`, mostra pronta, e **só grava depois de aprovação explícita**. |
 | `/esquadro:handoff` | Gera o texto de continuação para um chat novo: caminhos, `HEAD`, em que etapa o trabalho está, decisões já tomadas, pendências e erros de método que custaram tempo. Confere os fatos no disco, não na memória. |
 | `/esquadro:auditar` | Mede o peso de instrução do projeto contra um teto e aponta o que cortar: skills que se sobrepõem, regras que se contradizem e itens fora da rubrica. Não acrescenta — poda. |
-| `/esquadro:economia` | Põe o ritual obrigatório no tamanho certo: o preâmbulo sai inteiro, a evidência encolhe para o número que prova, cada opção cabe em uma ou duas frases. Nada do ritual é removido — só reformulado. |
 
-A sétima skill instalada, `padrao`, **não é comando**: é o manual de execução, que o agente carrega
+A sexta skill instalada, `padrao`, **não é comando**: é o manual de execução, que o agente carrega
 no começo da tarefa e que traz junto a conferência do mapa de modelos deste projeto.
 
-Dos seis comandos, só os dois primeiros são travas — a 1 e a 2. Os outros quatro **não são travas**: `aprender` é o
+Dos cinco comandos, só os dois primeiros são travas — a 1 e a 2. Os outros três **não são travas**: `aprender` é o
 autoaprimoramento mínimo — o plugin **não aprende sozinho**, ele transforma correção em proposta e
-espera o OK; `handoff`, `auditar` e `economia` são ferramentas de manutenção, e nenhum deles bloqueia nada.
+espera o OK; `handoff` e `auditar` são ferramentas de manutenção, e nenhum dos dois bloqueia nada.
 
 ---
 
@@ -511,13 +584,6 @@ mede o peso contra o teto (com o método ao lado do número), aponta sobreposiç
 itens fora da rubrica e regra sem cicatriz, e confere se o catálogo de modelos ainda é o que o
 projeto supõe — consultado no agente principal, porque hook nenhum do plugin abre conexão. Ela
 propõe cortar, fundir ou manter com motivo. **Não apaga, não move, não edita.**
-
-### `/esquadro:economia` — o mesmo ritual, no tamanho certo
-
-Cobertura não é clareza. Quatro regras: a conclusão na primeira linha; o bloco de evidência fica,
-mas só com a linha que prova; cada opção em uma ou duas frases, com a consequência dentro; e nada
-de reexplicar o que o dono acabou de ler. Ela não afrouxa nada: resposta curta que afirma sucesso
-sem bloco de saída continua barrada pela trava 3.
 
 ### `padrao` — o manual que o agente carrega
 

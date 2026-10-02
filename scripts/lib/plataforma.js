@@ -101,7 +101,7 @@ const PONTOS = [
     classe: SO_NO_SISTEMA,
     titulo: 'Deducao do sistema e do idioma de shell',
     arquivos: ['scripts/lib/glob.js', 'scripts/lib/plataforma.js', 'scripts/lib/projeto.js',
-               'scripts/lib/varredura.js'],
+               'scripts/lib/varredura.js', 'scripts/medir-qualidade.js'],
     comoSeProva: 'rodando a suite naquele sistema: quem responde e o proprio Node',
     ressalva: 'a CONSEQUENCIA da deducao e injetavel e esta exercitada - ver tabela_de_plataforma ' +
               'e barra_invertida. O que nao se prova aqui e a deducao em si.'
@@ -125,11 +125,21 @@ const PONTOS = [
               'e so se ve naquele sistema. O que se prova aqui e que a sobreposicao manda.'
   },
   {
+    chave: 'pasta_pessoal',
+    classe: INJETAVEL,
+    titulo: 'Onde o claude grava a transcricao da sessao',
+    arquivos: ['scripts/medir-qualidade.js'],
+    comoSeProva: 'CLAUDE_CONFIG_DIR sobrepoe a pasta pessoal, e a pasta pessoal entra por parametro ' +
+                 'em acharTranscricao: os dois caminhos rodam daqui',
+    ressalva: 'o nome da pasta de config padrao (.claude na pasta pessoal) so se confere naquele sistema ' +
+              'com o claude de verdade; aqui se prova que a busca olha onde mandam.'
+  },
+  {
     chave: 'processo_externo',
     classe: SO_NO_SISTEMA,
     titulo: 'Chamada do git como processo, sem shell',
     arquivos: ['scripts/exportar.js', 'scripts/lib/git.js', 'scripts/lib/sanitacao.js',
-               'scripts/preparar-revisao.js'],
+               'scripts/medir-qualidade.js', 'scripts/preparar-revisao.js'],
     comoSeProva: 'rodando naquele sistema com git instalado',
     ressalva: 'com shell:false o Node nao consulta PATHEXT: um git empacotado como .cmd ou .bat ' +
               'nao seria achado no Windows. Aqui ele e .exe e e achado. Fora do Windows o ' +
@@ -139,7 +149,7 @@ const PONTOS = [
     chave: 'caminho_especifico',
     classe: SO_NO_SISTEMA,
     titulo: 'Caminho relativo remontado pelo separador do sistema',
-    arquivos: ['scripts/apurar-ronda.js', 'scripts/lib/cicatriz.js'],
+    arquivos: ['scripts/apurar-ronda.js', 'scripts/lib/cicatriz.js', 'scripts/medir-qualidade.js'],
     comoSeProva: 'rodando a suite naquele sistema: o separador e o do proprio Node',
     ressalva: 'no Windows a troca vira barra normal; fora dele e identidade. ' +
               'A suite so exercita o lado do Windows.'

@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.4.0 — o bloco de qualidade de resposta, e a economia que saiu
+
+Um recurso novo, ligado por padrao, e uma skill aposentada. Nenhum portao novo: o recurso nao barra
+nada. Os comportamentos novos vem com teste; a suite inteira roda com `npm test`.
+
+- **Toda sessao abre com um bloco de seis regras de clareza para as respostas ao usuario.** A
+  abertura da sessao injeta o bloco: conclusao na primeira linha, sem preambulo nem cortesia, termo
+  tecnico explicado na primeira vez, uma linha entre ferramentas, evidencia reduzida a linha que
+  prova no bloco de saida, e nada de repetir o que o usuario acabou de ler ou decidir. O "Sai/Fica"
+  de cada regra esta no proprio bloco. Texto gravado em arquivo (plano, decisao, handoff) fica fora.
+  Funciona sem `/esquadro:init`: sem `projeto.json`, o bloco e tudo o que a abertura imprime. O
+  custo e um bloco curto por abertura e nenhum por turno, com teto prendido por teste. O README traz
+  o bloco literal e o numero de caracteres, e um teste prende que ele e igual ao que a abertura injeta.
+- **Como desligar:** `"qualidadeDeResposta": false` em `.claude/esquadro/projeto.json`. So `false`
+  desliga; outro tipo segue ligado e o portao de escrita avisa "qualidadeDeResposta tem de ser true ou false",
+  como os outros avisos de tipo do `projeto.json`.
+  O `init` nao pergunta nem grava a chave, e projeto ja gravado nao precisa mudar.
+- **O bloco so entrou porque ganhou uma medicao A/B cega.** Doze perguntas congeladas, tres
+  condicoes (com o bloco, a resposta padrao e o caveman), cada par julgado nas duas ordens por um
+  inspetor que nao sabe qual lado e qual. Contra o caveman: 12 vitorias, 0 derrotas, 0 empates.
+  Contra a resposta padrao: 4 vitorias, 3 derrotas, 5 empates. Tokens de saida, somados nas 12
+  execucoes de cada condicao: padrao 30462, caveman 12732, com o bloco 22888. Medido no Sonnet; no
+  Opus, nao medido. A margem contra a resposta padrao e curta, o texto foi ajustado uma vez olhando
+  as derrotas destas mesmas perguntas (sobreajuste possivel), e sessao longa nao foi medida. O
+  instrumento vem no plugin: `scripts/medir-qualidade.js`, com as perguntas em
+  `modelos/qualidade-prompts.json`; o placar inteiro esta no README.
+- **A `/esquadro:economia` saiu.** As regras dela foram para dois lugares: a regra do tamanho das
+  opcoes (uma ou duas frases, com a consequencia e o custo dentro; mais que isso e duas escolhas) foi
+  para a skill `padrao`, e as outras viraram o bloco da abertura. A skill e o teste dela sairam do
+  plugin; o instrumento de fecho (a resposta enxuta que ainda traz o bloco de saida passa, e sem o
+  bloco e barrada) segue provado, agora com exemplos proprios. A skill `padrao` passa a apontar para
+  o bloco da abertura, e o teste de "todo comando que o CHANGELOG anuncia existe" aceita o comando
+  que o proprio CHANGELOG diz que saiu, em qualquer entrada.
+- **O README ganha o passo a passo para ligar a atualizacao automatica** do marketplace, em "Como
+  instalar": plugin de terceiro nao se atualiza sozinho ate esse botao ser ligado.
+- **Os contadores nao mudaram:** sao **18 baldes** de contador: 13 que negam, 5 que so contam.
+
 ## 0.3.5 — o `cd` solto lido de uma vez, a tabela do PowerShell que avisa e a auditoria que nao cala
 
 Tudo o que a revisao da 0.3.4 deixou registrado. Nenhum portao novo. Os comportamentos novos vem com
