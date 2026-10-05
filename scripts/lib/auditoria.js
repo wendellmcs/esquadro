@@ -5,6 +5,7 @@ const ambiente = require('./ambiente.js');
 const instrucoes = require('./instrucoes.js');
 const regraLib = require('./regra.js');
 const rubrica = require('./rubrica.js');
+const textoLib = require('./texto.js');
 
 const VAZIAS = new Set([
   'use', 'quando', 'para', 'com', 'sem', 'que', 'uma', 'um', 'o', 'a', 'os', 'as', 'de', 'do', 'da',
@@ -102,7 +103,7 @@ function medirMemoria(caminho) {
     buf = fs.readFileSync(caminho);
   } catch (e) {
     const codigo = (e && e.code) || 'ERRO';
-    return naoMedida(codigo, 'nao medida: nao consegui ler ' + caminho + ' (' + codigo + '); ' + dicaDeLeitura(codigo), caminho);
+    return naoMedida(codigo, 'nao medida: nao consegui ler ' + caminho + ' (' + textoLib.causaDoErro(e) + '); ' + dicaDeLeitura(codigo), caminho);
   }
 
   const bytes = buf.length;
@@ -138,7 +139,8 @@ function medirMemoria(caminho) {
     let dentro = 0;
     while (dentro < linhas) {
       const fim = dentro + 1 < linhas ? inicios[dentro + 1] : bytes;
-      const texto = fim > inicios[dentro] && buf[fim - 1] === 10 ? fim - 1 : fim;
+      let texto = fim > inicios[dentro] && buf[fim - 1] === 10 ? fim - 1 : fim;
+      if (texto > inicios[dentro] && buf[texto - 1] === 13) texto--; // F3-19: o CR do CRLF tambem nao e texto
       if (inicios[dentro] >= CARGA_BYTES || texto > CARGA_BYTES) break;
       dentro++;
     }
@@ -170,7 +172,11 @@ function lerRegras(cwd) {
     const codigo = (e && e.code) || 'ERRO';
     const motivo = codigo === 'ENOENT'
       ? 'regras nao lidas: o projeto nao tem ' + relativo + '; as contradicoes entre regras nao foram conferidas (o /esquadro:init cria esse arquivo)'
-      : 'regras nao lidas: nao consegui ler ' + relativo + ' (' + codigo + '); as contradicoes entre regras nao foram conferidas. Confira o arquivo e rode /esquadro:auditar de novo';
+      : (e && e.code
+        ? 'regras nao lidas: nao consegui ler ' + relativo + ' (' + textoLib.causaDoErro(e) + ')'
+        // F3-18: sem `code` o arquivo abriu; o que falhou foi o parseRegras, e "(ERRO)" escondia isso
+        : 'regras nao lidas: regras.md ilegivel: ' + textoLib.causaDoErro(e)) +
+        '; as contradicoes entre regras nao foram conferidas. Confira o arquivo e rode /esquadro:auditar de novo';
     return { lista: [], estado: { lidas: false, causa: codigo, motivo: motivo } };
   }
 }

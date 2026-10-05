@@ -22,7 +22,9 @@ const BALDES_DE_BLOQUEIO = [
   'fora_do_escopo', 'sem_escopo', 'comando_destrutivo', 'shell_idioma_errado',
   'fecho_sem_evidencia', 'subitem_pendente', 'outra_frente', 'intocavel',
   'token_fora_do_sistema', 'agente_caro_em_marcha_rapida',
-  'criou_sem_buscar', 'catraca_afrouxada', 'cd_solto'
+  'criou_sem_buscar', 'catraca_afrouxada', 'cd_solto',
+  // F6-04: nome de frente invalido e "Fora" declarado tinham o balde fora_do_escopo; agora cada um tem o seu.
+  'frente_invalida', 'fora_declarado'
 ];
 
 function soma(contadores, chaves) {

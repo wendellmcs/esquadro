@@ -340,3 +340,25 @@ test('estado: contadores.json = objeto valido soma e NAO cria .corrompido (contr
     }
   });
 });
+
+// F1-H09: a unica linha nao-ASCII de estado.js era um comentario ("recomecar"); o arquivo e ASCII.
+test('estado: o arquivo do modulo e ASCII puro', () => {
+  const fonte = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'lib', 'estado.js'), 'utf8');
+  const fora = fonte.split('\n').map((l, i) => [i + 1, l]).filter((p) => /[^\x00-\x7f]/.test(p[1]));
+  assert.deepStrictEqual(fora, [], 'linha com caractere fora de ASCII: ' + JSON.stringify(fora));
+});
+
+// F1-C06: `ultimaFerramenta` era gravado e nunca lido. Sai da lista; estado antigo que ainda
+// o tem segue legivel e nao quebra o resto.
+test('estado: ultimaFerramenta saiu das listas, e estado antigo com o campo segue lido sem erro', () => {
+  comTmp((estado) => {
+    assert.strictEqual(estado.CAMPOS_DO_TURNO.indexOf('ultimaFerramenta'), -1);
+    assert.strictEqual(estado.CAMPOS_DA_SESSAO.indexOf('ultimaFerramenta'), -1);
+    estado.gravar('velho', { trabalhoReal: true, ultimaFerramenta: 'Bash', frente: 'x' });
+    assert.strictEqual(estado.ler('velho').ultimaFerramenta, 'Bash', 'o campo antigo continua legivel');
+    assert.deepStrictEqual(estado.camposDaSessao(estado.ler('velho')), { frente: 'x' },
+      'o fecho nao carrega o campo que saiu das listas');
+    const depois = estado.alterar('velho', (s) => { s.buscouNesteTurno = true; return s; });
+    assert.strictEqual(depois.buscouNesteTurno, true);
+  });
+});

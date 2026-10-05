@@ -774,14 +774,18 @@ test('0.3.3/item 5: o arquivo do mapa.json com "../" no meio do caminho ainda e 
   });
 });
 
-/** Preload que faz o disco "dizer" o dev+ino dos dois nomes: mesmo arquivo, ou (INO_DIFERENTE) arquivos distintos. */
+/**
+ * Preload que faz o disco "dizer" o dev+ino dos dois nomes: mesmo arquivo, ou (INO_DIFERENTE) arquivos
+ * distintos. F2-13: ZERO=ino ou ZERO=dev faz o disco dizer 0 nesse campo (sistema de arquivos que nao o preenche).
+ */
 function preloadDoDisco() {
   const fs = require('fs');
   const original = fs.statSync;
   fs.statSync = function (p) {
     const q = String(p).split('\\').join('/');
     if (/\/(src\/a\.js|SRC\/A\.JS)$/.test(q)) {
-      return { dev: 1n, ino: (process.env.INO_DIFERENTE && /SRC/.test(q)) ? 9n : 5n };
+      return { dev: process.env.ZERO === 'dev' ? 0n : 1n,
+        ino: process.env.ZERO === 'ino' ? 0n : ((process.env.INO_DIFERENTE && /SRC/.test(q)) ? 9n : 5n) };
     }
     return original.apply(this, arguments);
   };
@@ -913,5 +917,112 @@ test('0.3.3/item 8: fecho sem sessao avisa que nao entrou no contador de nenhuma
     baseFechada(cwd);
     const r = rodar([], cwd, tmp, { CLAUDE_CODE_SESSION_ID: 'do-ambiente' });
     assert.strictEqual(r.json.revisaoFechadaContada.aviso, undefined, JSON.stringify(r.json.revisaoFechadaContada));
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Frente esquadro-pendencias, T2 do plano dos 82: F2-01, F2-06, F2-13 e F3-22 do apurar-ronda.js.
+// ---------------------------------------------------------------------------------------------
+
+test('T2/F2-01: valor que comeca com "--" so e "sem valor" quando e flag do uso (--sessao, --arquivo)', () => {
+  comRepo((cwd, tmp) => {
+    // um arquivo chamado --x.js e um caminho valido para --arquivo
+    gravarNaBase(cwd, '--x.js', '--x.js', 1, [SECO]);
+    gravarNaBase(cwd, '--x.js', '--x.js', 2, [SECO]);
+    const r = rodar(['--sessao', 'f201', '--arquivo', '--x.js'], cwd, tmp);
+    assert.strictEqual(r.status, 0, '--arquivo --x.js e o caminho --x.js: ' + r.stdout);
+    assert.strictEqual(r.json.arquivo, '--x.js');
+    // --sessao seguido de algo que nao e flag do uso: esse e o valor (a classe do id decide o resto)
+    const s = rodar(['--sessao', '--x', '--arquivo', '--x.js'], cwd, tmp);
+    assert.doesNotMatch(s.stdout, /sem valor|sem caminho/, '--sessao --x nao e flag sem valor: ' + s.stdout);
+    // controle: flag do USO no lugar do valor, e valor vazio, seguem "sem valor"
+    const a = rodar(['--arquivo', '--sessao', 'f201'], cwd, tmp);
+    assert.strictEqual(a.status, 1, a.stdout);
+    assert.match(a.stdout, /--arquivo sem caminho/);
+    const b = rodar(['--sessao', '--arquivo', '--x.js'], cwd, tmp);
+    assert.strictEqual(b.status, 1, b.stdout);
+    assert.match(b.stdout, /--sessao sem valor/);
+    const c = rodar(['--arquivo', ''], cwd, tmp);
+    assert.strictEqual(c.status, 1, c.stdout);
+    assert.match(c.stdout, /--arquivo sem caminho/);
+    const d = rodar(['--sessao', ''], cwd, tmp);
+    assert.strictEqual(d.status, 1, d.stdout);
+    assert.match(d.stdout, /--sessao sem valor/);
+  });
+});
+
+test('T2/F2-06: na lista de "ha N revisoes", base com mapa.json ruim sai como "(mapa ilegivel)" na linha dela', () => {
+  comRepo((cwd, tmp) => {
+    gravarNaBase(cwd, 'src__a.js', 'src/a.js', 1, [SECO]);
+    gravarNaBase(cwd, 'src__b.js', 'src/b.js', 1, [SECO]);
+    const mapaB = path.join(cwd, '.claude', 'esquadro', 'revisao', 'src__b.js', '1', 'mapa.json');
+    fs.writeFileSync(mapaB, '{ "arquivo": ', 'utf8');
+    const r = rodar(['--sessao', 'f206'], cwd, tmp);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.ok(r.stdout.startsWith('ERRO: ha 2 revisoes'), 'a lista sai inteira, sem o ERRO do mapa: ' + r.stdout);
+    assert.ok(r.stdout.includes('\n  src/a.js\n'), 'a base boa segue pelo arquivo do mapa: ' + r.stdout);
+    assert.ok(r.stdout.includes('\n  src__b.js (mapa ilegivel)\n'), 'a base ruim diz o nome da pasta e o motivo: ' + r.stdout);
+    assert.ok(!/esta corrompido/.test(r.stdout), r.stdout);
+    assert.strictEqual(r.json, null, r.stdout);
+    assert.ok(nadaGravadoEm(tmp));
+    // controle: fora da listagem o mapa ruim segue parando, citando o arquivo
+    const c = rodar(['--sessao', 'f206', '--arquivo', 'src/b.js'], cwd, tmp);
+    assert.strictEqual(c.status, 1, c.stdout);
+    assert.ok(c.stdout.startsWith('ERRO: ') && c.stdout.includes('src__b.js/1/mapa.json esta corrompido'), c.stdout);
+  });
+});
+
+test('T2/F2-13: dev ou ino 0 no disco nao confirma que dois nomes de caixa diferente sejam o mesmo arquivo', () => {
+  comRepo((cwd, tmp) => {
+    gravarRonda(cwd, 1, [SECO]);
+    gravarRonda(cwd, 2, [SECO]);
+    gravarMapa(cwd, 1, { A: 'trabalho', B: 'HEAD' });
+    const preload = path.join(tmp, 'disco.js');
+    fs.writeFileSync(preload, '(' + preloadDoDisco.toString() + ')();\n', 'utf8');
+    const opcoes = '--require "' + preload.split(path.sep).join('/') + '"';
+    trocaMapaDaRonda2(cwd, 'SRC/A.JS');
+    // controle: dev e ino iguais e diferentes de 0 seguem juntando
+    const igual = rodar(['--sessao', 'f213', '--arquivo', 'src/a.js'], cwd, tmp, { NODE_OPTIONS: opcoes });
+    assert.strictEqual(igual.status, 0, 'ino 5 igual junta: ' + igual.stdout);
+    for (const zero of ['ino', 'dev']) {
+      const r = rodar(['--sessao', 'f213-' + zero, '--arquivo', 'src/a.js'], cwd, tmp, { NODE_OPTIONS: opcoes, ZERO: zero });
+      assert.strictEqual(r.status, 1, zero + ' 0 nao confirma nada: ' + r.stdout);
+      assert.ok(r.stdout.includes('nao de src/a.js'), r.stdout);
+    }
+  });
+});
+
+// F3-22: a causa dos erros de leitura vem traduzida (texto.causaDoErro), nao o err.message cru do Node.
+test('T2/F3-22: mapa.json que nao se le (e uma pasta) diz a causa traduzida', () => {
+  comRepo((cwd, tmp) => {
+    const base = baseFechada(cwd);
+    const mapa2 = path.join(base, '2', 'mapa.json');
+    fs.rmSync(mapa2);
+    fs.mkdirSync(mapa2);
+    const r = rodar(['--sessao', 'f322a'], cwd, tmp);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.ok(r.stdout.includes(REL_BASE + '/2/mapa.json esta corrompido (e uma pasta (EISDIR))'), r.stdout);
+  });
+});
+
+test('T2/F3-22: pasta de revisao que nao se le (ENOTDIR) diz a causa traduzida', () => {
+  comRepo((cwd, tmp) => {
+    fs.mkdirSync(path.join(cwd, '.claude', 'esquadro', 'revisao'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.claude', 'esquadro', 'revisao', 'src__x.js'), 'nao e pasta', 'utf8');
+    const r = rodar(['--sessao', 'f322b', '--arquivo', 'src/x.js'], cwd, tmp);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.ok(r.stdout.includes('(parte do caminho nao e uma pasta (ENOTDIR))'), r.stdout);
+  });
+});
+
+test('T2/F3-22: pasta vereditos que nao se le (ENOTDIR) diz a causa traduzida', () => {
+  comRepo((cwd, tmp) => {
+    const base = baseFechada(cwd);
+    const dir2 = path.join(base, '2', 'vereditos');
+    fs.rmSync(dir2, { recursive: true, force: true });
+    fs.writeFileSync(dir2, 'nao e pasta', 'utf8');
+    const r = rodar(['--sessao', 'f322c'], cwd, tmp);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.ok(r.stdout.includes(REL_BASE + '/2/vereditos/ (parte do caminho nao e uma pasta (ENOTDIR))'), r.stdout);
   });
 });

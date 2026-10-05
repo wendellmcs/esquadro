@@ -92,3 +92,34 @@ test('D244/defeito 6: padrao sem pasta fixa (so glob) nao se salva pelo disco', 
   const os = require('node:os');
   assert.deepStrictEqual(projeto.intocaveisInertes({ intocaveis: ['**/*.pem'] }, ARQUIVOS, os.tmpdir()), ['**/*.pem']);
 });
+
+// F1-C12: git que nao respondeu devolvia [] e a abertura calava - "nao sei" lido como "esta tudo certo".
+test('F1-C12: abertura fora de repositorio, com intocaveis, diz que nao sabe; sem intocaveis, cala', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const abertura = path.join(__dirname, '..', 'scripts', 'abertura.js');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-c12-'));
+  try {
+    const env = Object.assign({}, process.env, { ESQUADRO_TMP: tmp });
+    const abrir = (cwd) => spawnSync(process.execPath, [abertura], {
+      input: JSON.stringify({ session_id: 'c12', cwd: cwd, source: 'startup' }),
+      encoding: 'utf8', env: env, timeout: 30000
+    });
+    const montar = (nome, intocaveis) => {
+      const dir = path.join(tmp, nome);
+      fs.mkdirSync(path.join(dir, '.claude', 'esquadro'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'projeto.json'),
+        JSON.stringify({ versaoConfig: 1, intocaveis: intocaveis }), 'utf8');
+      return dir;
+    };
+    const com = abrir(montar('com', ['segredos/**']));
+    assert.strictEqual(com.status, 0, com.stderr);
+    assert.ok(com.stdout.indexOf('nao sei se ha intocavel inerte (o git nao respondeu)') !== -1, com.stdout);
+    const sem = abrir(montar('sem', []));
+    assert.strictEqual(sem.status, 0, sem.stderr);
+    assert.strictEqual(sem.stdout.indexOf('intocavel inerte'), -1,
+      'sem intocaveis nao ha o que duvidar: ' + sem.stdout);
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});

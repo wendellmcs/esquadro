@@ -196,6 +196,29 @@ test('exportar: a contagem impressa e a de verdade, nao a prevista', () => {
   assert.ok(/NAO COPIADOS \(1\):\r?\n\s+scripts\/a\.js /.test(r2.stderr), r2.stderr);
 });
 
+// F1-C05: superficie vazia dava "Copiados: 0 de 0" e saida 0 - export "bem-sucedido" de nada.
+test('exportar: superficie vazia e ERRO (saida 1), nao "0 de 0"; nada e criado', () => {
+  const de = pasta('origem-vazia');
+  escrever(de, path.join('docs', 'so-isto.md'), 'fora do publico\n');
+  spawnSync('git', ['init', '-q'], { cwd: de, encoding: 'utf8', shell: false });
+  spawnSync('git', ['add', '-A'], { cwd: de, encoding: 'utf8', shell: false });
+  assert.deepStrictEqual(sanit.superficiePublicavel(de), [], 'a fixture precisa ter superficie vazia');
+  const para = path.join(pasta('destino'), 'novo');
+  const r = exportar(de, para, ['--gravar']);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.ok(/superficie vazia: nada a exportar/.test(r.stderr), r.stderr);
+  assert.strictEqual(r.stdout.indexOf('Copiados'), -1, r.stdout);
+  assert.strictEqual(fs.existsSync(para), false, 'montou destino para nada');
+});
+
+// F3-22: o codigo cru do Node ("ENOENT") nao diz nada a quem le o relatorio.
+test('exportar: arquivo que sumiu e nomeado com a causa em portugues', () => {
+  const de = origem();
+  fs.unlinkSync(path.join(de, 'scripts', 'a.js'));
+  const r = exportar(de, path.join(pasta('destino'), 'novo'), ['--gravar']);
+  assert.ok(/scripts\/a\.js \(nao existe \(ENOENT\)\)/.test(r.stderr), r.stderr);
+});
+
 // Ronda 1 do Passo 8b: o git do destino nao tinha teto de tempo nem retorno
 // conferido, e a saida dizia "feitos" com saida 0 mesmo quando o add falhava.
 test('exportar: git que falha no destino sai 1 e nao anuncia indice pronto', () => {

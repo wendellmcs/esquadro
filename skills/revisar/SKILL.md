@@ -15,7 +15,9 @@ produziu — e o raciocínio que produziu o bug reproduz o bug.
     node "${CLAUDE_PLUGIN_ROOT}/scripts/preparar-revisao.js" --arquivo <caminho>
 
 O script escreve `A.txt`, `B.txt` e `mapa.json` em `.claude/esquadro/revisao/<arquivo>/<n>/`: cada
-arquivo tem a sua base (`<arquivo>` é o caminho com `/` trocado por `__`), e `<n>` é a ronda dele. O
+arquivo tem a sua base, e `<n>` é a ronda dele. O `<arquivo>` é o id do arquivo: cada `/` do caminho
+vira `__`, cada caractere fora de letras, números, `.`, `_` e `-` vira `_`, e um id só de dígitos
+ganha um `_` na frente (regra da função `idDoArquivo`, em `scripts/lib/cegar.js`). O
 caminho exato vem na saída (`a`, `b`, `vereditos` e `base`); use o que a saída diz, não reconstrua.
 **Você não abre `mapa.json`, e nenhum inspetor recebe o caminho dele.**
 

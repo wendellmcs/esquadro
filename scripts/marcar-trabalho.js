@@ -24,7 +24,6 @@ io.blindar(function () {
       if (!soLeitura) {
         if (!s.trabalhoReal) s.turnosComTrabalho = (s.turnosComTrabalho || 0) + 1;
         s.trabalhoReal = true;
-        s.ultimaFerramenta = e.tool_name || null;
         const arquivo = (e.tool_input || {}).file_path;
         if (arquivo) {
           s.arquivosTocados = s.arquivosTocados || [];

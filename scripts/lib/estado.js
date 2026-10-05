@@ -120,8 +120,7 @@ function limpar(sessionId) {
  */
 const CAMPOS_DA_SESSAO = ['avisouSemConfig', 'avisouTipoErrado', 'avisouApelido', 'gatilho3', 'abertoEm',
   'frente', 'avisouTabelaShell'];
-const CAMPOS_DO_TURNO = ['trabalhoReal', 'bloqueouNesteTurno', 'buscouNesteTurno', 'contadores',
-  'ultimaFerramenta'];
+const CAMPOS_DO_TURNO = ['trabalhoReal', 'bloqueouNesteTurno', 'buscouNesteTurno', 'contadores'];
 
 /** Os campos da sessao que este estado tem, para o fecho carregar adiante. */
 function camposDaSessao(s) {
@@ -160,7 +159,7 @@ function descarregar(cwd, contadores) {
     }
     dados = parsed;
   } catch (e) {
-    // Preservar arquivo corrompido com sufixo .corrompido antes de recomeçar
+    // Preservar arquivo corrompido com sufixo .corrompido antes de recomecar
     try { fs.renameSync(arquivo, arquivo + '.corrompido'); } catch (renameError) { /* nao conseguiu preservar, segue mesmo assim */ }
     dados = {};
   }

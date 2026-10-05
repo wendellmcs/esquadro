@@ -101,6 +101,17 @@ function avisou(r, causa) {
   if (causa) assert.ok(causa.test(r.json.systemMessage), String(causa) + ' fora de: ' + r.json.systemMessage);
 }
 
+/** F3-08: o aviso de "ja existe ... outro conteudo" manda comparar e apagar o errado, nao "gravar a mao". */
+function avisouOutroConteudo(r, arquivo) {
+  semBarrar(r);
+  assert.ok(r.json && typeof r.json.systemMessage === 'string', 'nao avisou: ' + r.stdout);
+  const m = r.json.systemMessage;
+  assert.ok(/ja existe .+\.json com outro conteudo; nao sobrescrevi/.test(m), m);
+  assert.ok(/compare os dois \(o arquivo e o JSON do inspetor\) e apague o errado antes de gravar de novo/i.test(m), m);
+  assert.ok(!/grave esta lente a mao/i.test(m), 'o aviso ainda manda gravar a mao: ' + m);
+  if (arquivo) assert.ok(m.includes(arquivo), 'o aviso nao diz qual arquivo comparar: ' + m);
+}
+
 function lerVeredito(p, lente) {
   return JSON.parse(fs.readFileSync(path.join(p.vereditos, lente + '.json'), 'utf8'));
 }
@@ -170,11 +181,40 @@ test('gravar-veredito: a lente pode vir pelo titulo quando o titulo e unico', ()
   } finally { limpar(p); }
 });
 
-test('gravar-veredito: titulo que as duas familias usam nao grava (qual das duas?) e avisa', () => {
+// F6-01 (D335 secao 1): o inspetor grava o TITULO no campo lente, e o apurar casa refutacao por esse texto
+// (mesmaLente). Titulo repetido entre as duas familias deixava o texto ambiguo; agora nenhum se repete.
+test('gravar-veredito: nenhum titulo de lente se repete entre as familias (codigo e tela), pela mesma comparacao do gravador', () => {
+  const vered = require('../scripts/lib/veredito.js');
+  const todas = vered.LENTES.concat(vered.LENTES_UI);
+  const vistos = {};
+  for (const l of todas) {
+    const t = String(l.titulo).trim().toLowerCase();
+    assert.ok(!Object.prototype.hasOwnProperty.call(vistos, t), 'titulo repetido: "' + l.titulo + '" (' + vistos[t] + ' e ' + l.chave + ')');
+    vistos[t] = l.chave;
+  }
+});
+
+test('gravar-veredito: o titulo completo de cada familia grava na chave certa (Estados e Fidelidade, codigo e tela)', () => {
   const p = projeto();
   try {
-    const vd = veredito(p, { lente: 'Estados obrigatorios', achados: [] });
-    avisou(rodar(p, stop(p, JSON.stringify(vd))), /lente desconhecida/);
+    const casos = [
+      ['Estados obrigatorios (codigo)', 'estados.json'], ['Estados obrigatorios (tela)', 'ui-estados.json'],
+      ['Fidelidade ao design system (codigo)', 'design.json'], ['Fidelidade ao design system (tela)', 'ui-design.json']
+    ];
+    for (const [titulo, arquivo] of casos) {
+      calado(rodar(p, stop(p, JSON.stringify(veredito(p, { lente: titulo, achados: [] })))));
+      assert.ok(fs.existsSync(path.join(p.vereditos, arquivo)), titulo + ' nao gravou ' + arquivo + ': ' + arquivosEm(p));
+    }
+    assert.strictEqual(arquivosEm(p).length, 4);
+  } finally { limpar(p); }
+});
+
+test('gravar-veredito: o titulo antigo, sem o sufixo (codigo)/(tela), nao grava: qual das duas?', () => {
+  const p = projeto();
+  try {
+    for (const titulo of ['Estados obrigatorios', 'Fidelidade ao design system']) {
+      avisou(rodar(p, stop(p, JSON.stringify(veredito(p, { lente: titulo, achados: [] })))), /lente desconhecida/);
+    }
     assert.deepStrictEqual(arquivosEm(p), []);
   } finally { limpar(p); }
 });
@@ -336,7 +376,7 @@ test('gravar-veredito: arquivo diferente ja existe -> nao sobrescreve e avisa', 
   try {
     const antigo = veredito(p, { melhor: 'B', porQue: 'outra ronda', achados: [] });
     fs.writeFileSync(path.join(p.vereditos, 'correcao.json'), JSON.stringify(antigo), 'utf8');
-    avisou(rodar(p, stop(p, JSON.stringify(veredito(p)))), /ja existe correcao\.json com outro conteudo/);
+    avisouOutroConteudo(rodar(p, stop(p, JSON.stringify(veredito(p)))), path.join(p.vereditos, 'correcao.json'));
     assert.deepStrictEqual(lerVeredito(p, 'correcao'), antigo);
   } finally { limpar(p); }
 });
@@ -542,8 +582,11 @@ test('gravar-veredito (C): o aviso diz onde e como gravar: <pasta>/<lente>.json,
     // lente conhecida e pasta conhecida: o caminho do arquivo vem pronto
     fs.writeFileSync(path.join(p.vereditos, 'correcao.json'), JSON.stringify(veredito(p, { melhor: 'B', achados: [] })), 'utf8');
     const r = rodar(p, stop(p, JSON.stringify(veredito(p))));
-    avisou(r, /ja existe correcao\.json/);
+    avisouOutroConteudo(r, path.join(p.vereditos, 'correcao.json'));
     assert.ok(r.json.systemMessage.includes(path.join(p.vereditos, 'correcao.json')), r.json.systemMessage);
+    // os outros avisos seguem com o "Grave esta lente a mao" (o que nao e "outro conteudo")
+    fs.writeFileSync(path.join(p.vereditos, 'borda.json'), '{ quebrado', 'utf8');
+    avisou(rodar(p, stop(p, JSON.stringify(veredito(p, { lente: 'borda' })), { agent_id: 'outro-aviso' })), /nao consegui le-lo/);
     // lente e pasta desconhecidas: diz o molde, sem inventar nome
     const sem = rodar(p, stop(p, 'Veredito entregue.', { agent_id: 'sem-json' }));
     avisou(sem, /JSON/);
@@ -570,6 +613,85 @@ test('gravar-veredito (E): marca gravada -> o aviso do handback nao fala em repe
     avisou(r, /JSON/);
     assert.ok(!/pode se repetir/.test(r.json.systemMessage), r.json.systemMessage);
     calado(rodar(p, handback(p, JSON.stringify(veredito(p)), { agent_id: 'outro' })));
+  } finally { limpar(p); }
+});
+
+// ------------------------------------------------ T2 do plano dos 82 (frente esquadro-pendencias)
+
+test('T2/F3-07 (D335 secao 2): handback que GRAVOU e nao grava a marca avisa que gravou, e que o "nao achei o JSON" do fim pode ser ignorado', () => {
+  const p = projeto();
+  try {
+    // a pasta do estado nao se cria: ja existe um ARQUIVO onde ficaria a pasta "esquadro"
+    fs.mkdirSync(p.estado, { recursive: true });
+    fs.writeFileSync(path.join(p.estado, 'esquadro'), 'x', 'utf8');
+    const vd = veredito(p, { lente: 'borda', achados: [] });
+    const r = rodar(p, handback(p, JSON.stringify(vd)));
+    semBarrar(r);
+    assert.ok(r.json && typeof r.json.systemMessage === 'string', 'gravou, a marca falhou e o hook ficou calado: ' + r.stdout);
+    const m = r.json.systemMessage;
+    assert.ok(/gravei o veredito da lente borda/.test(m), 'nao diz que gravou, nem a lente: ' + m);
+    assert.ok(m.includes('vereditos/borda.json'), 'nao diz o arquivo: ' + m);
+    assert.ok(/nao achou o JSON do veredito/.test(m) && /ignore/.test(m), 'nao diz que o aviso do fim pode ser ignorado: ' + m);
+    assert.ok(!/nao gravei/.test(m), 'e um aviso de que gravou, nao de que falhou: ' + m);
+    assert.deepStrictEqual(arquivosEm(p), ['borda.json']);
+    // gravado igual de antes (outro handback, mesma lente): o veredito esta la, e o aviso tambem
+    const r2 = rodar(p, handback(p, JSON.stringify(vd), { agent_id: 'segundo' }));
+    assert.ok(r2.json && /gravei o veredito da lente borda/.test(r2.json.systemMessage), r2.stdout);
+    // quando o handback AVISA (nao gravou) e a marca falha, segue o aviso de sempre, sem dizer que gravou
+    const r3 = rodar(p, handback(p, 'sem json nenhum', { agent_id: 'terceiro' }));
+    avisou(r3, /JSON/);
+    assert.ok(/pode se repetir/.test(r3.json.systemMessage) && !/^esquadro: gravei o veredito/.test(r3.json.systemMessage), r3.json.systemMessage);
+  } finally { limpar(p); }
+  // controle: marca gravada + gravou = segue calado
+  const q = projeto();
+  try {
+    calado(rodar(q, handback(q, JSON.stringify(veredito(q, { lente: 'borda', achados: [] })))));
+    assert.deepStrictEqual(arquivosEm(q), ['borda.json']);
+  } finally { limpar(q); }
+});
+
+test('T2/F3-21: a pasta da ronda tem de estar dentro da raiz do projeto (absoluta de fora nao grava)', () => {
+  const p = projeto();
+  const fora = tmp('fora');
+  try {
+    const rondaFora = path.join(fora, '.claude', 'esquadro', 'revisao', 'src__a.js', '1');
+    fs.mkdirSync(path.join(rondaFora, 'vereditos'), { recursive: true });
+    fs.writeFileSync(path.join(rondaFora, 'A.txt'), 'a\n', 'utf8');
+    fs.writeFileSync(path.join(rondaFora, 'B.txt'), 'b\n', 'utf8');
+    const r = rodar(p, stop(p, JSON.stringify(veredito(p, { vereditos: path.join(rondaFora, 'vereditos') }))));
+    avisou(r, /fora da pasta do projeto/);
+    assert.deepStrictEqual(fs.readdirSync(path.join(rondaFora, 'vereditos')), [], 'gravou fora do projeto');
+    assert.deepStrictEqual(arquivosEm(p), []);
+    // controle: a relativa e a absoluta DENTRO da raiz seguem gravando
+    calado(rodar(p, stop(p, JSON.stringify(veredito(p, { vereditos: path.relative(p.dir, p.vereditos), lente: 'borda', achados: [] })))));
+    calado(rodar(p, stop(p, JSON.stringify(veredito(p, { vereditos: p.vereditos, lente: 'estados', achados: [] })))));
+    assert.deepStrictEqual(arquivosEm(p), ['borda.json', 'estados.json']);
+  } finally { limpar(p); fs.rmSync(fora, { recursive: true, force: true }); }
+});
+
+/** Roda o script com um modulo pre-carregado (src) que troca uma funcao do fs antes do script carregar. */
+function rodarComPre(p, entrada, src) {
+  const pre = path.join(p.dir, 'pre-fs.js');
+  fs.writeFileSync(pre, src, 'utf8');
+  const r = spawnSync(process.execPath, ['--require', pre, SCRIPT], opcoes(p, entrada));
+  let json = null;
+  if (r.stdout && r.stdout.trim()) { try { json = JSON.parse(r.stdout); } catch (e) { json = null; } }
+  return { status: r.status, json: json, stdout: r.stdout, stderr: r.stderr };
+}
+
+test('T2/F3-22: a causa dos erros de escrita e de leitura vem traduzida (texto.causaDoErro)', () => {
+  const p = projeto();
+  try {
+    // escrita que falha com EACCES (nao e EEXIST): "sem permissao (EACCES)", nao o codigo cru
+    const w = rodarComPre(p, stop(p, JSON.stringify(veredito(p))),
+      "const fs = require('node:fs'); const orig = fs.writeFileSync;\n" +
+      "fs.writeFileSync = function (f) { if (String(f).endsWith('correcao.json')) { " +
+      "throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); } return orig.apply(this, arguments); };\n");
+    avisou(w, /erro ao escrever .*correcao\.json \(sem permissao \(EACCES\)\)/);
+    // o que ja existe e e uma pasta: a leitura falha com EISDIR
+    fs.mkdirSync(path.join(p.vereditos, 'borda.json'));
+    const r = rodar(p, stop(p, JSON.stringify(veredito(p, { lente: 'borda' }))));
+    avisou(r, /nao consegui le-lo \(e uma pasta \(EISDIR\)\)/);
   } finally { limpar(p); }
 });
 

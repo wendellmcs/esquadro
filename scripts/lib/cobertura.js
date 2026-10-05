@@ -114,7 +114,7 @@ function portoes(cwd, projeto, a) {
     false,
     'vive em skill, no agente principal: e instrucao a um modelo, e instrucao pode ' +
     'ser pulada. Nenhum hook enxerga o catalogo do harness. ' +
-    (a.catalogo ? 'ultima consulta: ' + a.catalogo.desfecho : 'nunca se consultou aqui')));
+    (a.catalogo ? 'ultima consulta a pagina (gatilhos 1 e 4): ' + a.catalogo.desfecho : 'nunca se consultou aqui')));
 
   // Decisao 29: o apelido que o proprio plugin publica (o do inspetor) entra na conta.
   const cob = apelidosLib.cobertura(projeto, a.prova, apelidosLib.agentesDoPlugin());

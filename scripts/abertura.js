@@ -47,7 +47,13 @@ io.blindar(function () {
     // validador ve. Confere-se UMA vez por sessao, aqui, porque exige listar o
     // repositorio e os portoes de custo zero nao podem pagar isso a cada escrita.
     const projetoLib = require('./lib/projeto.js');
-    const inertes = projetoLib.intocaveisInertes(projeto, git.rastreados(cwd), cwd);
+    const rastreados = git.rastreados(cwd);
+    const inertes = projetoLib.intocaveisInertes(projeto, rastreados, cwd);
+    // F1-C12: `null` e "o git nao respondeu" - e nao e "nenhum inerte". Calar aqui
+    // fazia "nao sei" parecer "esta tudo certo". So se diz quando ha o que duvidar.
+    if (rastreados === null && projeto && Array.isArray(projeto.intocaveis) && projeto.intocaveis.length) {
+      process.stdout.write('\nesquadro: nao sei se ha intocavel inerte (o git nao respondeu).\n');
+    }
     if (inertes.length) {
       process.stdout.write('\n' + projetoLib.motivoInerte(inertes) + '\n');
     }

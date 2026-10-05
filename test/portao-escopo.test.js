@@ -458,7 +458,7 @@ test('escopo por frente: frente aposentada (arquivo movido para fora de escopos/
   });
 });
 
-test('escopo por frente: nome de frente invalido e negado sem gravar vinculo, e conta no balde fora_do_escopo', () => {
+test('escopo por frente: nome de frente invalido e negado sem gravar vinculo, e conta no balde frente_invalida (F6-04)', () => {
   comTmp((tmp) => {
     const dir = montarProjeto();
     const r = rodar({
@@ -470,8 +470,63 @@ test('escopo por frente: nome de frente invalido e negado sem gravar vinculo, e 
       r.json.hookSpecificOutput.permissionDecisionReason);
     const s = lerEstado(tmp, 's1');
     assert.strictEqual(s.frente, undefined, 'nome invalido nao pode gravar vinculo');
-    assert.strictEqual(s.contadores.fora_do_escopo, 1, 'sem balde novo: conta no balde existente');
+    assert.strictEqual(s.contadores.frente_invalida, 1, 'F6-04: balde proprio, para o contador dizer o que barrou');
+    assert.strictEqual(s.contadores.fora_do_escopo, undefined, 'F6-04: nome invalido nao conta mais como fora do escopo');
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+test('F6-04: o que o escopo declara "Fora" conta em fora_declarado; o que so nao esta no "Dentro" segue em fora_do_escopo', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    escrever(dir, '.claude/esquadro/escopo.md', '## Dentro\n- src/**\n## Fora de escopo\n- src/proibido.js\n');
+    const declarado = rodar({
+      session_id: 'sd', cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, 'src', 'proibido.js') }
+    }, tmp);
+    assert.strictEqual(negou(declarado), true);
+    const sd = lerEstado(tmp, 'sd');
+    assert.strictEqual(sd.contadores.fora_declarado, 1, 'declarado Fora: balde proprio');
+    assert.strictEqual(sd.contadores.fora_do_escopo, undefined, 'declarado Fora nao conta mais em fora_do_escopo');
+
+    // Controle do lado oposto: arquivo que so nao esta no "Dentro" (marcha padrao) segue no balde de sempre.
+    escrever(dir, '.claude/esquadro/escopo.md', '## Dentro\n- src/a.js\n');
+    const naoListado = rodar({
+      session_id: 'sf', cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, 'src', 'b.js') }
+    }, tmp);
+    assert.strictEqual(negou(naoListado), true);
+    const sf = lerEstado(tmp, 'sf');
+    assert.strictEqual(sf.contadores.fora_do_escopo, 1, 'fora do Dentro: o balde existente');
+    assert.strictEqual(sf.contadores.fora_declarado, undefined, 'fora do Dentro nao e "declarado Fora"');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+// F2-16: o escopo de uma frente cujo arquivo fica FORA do projeto (pasta escopos/ que e link) nao libera nada.
+test('F2-16: frente vinculada cuja pasta e link para FORA do projeto nao libera o escopo (junction de verdade)', (t) => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    const fora = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-esc-fora-'));
+    try {
+      fs.writeFileSync(path.join(fora, 'x.md'), '## Dentro\n- src/a.js\n', 'utf8');
+      try {
+        fs.symlinkSync(fora, path.join(dir, '.claude', 'esquadro', 'escopos'), 'junction');
+      } catch (e) {
+        t.skip('nao deu para criar link neste disco/usuario (' + (e && e.code) + ')');
+        return;
+      }
+      // Vincula a sessao a frente x (escrever o arquivo da frente tem o passe livre).
+      liberou(rodar({
+        session_id: 'sl', cwd: dir, tool_name: 'Write',
+        tool_input: { file_path: path.join(dir, '.claude', 'esquadro', 'escopos', 'x.md'), content: '## Dentro\n- src/a.js\n' }
+      }, tmp));
+      assert.strictEqual(lerEstado(tmp, 'sl').frente, 'x');
+      // O escopo "de fora" lista src/a.js, mas nao pode ser lido: sem escopo valido, a marcha padrao nega.
+      const r = rodar({
+        session_id: 'sl', cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, 'src', 'a.js') }
+      }, tmp);
+      assert.strictEqual(negou(r), true, 'o escopo lido de fora do projeto liberou a escrita');
+      assert.strictEqual(lerEstado(tmp, 'sl').contadores.sem_escopo, 1, 'conta como sem escopo (mais estrito)');
+    } finally { fs.rmSync(fora, { recursive: true, force: true }); fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });
 

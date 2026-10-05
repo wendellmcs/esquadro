@@ -61,7 +61,8 @@ test('busca: motivo diz que editar existente NAO exige busca', () => {
   assert.ok(/quem edita ja achou/i.test(m), 'a recusa tem de dizer o que NAO e barrado');
   // A falha de origem vai em palavras: o codigo da autoavaliacao nao vai a publico,
   // e quem le a recusa nao teria onde procura-lo (ronda 1 do Passo 8b).
-  assert.ok(/prefiro criar arquivo novo/.test(m), 'a recusa cita a falha de origem');
+  assert.ok(/criar arquivo novo em vez de entender o que ja existe/.test(m), 'a recusa cita a falha de origem');
+  assert.ok(!/"eu prefiro/.test(m), 'F1-H08: a frase em primeira pessoa e do catalogo de falhas, nao da recusa');
 });
 
 // ── regressao: furo achado na auditoria de 2026-09-02 ───────────────────────
@@ -74,4 +75,13 @@ test('busca REGRESSAO: comando que ESCREVE nao e passe para criar', () => {
   // e o que so le continua contando
   assert.strictEqual(busca.ehBusca('Bash', { command: 'cat a.js' }), true);
   assert.strictEqual(busca.ehBusca('Bash', { command: 'tail -20 a.js' }), true);
+});
+
+// F1-C11: 'search' e 'ls' nao sao ferramentas que nenhum hook entregue (hooks.json so escuta
+// Write|Edit|Bash|PowerShell|Grep|Glob|Read): contavam como busca sem poder ser chamadas.
+test('busca: FERRAMENTAS so lista o que o hook entrega (Grep, Glob, Read)', () => {
+  assert.deepStrictEqual(busca.FERRAMENTAS, ['grep', 'glob', 'read']);
+  assert.strictEqual(busca.ehBusca('Search', {}), false);
+  assert.strictEqual(busca.ehBusca('LS', {}), false);
+  assert.strictEqual(busca.ehBusca('Read', {}), true, 'controle: o que fica continua contando');
 });

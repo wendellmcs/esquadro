@@ -486,6 +486,32 @@ function avisoPermitido(r) {
   return { usuario: j.systemMessage, agente: h.additionalContext, evento: h.hookEventName };
 }
 
+// F3-20: o estado que nao se grava nao pode calar o aviso. A marca jaAvisou nascia true e so virava
+// false se o alterar RODASSE: com o estado fora do ar, o aviso sumia calado. Duplicar e melhor que calar.
+test('fiacao: tabela ilegivel com o estado da sessao fora do ar - o aviso sai mesmo assim (F3-20)', () => {
+  const plugin = pluginComTabela('{ "quando": ');
+  const dir = temp('tabela-sem-estado');
+  try {
+    comPlataforma(dir, PLATAFORMA_WIN);
+    // ESQUADRO_TMP dentro de um ARQUIVO: nenhuma pasta de estado pode ser criada
+    const arquivo = path.join(dir, 'e-um-arquivo');
+    fs.writeFileSync(arquivo, 'x', 'utf8');
+    const r = spawnSync(process.execPath, [path.join(plugin, 'scripts', 'portao-destrutivo.js')], {
+      cwd: dir, encoding: 'utf8',
+      input: JSON.stringify({ session_id: 'sem-estado', cwd: dir, tool_name: 'PowerShell', tool_input: { command: 'npm test' } }),
+      env: Object.assign({}, process.env, { ESQUADRO_TMP: path.join(arquivo, 'dentro') })
+    });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const a = avisoPermitido(r);
+    assert.ok(a, 'o estado fora do ar calou o aviso: ' + JSON.stringify(r.stdout));
+    assert.ok(a.usuario.includes('shell-win32.json'), a.usuario);
+    assert.ok(!motivoNegado(r), 'nada se nega por arquivo estragado');
+  } finally {
+    fs.rmSync(plugin, { recursive: true, force: true });
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('fiacao: tabela do PowerShell ilegivel - o comando passa com aviso, UMA vez por sessao, e o fecho nao o traz de volta (D294)', () => {
   const plugin = pluginComTabela('{ "quando": ');
   const dir = temp('tabela-ilegivel');

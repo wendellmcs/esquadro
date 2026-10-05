@@ -7,18 +7,33 @@ const cegar = require('./lib/cegar.js');
 const git = require('./lib/git.js');
 const caminho = require('./lib/caminho.js');
 const config = require('./lib/config.js');
+const textoLib = require('./lib/texto.js');
 
 /**
  * D244/defeito 9: a secao "## Regua ..." do regras.md do projeto, do cabecalho ate o proximo
  * `## ` (as `###` de dentro vao junto). Sem a secao, null. Acento no cabecalho nao importa.
+ * F2-12: `## ` dentro de bloco cercado (``` ou ~~~) nao e cabecalho: nao abre a secao nem a corta. A cerca
+ * abre com 3 ou mais do mesmo marcador e so fecha com o mesmo marcador, em igual ou maior numero.
  */
 function secaoDaRegua(texto) {
   const linhas = String(texto == null ? '' : texto).split(/\r?\n/);
   const semAcento = function (l) { return l.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); };
-  const ini = linhas.findIndex(function (l) { return /^##\s+regua\b/i.test(semAcento(l)); });
+  const emCerca = [];
+  let aberta = null;
+  linhas.forEach(function (l) {
+    const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(l);
+    if (aberta === null) {
+      emCerca.push(false);
+      if (m) aberta = m[1];
+    } else {
+      emCerca.push(true);
+      if (m && m[1][0] === aberta[0] && m[1].length >= aberta.length && m[2].trim() === '') aberta = null;
+    }
+  });
+  const ini = linhas.findIndex(function (l, i) { return !emCerca[i] && /^##\s+regua\b/i.test(semAcento(l)); });
   if (ini === -1) return null;
   let fim = linhas.length;
-  for (let i = ini + 1; i < linhas.length; i++) if (/^##\s/.test(linhas[i])) { fim = i; break; }
+  for (let i = ini + 1; i < linhas.length; i++) if (!emCerca[i] && /^##\s/.test(linhas[i])) { fim = i; break; }
   return linhas.slice(ini, fim).join('\n').trim() + '\n';
 }
 
@@ -72,7 +87,8 @@ function versaoNoHead(cwd, relRaiz) {
   }
   const v = rodarGit(cwd, ['rev-parse', '--verify', '-q', 'HEAD']);
   if (v && !v.error && v.status === 1) return { novo: true };
-  return { erro: 'o git nao disse se o arquivo esta no HEAD (show ' + r.status + ', ls-tree ' +
+  // F2-11: a causa em portugues; os status crus do git ficam so entre parenteses, no fim.
+  return { erro: 'o git nao respondeu se o arquivo esta no HEAD (codigos: show ' + r.status + ', ls-tree ' +
     (t ? (t.error ? (t.error.code || 'erro') : t.status) : 'sem resposta') + ', rev-parse ' +
     (v ? (v.error ? (v.error.code || 'erro') : v.status) : 'sem resposta') + ')' };
 }
@@ -105,7 +121,7 @@ let atual;
 try {
   atual = fs.readFileSync(path.join(cwd, rel), 'utf8');
 } catch (e) {
-  process.stdout.write('ERRO: nao consegui ler ' + rel + ' (causa: ' + (e.code || e.message) + '). ' +
+  process.stdout.write('ERRO: nao consegui ler ' + rel + ' (causa: ' + textoLib.causaDoErro(e) + '). ' +
     'Confira se e um arquivo que voce pode ler, e nao uma pasta, e rode de novo.\n');
   process.exit(1);
 }
@@ -156,9 +172,34 @@ try {
   secaoRegua = secaoDaRegua(fs.readFileSync(path.join(config.raizDoProjeto(cwd), '.claude', 'esquadro', 'regras.md'), 'utf8'));
 } catch (e) {
   if (!e || e.code !== 'ENOENT') {
-    process.stdout.write('ERRO: nao consegui ler .claude/esquadro/regras.md (causa: ' + ((e && (e.code || e.message)) || 'desconhecida') +
+    process.stdout.write('ERRO: nao consegui ler .claude/esquadro/regras.md (causa: ' + (e ? textoLib.causaDoErro(e) : 'desconhecida') +
       '). Nada foi gravado. Confira se e um arquivo que voce pode ler, e nao uma pasta, e rode de novo.\n');
     process.exit(1);
+  }
+}
+
+/**
+ * F2-07: as pastas que faltam para chegar a `pai`, da mais funda para a mais rasa - as que o mkdir recursivo
+ * vai CRIAR neste run. Lido antes do mkdir porque o retorno dele (a primeira pasta criada) vem no Windows como
+ * caminho estendido (`\\?\C:\...`), que nao se compara com os caminhos daqui.
+ */
+function pastasQueFaltam(pai) {
+  const faltam = [];
+  for (let p = pai; !fs.existsSync(p); p = path.dirname(p)) {
+    faltam.push(p);
+    if (path.dirname(p) === p) break;
+  }
+  return faltam;
+}
+
+/**
+ * F2-07: o rename falhou depois do mkdir recursivo: as pastas que ESTE run criou e que ficaram vazias saem, da
+ * mais funda para a mais rasa. So rmdir (nunca remocao recursiva): pasta com algo dentro falha, e a remocao
+ * para ali. Pasta que ja existia antes nao esta na lista, e nao e tocada.
+ */
+function desfazerPastasVazias(faltavam) {
+  for (const p of faltavam) {
+    try { fs.rmdirSync(p); } catch (e) { return; }
   }
 }
 
@@ -177,17 +218,26 @@ if (!formatoAntigo && fs.existsSync(path.join(base, 'fechada.json'))) {
     dois(d.getHours()) + dois(d.getMinutes()) + dois(d.getSeconds());
   let destino = path.join(pai, carimbo);
   for (let k = 2; fs.existsSync(destino); k++) destino = path.join(pai, carimbo + '-' + k);
+  const faltavam = pastasQueFaltam(pai);
   try {
     fs.mkdirSync(pai, { recursive: true });
     fs.renameSync(base, destino);
+    arquivada = destino;
   } catch (e) {
-    process.stdout.write('ERRO: a revisao de ' + rel + ' ja esta fechada (fechada.json) e nao consegui arquivar ' +
-      path.relative(cwd, base).replace(/\\/g, '/') + ' em ' + path.relative(cwd, destino).replace(/\\/g, '/') +
-      ' (causa: ' + (e.code || e.message) + '). Nada foi gravado. Feche o que estiver usando essa pasta e ' +
-      'rode de novo.\n');
-    process.exit(1);
+    // F2-10: ENOENT e a base ja sem fechada.json = outro preparar a arquivou entre a nossa conferencia e o
+    // rename. Nao e erro: a revisao fechada esta guardada (por ele) e esta e uma base nova. Qualquer outro
+    // erro do rename, ou ENOENT com a fechada.json ainda la, segue no ERRO.
+    if (e && e.code === 'ENOENT' && !fs.existsSync(path.join(base, 'fechada.json'))) {
+      // segue como base nova: arquivada fica null, e nada a dizer sobre para onde a anterior foi.
+    } else {
+      desfazerPastasVazias(faltavam);
+      process.stdout.write('ERRO: a revisao de ' + rel + ' ja esta fechada (fechada.json) e nao consegui arquivar ' +
+        path.relative(cwd, base).replace(/\\/g, '/') + ' em ' + path.relative(cwd, destino).replace(/\\/g, '/') +
+        ' (causa: ' + textoLib.causaDoErro(e) + '). Nada foi gravado. Feche o que estiver usando essa pasta e ' +
+        'rode de novo.\n');
+      process.exit(1);
+    }
   }
-  arquivada = destino;
 }
 
 const n = cegar.proximaRonda(base);
@@ -246,17 +296,17 @@ try {
     regua = path.join(dir, 'regua.md');
   }
 } catch (e) {
-  const causa = e.code || e.message;
+  const causa = textoLib.causaDoErro(e);
+  // F2-09: nos dois ramos, a revisao anterior (arquivada por este run) diz para onde foi.
+  const ondeFoi = arquivada ? ' A revisao anterior ja foi arquivada em ' + path.relative(cwd, arquivada).replace(/\\/g, '/') + '.' : '';
   if (criada) {
     process.stdout.write('ERRO: nao consegui gravar o pacote em ' + dirRel + ' (causa: ' + causa + '). ' +
       'A pasta ' + dirRel + ' ficou pela metade: apague-a antes de rodar de novo, senao o apurar-ronda ' +
-      'a conta como uma ronda. Depois rode de novo.\n');
+      'a conta como uma ronda. Depois rode de novo.' + ondeFoi + '\n');
   } else {
     process.stdout.write('ERRO: nao consegui criar a pasta da ronda ' + dirRel + ' (causa: ' + causa + '). ' +
       'Nada foi gravado. Confira se .claude/esquadro/revisao, e cada pasta do caminho ate ela, e uma pasta ' +
-      'e nao um arquivo, e rode de novo.' +
-      (arquivada ? ' A revisao anterior ja foi arquivada em ' + path.relative(cwd, arquivada).replace(/\\/g, '/') + '.' : '') +
-      '\n');
+      'e nao um arquivo, e rode de novo.' + ondeFoi + '\n');
   }
   process.exit(1);
 }
@@ -284,6 +334,13 @@ if (formatoAntigo) {
     // 0.3.3, item 17: o proximo passo. O aviso ja diz a regra do id logo acima.
     aviso += ' Nao consegui ler o mapa.json de nenhuma pasta numerada para dizer o id dessa revisao. ' +
       'Descubra o caminho do arquivo que essa revisao inspecionou e aplique a regra do id a ele.';
+  }
+  // F2-08: a base antiga e a propria revisao/, e o arquivamento automatico (acima) so vale para o formato
+  // novo. Se ela ja estava fechada, o aviso diz isso e como arquivar a mao.
+  if (fs.existsSync(path.join(base, 'fechada.json'))) {
+    aviso += ' Essa revisao ja estava fechada (revisao/fechada.json) e fica fora do arquivamento automatico: para ' +
+      'arquivar, mova as pastas numeradas e o fechada.json para .claude/esquadro/revisao-fechada/' +
+      (idAntigo || '<id>') + '/<carimbo>/ (o <carimbo> e a data e a hora, como 2026-09-29-173045) e prepare de novo.';
   }
 }
 const saida = {

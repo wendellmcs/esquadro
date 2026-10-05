@@ -320,3 +320,39 @@ test('0.3.3/item 1: ronda sem nenhum veredito e recusada e diz qual ronda; nao e
   // controle: a ronda seca de verdade e um veredito sem achados, e segue fechando aprovado
   assert.strictEqual(v.apurar([seca, seca]).motivo, 'duas rondas secas seguidas: aprovado');
 });
+
+// Frente esquadro-pendencias, T2 do plano dos 82.
+test('T2/F2-14: apurar sem nenhuma ronda (lista vazia, ou o que nao e lista) lanca "nenhuma ronda para apurar"', () => {
+  for (const entrada of [[], undefined, null, 'x', {}, 5]) {
+    assert.throws(() => v.apurar(entrada), /nenhuma ronda para apurar/, JSON.stringify(entrada));
+  }
+  // controle: com uma ronda de verdade apura, como antes
+  assert.strictEqual(v.apurar([[veredito('correcao', [])]]).ronda, 1);
+});
+
+test('T2/F2-15: ronda sem veredito diz o proximo passo, e segue dizendo qual ronda e que ela nao e seca', () => {
+  assert.throws(() => v.apurar([[veredito('correcao', [])], []]), (e) => {
+    assert.match(e.message, /ronda 2 sem nenhum veredito/);
+    assert.match(e.message, /ronda sem voto nao e ronda seca/);
+    assert.match(e.message, /grave os vereditos da ronda 2 na pasta vereditos dela e rode de novo/);
+    return true;
+  });
+});
+
+test('T2/F6-03: entrada de refutados.json que nao e objeto diz "entrada invalida" e a posicao, nao "sem prova"', () => {
+  const ok = { ronda: 1, lente: 'correcao', arquivo: 'A.txt', linha: 1, severidade: 'P1', prova: 'x.js:1' };
+  for (const ruim of [null, 5, 'texto', [], [ok], true]) {
+    assert.throws(() => v.apurar([[veredito('correcao', [])]], { refutados: [ruim] }), (e) => {
+      assert.match(e.message, /^entrada invalida no refutados\.json \(posicao 1\): cada refutacao e um objeto \{ ronda, lente, arquivo, linha, severidade, prova \}/,
+        JSON.stringify(ruim));
+      assert.doesNotMatch(e.message, /sem prova/);
+      return true;
+    });
+  }
+  // a posicao e a da entrada ruim na lista (a partir de 1)
+  assert.throws(() => v.apurar([[veredito('correcao', [])]], { refutados: [ok, null] }), /\(posicao 2\)/);
+  // controle: objeto sem prova segue "refutacao sem prova"
+  for (const semProva of [{}, { ronda: 1, lente: 'correcao' }, Object.assign({}, ok, { prova: '  ' })]) {
+    assert.throws(() => v.apurar([[veredito('correcao', [])]], { refutados: [semProva] }), /refutacao sem prova/);
+  }
+});

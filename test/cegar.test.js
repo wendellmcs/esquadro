@@ -898,3 +898,230 @@ test('0.3.3/item 18: o aviso do formato antigo usa o texto do cegar.js e o exemp
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+
+// ---------------------------------------------------------------------------------------------
+// Frente esquadro-pendencias, T2 do plano dos 82: F2-07 a F2-12 e F3-22 do preparar-revisao.js.
+// ---------------------------------------------------------------------------------------------
+
+const GANCHO_RENAME_EM_USO = [
+  "const fs = require('node:fs');",
+  "fs.renameSync = function () {",
+  "  throw Object.assign(new Error('EBUSY: resource busy or locked, rename'), { code: 'EBUSY' });",
+  "};"
+].join('\n');
+
+// F2-10: "outro preparar" arquiva a base antes deste (move a base para <pai>/outro-run) e o rename deste
+// falha de verdade com ENOENT: a origem sumiu.
+const GANCHO_OUTRO_PREPARAR_ARQUIVOU = [
+  "const fs = require('node:fs');",
+  "const path = require('node:path');",
+  "const orig = fs.renameSync;",
+  "fs.renameSync = function (a, b) {",
+  "  orig.call(fs, a, path.join(path.dirname(String(b)), 'outro-run'));",
+  "  return orig.apply(this, arguments);",
+  "};"
+].join('\n');
+
+// ENOENT no rename com a base ainda la (e a fechada.json nela): nao e "outro preparar arquivou".
+const GANCHO_RENAME_ENOENT_SEM_MOVER = [
+  "const fs = require('node:fs');",
+  "fs.renameSync = function () {",
+  "  throw Object.assign(new Error('ENOENT: no such file or directory, rename'), { code: 'ENOENT' });",
+  "};"
+].join('\n');
+
+function pastaFechadas(dir) { return path.join(dir, '.claude', 'esquadro', 'revisao-fechada'); }
+
+test('T2/F2-07: rename que falha tira as pastas vazias que ESTE run criou, e so elas', () => {
+  // 1) nada existia: revisao-fechada/ e revisao-fechada/<id>/ foram criadas por este run e saem
+  const dir = repoDeEnsaio();
+  try {
+    const s1 = JSON.parse(rodarCli(dir, 'raiz.txt').stdout);
+    fecharBase(s1);
+    const antes = fotoDaPasta(s1.base);
+    const r = rodarComGancho(dir, 'raiz.txt', GANCHO_RENAME_EM_USO);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /^ERRO: /, r.stdout);
+    assert.strictEqual(fs.existsSync(pastaFechadas(dir)), false, 'pastas vazias que este run criou ficaram: ' + fs.existsSync(pastaFechadas(dir)));
+    assert.match(r.stdout, /em uso \(EBUSY\)/, 'a mensagem de erro segue a de hoje, com a causa (F3-22 :186): ' + r.stdout);
+    assert.deepStrictEqual(fotoDaPasta(s1.base), antes, 'a base fechada segue intacta');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  // 2) revisao-fechada/ ja existia (com outra revisao arquivada): so o <id> criado por este run sai
+  const dir2 = repoDeEnsaio();
+  try {
+    const s1 = JSON.parse(rodarCli(dir2, 'raiz.txt').stdout);
+    fecharBase(s1);
+    fs.mkdirSync(path.join(pastaFechadas(dir2), 'outra', '2026-01-01-000000'), { recursive: true });
+    fs.writeFileSync(path.join(pastaFechadas(dir2), 'outra', '2026-01-01-000000', 'fechada.json'), '{}', 'utf8');
+    const r = rodarComGancho(dir2, 'raiz.txt', GANCHO_RENAME_EM_USO);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.strictEqual(fs.existsSync(path.join(pastaFechadas(dir2), 'raiz.txt')), false, 'o <id> vazio que este run criou ficou');
+    assert.ok(fs.existsSync(path.join(pastaFechadas(dir2), 'outra', '2026-01-01-000000', 'fechada.json')), 'o que ja existia saiu');
+  } finally { fs.rmSync(dir2, { recursive: true, force: true }); }
+  // 3) o <id> ja existia COM uma revisao arquivada antes: nada foi criado por este run, nada sai
+  const dir3 = repoDeEnsaio();
+  try {
+    const s1 = JSON.parse(rodarCli(dir3, 'raiz.txt').stdout);
+    fecharBase(s1);
+    const velha = path.join(pastaFechadas(dir3), 'raiz.txt', '2026-01-01-000000');
+    fs.mkdirSync(velha, { recursive: true });
+    fs.writeFileSync(path.join(velha, 'fechada.json'), '{}', 'utf8');
+    const r = rodarComGancho(dir3, 'raiz.txt', GANCHO_RENAME_EM_USO);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.ok(fs.existsSync(path.join(velha, 'fechada.json')), 'a arquivada de antes nao pode sumir');
+  } finally { fs.rmSync(dir3, { recursive: true, force: true }); }
+});
+
+test('T2/F2-10: ENOENT no rename com a base ja sem fechada.json = outro preparar arquivou antes: segue como base nova', () => {
+  const dir = repoDeEnsaio();
+  try {
+    const s1 = JSON.parse(rodarCli(dir, 'raiz.txt').stdout);
+    fecharBase(s1);
+    const r = rodarComGancho(dir, 'raiz.txt', GANCHO_OUTRO_PREPARAR_ARQUIVOU);
+    assert.strictEqual(r.status, 0, 'o ENOENT de quem perdeu a corrida virou ERRO: ' + r.stdout + r.stderr);
+    assert.strictEqual(r.stderr, '', r.stderr);
+    const s2 = JSON.parse(r.stdout);
+    assert.strictEqual(s2.ronda, 1, 'base nova: ronda 1');
+    assert.strictEqual(s2.arquivada, undefined, 'este run nao arquivou nada: ' + r.stdout);
+    assert.doesNotMatch(s2.aviso, /movida inteira/, 'o aviso nao pode dizer que ESTE run moveu a base: ' + s2.aviso);
+    assert.deepStrictEqual(fs.readdirSync(s2.base), ['1']);
+    assert.ok(fs.existsSync(path.join(pastaFechadas(dir), 'raiz.txt', 'outro-run', 'fechada.json')), 'a do outro run segue la');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  // controle: ENOENT com a fechada.json ainda na base NAO e "outro run arquivou": segue o ERRO de hoje
+  const dir2 = repoDeEnsaio();
+  try {
+    const s1 = JSON.parse(rodarCli(dir2, 'raiz.txt').stdout);
+    fecharBase(s1);
+    const antes = fotoDaPasta(s1.base);
+    const r = rodarComGancho(dir2, 'raiz.txt', GANCHO_RENAME_ENOENT_SEM_MOVER);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /^ERRO: .*nao consegui arquivar/, r.stdout);
+    assert.deepStrictEqual(fotoDaPasta(s1.base), antes);
+  } finally { fs.rmSync(dir2, { recursive: true, force: true }); }
+  // controle: outro erro do rename (EPERM) segue no ERRO
+  const dir3 = repoDeEnsaio();
+  try {
+    fecharBase(JSON.parse(rodarCli(dir3, 'raiz.txt').stdout));
+    const r = rodarComGancho(dir3, 'raiz.txt', GANCHO_RENAME_FALHA);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /EPERM/);
+  } finally { fs.rmSync(dir3, { recursive: true, force: true }); }
+});
+
+test('T2/F2-08: formato antigo com revisao/fechada.json: o aviso diz que ela fica fora do arquivamento e como arquivar a mao', () => {
+  const dir = repoDeEnsaio();
+  try {
+    const antiga = path.join(baseDeRevisao(dir), '1');
+    fs.mkdirSync(antiga, { recursive: true });
+    fs.writeFileSync(path.join(antiga, 'mapa.json'), JSON.stringify({ arquivo: 'a b/c.js', mapa: { A: 'HEAD', B: 'trabalho' } }), 'utf8');
+    fs.writeFileSync(path.join(baseDeRevisao(dir), 'fechada.json'), '{"ronda":1,"sessao":"s"}', 'utf8');
+    const r = rodarCli(dir, 'raiz.txt');
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const s = JSON.parse(r.stdout);
+    // o comportamento de preparar nao muda: a ronda 2 cai na mesma pasta solta, e nada e movido
+    assert.strictEqual(s.ronda, 2);
+    assert.strictEqual(s.arquivada, undefined);
+    assert.ok(fs.existsSync(path.join(baseDeRevisao(dir), 'fechada.json')));
+    assert.match(s.aviso, /ja estava fechada \(revisao\/fechada\.json\)/, s.aviso);
+    assert.match(s.aviso, /fora do arquivamento automatico/, s.aviso);
+    assert.ok(s.aviso.includes('.claude/esquadro/revisao-fechada/a_b__c.js/<carimbo>/'), 'diz para onde mover, com o id: ' + s.aviso);
+    assert.match(s.aviso, /pastas numeradas e o fechada\.json/, s.aviso);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  // sem mapa legivel: o destino fica com <id> e a regra do id ja esta no aviso
+  const dir2 = repoDeEnsaio();
+  try {
+    fs.mkdirSync(path.join(baseDeRevisao(dir2), '1'), { recursive: true });
+    fs.writeFileSync(path.join(baseDeRevisao(dir2), 'fechada.json'), '{"ronda":1}', 'utf8');
+    const s2 = JSON.parse(rodarCli(dir2, 'raiz.txt').stdout);
+    assert.ok(s2.aviso.includes('.claude/esquadro/revisao-fechada/<id>/<carimbo>/'), s2.aviso);
+  } finally { fs.rmSync(dir2, { recursive: true, force: true }); }
+  // controle: formato antigo SEM fechada.json (revisao em andamento) nao fala em arquivamento
+  const dir3 = repoDeEnsaio();
+  try {
+    fs.mkdirSync(path.join(baseDeRevisao(dir3), '1'), { recursive: true });
+    const s3 = JSON.parse(rodarCli(dir3, 'raiz.txt').stdout);
+    assert.match(s3.aviso, /formato antigo/);
+    assert.doesNotMatch(s3.aviso, /revisao-fechada|fora do arquivamento/, s3.aviso);
+  } finally { fs.rmSync(dir3, { recursive: true, force: true }); }
+});
+
+test('T2/F2-09: gravacao que falha depois de criar a pasta da ronda tambem diz para onde a revisao anterior foi', () => {
+  const dir = repoDeEnsaio();
+  try {
+    const s1 = JSON.parse(rodarCli(dir, 'raiz.txt').stdout);
+    fecharBase(s1);
+    const r = rodarComGancho(dir, 'raiz.txt', GANCHO_ESCRITA_DO_B_FALHA);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /pela metade/, r.stdout);
+    assert.match(r.stdout, /A revisao anterior ja foi arquivada em \.claude\/esquadro\/revisao-fechada\/raiz\.txt\/\d{4}-\d{2}-\d{2}-\d{6}\./, r.stdout);
+    // F3-22 (:249): a causa vem traduzida
+    assert.match(r.stdout, /\(causa: sem permissao \(EACCES\)\)/, r.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  // controle: sem revisao anterior arquivada, o ramo segue sem falar nela
+  const dir2 = repoDeEnsaio();
+  try {
+    const r = rodarComGancho(dir2, 'raiz.txt', GANCHO_ESCRITA_DO_B_FALHA);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /pela metade/);
+    assert.doesNotMatch(r.stdout, /arquivada/, r.stdout);
+  } finally { fs.rmSync(dir2, { recursive: true, force: true }); }
+});
+
+test('T2/F2-11: o git que nao respondeu se o arquivo esta no HEAD diz a causa em portugues, com os codigos no fim', () => {
+  const dir = repoDeEnsaio();
+  try {
+    const r = rodarComGancho(dir, 'raiz.txt', ganchoGit({
+      show: { status: 128 }, 'ls-tree': { status: 128 }, 'rev-parse-verify': { status: 128 }
+    }));
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.ok(r.stdout.includes('(causa: o git nao respondeu se o arquivo esta no HEAD (codigos: show 128, ls-tree 128, rev-parse 128))'), r.stdout);
+    assert.doesNotMatch(r.stdout, /o git nao disse/, r.stdout);
+    // com erro de spawn num dos comandos, o codigo do erro entra no lugar do status
+    const c = rodarComGancho(dir, 'raiz.txt', ganchoGit({
+      show: { status: 128 }, 'ls-tree': { errorCode: 'ETIMEDOUT' }, 'rev-parse-verify': { status: 128 }
+    }));
+    assert.strictEqual(c.status, 1, c.stdout);
+    assert.ok(c.stdout.includes('(codigos: show 128, ls-tree ETIMEDOUT, rev-parse 128)'), c.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T2/F2-12: "## " dentro de bloco cercado (``` ou ~~~) nao corta a secao da regua nem a abre; fora de cerca segue cortando', () => {
+  const dir = repoDeEnsaio();
+  try {
+    comRegras(dir, [
+      '# Regras', '', '```', '## Regua falsa (dentro da cerca)', '- #ff0000', '```', '',
+      '## Regua do projeto', '- #0055ff', '',
+      '```md', '## titulo dentro da cerca de crases', '```', '- #00ff00', '',
+      '~~~', '## titulo dentro da cerca de til', '~~~', '- #0000ff', '',
+      '````', '```', '~~~', '## ainda dentro (as menores nao fecham a maior)', '````', '- #ffff00', '',
+      '## Outra secao', '- nao vai', ''
+    ].join('\n'));
+    const r = rodarCli(dir, 'raiz.txt');
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const regua = fs.readFileSync(JSON.parse(r.stdout).regua, 'utf8');
+    assert.doesNotMatch(regua, /Regua falsa|#ff0000/, 'o ## de dentro da cerca abriu a secao: ' + regua);
+    for (const marca of ['#0055ff', 'titulo dentro da cerca de crases', '#00ff00', 'titulo dentro da cerca de til', '#0000ff',
+      'ainda dentro', '#ffff00']) {
+      assert.ok(regua.includes(marca), 'a secao foi cortada antes de "' + marca + '": ' + regua);
+    }
+    assert.doesNotMatch(regua, /nao vai/, 'o ## de fora da cerca tem de cortar: ' + regua);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// F3-22: a causa dos erros de leitura vem traduzida (texto.causaDoErro).
+test('T2/F3-22: arquivo e regras.md que nao se leem (sao pastas) dizem a causa traduzida', () => {
+  const dir = repoDeEnsaio();
+  try {
+    const r = rodarCli(dir, 'sub');
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /\(causa: e uma pasta \(EISDIR\)\)/, r.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  const dir2 = repoDeEnsaio();
+  try {
+    fs.mkdirSync(path.join(dir2, '.claude', 'esquadro', 'regras.md'), { recursive: true });
+    fs.writeFileSync(path.join(dir2, '.claude', 'esquadro', 'projeto.json'), '{"versaoConfig":1}', 'utf8');
+    const r = rodarCli(dir2, 'raiz.txt');
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /regras\.md \(causa: e uma pasta \(EISDIR\)\)/, r.stdout);
+  } finally { fs.rmSync(dir2, { recursive: true, force: true }); }
+});

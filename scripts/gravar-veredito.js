@@ -56,7 +56,10 @@ function extrairJson(mensagem) {
 function ehArquivo(p) { try { return fs.statSync(p).isFile(); } catch (e) { return false; } }
 function ehPasta(p) { try { return fs.statSync(p).isDirectory(); } catch (e) { return false; } }
 
-/** D287: a pasta vem do JSON do inspetor; so vale se for a `vereditos` de uma ronda de verdade. */
+/**
+ * D287: a pasta vem do JSON do inspetor; so vale se for a `vereditos` de uma ronda de verdade.
+ * F3-21: e de uma ronda DESTE projeto - dentro da raiz, e nao so com o nome certo e A.txt/B.txt ao lado.
+ */
 function pastaDaRonda(campo, raiz) {
   if (typeof campo !== 'string' || campo.trim() === '') {
     return { erro: 'o veredito nao traz o campo "vereditos" (a pasta da ronda que o briefing passou)' };
@@ -64,6 +67,10 @@ function pastaDaRonda(campo, raiz) {
   const abs = path.resolve(raiz, campo.trim());
   if (!PASTA_DE_RONDA.test(glob.normalizar(abs))) {
     return { erro: '"' + campo.trim() + '" nao e a pasta vereditos de uma ronda em .claude/esquadro/revisao/' };
+  }
+  const dentro = glob.normalizar(path.relative(raiz, abs));
+  if (dentro === '..' || dentro.startsWith('../') || path.isAbsolute(dentro)) {
+    return { erro: '"' + campo.trim() + '" fica fora da pasta do projeto (' + raiz + '), entao nao e uma ronda deste projeto' };
   }
   const ronda = path.dirname(abs);
   if (!ehArquivo(path.join(ronda, 'A.txt')) || !ehArquivo(path.join(ronda, 'B.txt'))) {
@@ -85,14 +92,23 @@ function aviso(causa, lente, destino) {
   return 'esquadro: nao gravei o veredito' + (lente ? ' da lente ' + lente : '') + ': ' + causa + '. ' + comoGravar(lente, destino);
 }
 
+/** F3-08: ja existe um veredito diferente na pasta: nao e caso de "gravar a mao", e de conferir qual dos dois vale. */
+function avisoOutroConteudo(lente, arquivo) {
+  return 'esquadro: nao gravei o veredito da lente ' + lente + ': ja existe ' + lente + '.json com outro conteudo; nao sobrescrevi. ' +
+    'Compare os dois (o arquivo e o JSON do inspetor) e apague o errado antes de gravar de novo: ' + arquivo + '.';
+}
+
 function semPasta(vd) {
   const copia = Object.assign({}, vd);
   delete copia.vereditos;
   return copia;
 }
 
-/** Grava o veredito e devolve o aviso (texto), ou null quando gravou ou quando ja estava gravado igual. */
-function avisoDaGravacao(mensagem, raiz) {
+/**
+ * Grava o veredito e devolve o aviso (texto), ou null quando gravou ou quando ja estava gravado igual.
+ * F3-07: com `gravado` (objeto), o null vem com { lente, arquivo } preenchidos: o veredito esta no disco.
+ */
+function avisoDaGravacao(mensagem, raiz, gravado) {
   if (typeof mensagem !== 'string' || mensagem.trim() === '') return aviso('a resposta do inspetor veio vazia');
   const vd = extrairJson(mensagem);
   if (!vd) return aviso('nao achei o JSON do veredito na resposta do inspetor');
@@ -107,16 +123,20 @@ function avisoDaGravacao(mensagem, raiz) {
   try {
     // wx: nunca por cima de arquivo que ja esta la, nem se dois inspetores chegarem juntos.
     fs.writeFileSync(arquivo, JSON.stringify(vd, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' });
+    if (gravado) { gravado.lente = lente; gravado.arquivo = arquivo; }
     return null;
   } catch (e) {
-    if (!e || e.code !== 'EEXIST') return aviso('erro ao escrever ' + arquivo + ' (' + (e && (e.code || e.message)) + ')', lente);
+    if (!e || e.code !== 'EEXIST') return aviso('erro ao escrever ' + arquivo + ' (' + texto.causaDoErro(e) + ')', lente);
   }
   let atual;
   try { atual = JSON.parse(texto.semBom(fs.readFileSync(arquivo, 'utf8'))); } catch (e) {
-    return aviso('ja existe ' + lente + '.json e nao consegui le-lo (' + (e && (e.code || e.message)) + '); nao sobrescrevi', lente, onde.pasta);
+    return aviso('ja existe ' + lente + '.json e nao consegui le-lo (' + texto.causaDoErro(e) + '); nao sobrescrevi', lente, onde.pasta);
   }
-  if (util.isDeepStrictEqual(semPasta(atual), semPasta(vd))) return null;
-  return aviso('ja existe ' + lente + '.json com outro conteudo; nao sobrescrevi', lente, onde.pasta);
+  if (util.isDeepStrictEqual(semPasta(atual), semPasta(vd))) {
+    if (gravado) { gravado.lente = lente; gravado.arquivo = arquivo; }
+    return null;
+  }
+  return avisoOutroConteudo(lente, arquivo);
 }
 
 /** Marca por inspetor, fora do estado da sessao (que tem lista fechada de campos) e fora de vereditos/. */
@@ -161,12 +181,22 @@ function tratar(e) {
   if (e.hook_event_name === 'SubagentStop' && marca && fs.existsSync(marca)) return null;
 
   const raiz = config.raizDoProjeto(typeof e.cwd === 'string' && e.cwd ? e.cwd : process.cwd());
-  const resultado = avisoDaGravacao(mensagem, raiz);
+  const gravado = {};
+  const resultado = avisoDaGravacao(mensagem, raiz, gravado);
 
   if (e.hook_event_name === 'PostToolUse' && marca) {
     try { fs.mkdirSync(path.dirname(marca), { recursive: true }); fs.writeFileSync(marca, '1', 'utf8'); } catch (x) {
       // so perde o silencio: o SubagentStop vai ler de novo. Se ha aviso, diz que ele pode vir duas vezes.
       if (resultado) return resultado + ' ' + MARCA_FALHOU;
+      // F3-07 (D335): o handback GRAVOU e a marca nao se gravou: o SubagentStop vai ler o texto de
+      // encerramento, nao achar JSON e avisar "nao achei o JSON". Diz agora, sem ler transcricao, que esse
+      // aviso pode ser ignorado.
+      if (gravado.lente) {
+        return 'esquadro: gravei o veredito da lente ' + gravado.lente + ' em ' +
+          glob.normalizar(path.relative(raiz, gravado.arquivo)) + ', mas nao consegui gravar a marca deste ' +
+          'inspetor. Se o fim deste subagente avisar que nao achou o JSON do veredito, ignore esse aviso: ' +
+          'o veredito ja esta gravado.';
+      }
     }
   }
   return resultado;

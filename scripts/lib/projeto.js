@@ -13,6 +13,11 @@ const CHAVES = [
 
 const TRAVAS = ['fecho', 'escopo', 'destrutivo', 'outraFrente'];
 
+// Os tres objetos que o re-init funde por chave em vez de substituir (F1-C01).
+const FUNDE_POR_CHAVE = ['travas', 'marchas', 'limiares'];
+
+function ehObjeto(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
+
 // As listas que os portoes LEEM de verdade. O aviso de tipo e estreito de
 // proposito (D101): so campo que muda decisao de portao, e so quando o TIPO
 // esta errado. Chave faltando e assunto de validar(), nunca do aviso.
@@ -287,8 +292,14 @@ function atualizar(antigo, respostas, hoje) {
     if (CHAVES.indexOf(chave) === -1) { ignoradas.push(chave); continue; }
     if (chave === 'versaoConfig' || chave === 'geradoEm') continue;
     if (novas[chave] === undefined) continue;
-    if (JSON.stringify(base[chave]) === JSON.stringify(novas[chave])) continue;
-    base[chave] = novas[chave];
+    // F1-C01: resposta parcial de objeto se funde por chave; trocar o objeto inteiro
+    // apagava as chaves que a entrevista nao repetiu (regra unica: o que nao se perguntou, preserva).
+    let valor = novas[chave];
+    if (FUNDE_POR_CHAVE.indexOf(chave) !== -1 && ehObjeto(valor) && ehObjeto(base[chave])) {
+      valor = Object.assign({}, base[chave], valor);
+    }
+    if (JSON.stringify(base[chave]) === JSON.stringify(valor)) continue;
+    base[chave] = valor;
     mudou.push(chave);
   }
 

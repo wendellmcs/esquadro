@@ -6,6 +6,11 @@ const veredito = require('./lib/veredito.js');
 const estado = require('./lib/estado.js');
 const cegar = require('./lib/cegar.js');
 const caminho = require('./lib/caminho.js');
+const textoLib = require('./lib/texto.js');
+
+// F2-01: so e "valor que falta" quando o proximo argumento e outra flag do USO deste script (como o
+// FLAGS_DO_USO do preparar-revisao.js): um arquivo chamado `--x.js` vale como caminho.
+const FLAGS_DO_USO = ['--sessao', '--arquivo'];
 
 function arg(nome) {
   const i = process.argv.indexOf('--' + nome);
@@ -37,10 +42,14 @@ function relDoCwd(p) {
  * O mapa.json de uma ronda, ou null quando nao ha (pacote antigo, sem mapa). 0.3.3, item 6: o que
  * existe e nao se le como o objeto que o preparar-revisao.js grava ({ arquivo, mapa: {...} }) para
  * aqui - antes virava "ronda sem mapa" calado e a ronda contava pelos dois lados.
+ * F2-06: na listagem "ha N revisoes" (naListagem) o mapa ruim nao para o comando: lanca MAPA_ILEGIVEL, e a
+ * listagem poe "(mapa ilegivel)" na linha da base.
  */
-function lerMapaJson(base, ronda) {
+const MAPA_ILEGIVEL = new Error('mapa ilegivel');
+function lerMapaJson(base, ronda, naListagem) {
   const arq = path.join(base, ronda, 'mapa.json');
   const corrompido = function (motivo) {
+    if (naListagem) throw MAPA_ILEGIVEL;
     falhar('ERRO: ' + relDoCwd(arq) + ' esta corrompido (' + motivo + '). Ele diz qual arquivo a ronda revisou e ' +
       'qual rotulo e o lado novo; sem ele legivel os achados nao se separam por lado. Apague a pasta ' +
       relDoCwd(path.dirname(arq)) + '/ e prepare a ronda de novo (Passo 1 do /esquadro:revisar), regrave os ' +
@@ -49,7 +58,7 @@ function lerMapaJson(base, ronda) {
   let texto;
   try { texto = fs.readFileSync(arq, 'utf8'); } catch (err) {
     if (err && err.code === 'ENOENT') return null;
-    corrompido(err.message);
+    corrompido(textoLib.causaDoErro(err));
   }
   let mj;
   try { mj = JSON.parse(texto); } catch (err) { corrompido(err.message); }
@@ -59,10 +68,10 @@ function lerMapaJson(base, ronda) {
 }
 
 /** O arquivo revisado por uma base: o do mapa.json da ultima ronda dela. */
-function arquivoDaBase(base, pastas) {
+function arquivoDaBase(base, pastas, naListagem) {
   const rs = pastas || rondasDe(base);
   if (!rs.length) return null;
-  const m = lerMapaJson(base, rs[rs.length - 1].name);
+  const m = lerMapaJson(base, rs[rs.length - 1].name, naListagem);
   return m && typeof m.arquivo === 'string' ? m.arquivo : null;
 }
 
@@ -92,6 +101,8 @@ function mesmoArquivo(a, b) {
   try {
     const sx = fs.statSync(path.resolve(cwd, x), { bigint: true });
     const sy = fs.statSync(path.resolve(cwd, y), { bigint: true });
+    // F2-13: dev ou ino 0 e campo que o sistema de arquivos nao preenche: dois zeros nao confirmam nada.
+    if (sx.dev === 0n || sx.ino === 0n) return false;
     return sx.dev === sy.dev && sx.ino === sy.ino;
   } catch (err) {
     // Um dos dois nao existe (ou nao se le): o disco nao confirma que sejam o mesmo arquivo.
@@ -118,7 +129,7 @@ function sessaoDoUso() {
   const i = process.argv.indexOf('--sessao');
   if (i !== -1) {
     const valor = process.argv[i + 1];
-    if (!valor || valor.startsWith('--')) {
+    if (!valor || FLAGS_DO_USO.indexOf(valor) !== -1) {
       falhar('ERRO: --sessao sem valor. Passe o id da sessao: --sessao <id>, ou tire a flag para usar ' +
         'CLAUDE_CODE_SESSION_ID.\n');
     }
@@ -138,7 +149,7 @@ function sessaoDoUso() {
 function escolherBase() {
   const antigo = cegar.temPastaNumeradaSolta(revisao);
   const alvo = arg('arquivo');
-  if (process.argv.indexOf('--arquivo') !== -1 && (!alvo || alvo.startsWith('--'))) {
+  if (process.argv.indexOf('--arquivo') !== -1 && (!alvo || FLAGS_DO_USO.indexOf(alvo) !== -1)) {
     falhar('ERRO: --arquivo sem caminho. Passe o arquivo revisado: --arquivo <caminho>.\n');
   }
   if (alvo) {
@@ -178,7 +189,12 @@ function escolherBase() {
   if (bases.length > 1) {
     falhar('ERRO: ha ' + bases.length + ' revisoes em ' + revisao + ' e nao sei qual apurar. Passe --arquivo ' +
       '<caminho> com um destes:\n' + bases.map(function (b) {
-        return '  ' + (arquivoDaBase(b) || path.basename(b));
+        try {
+          return '  ' + (arquivoDaBase(b, null, true) || path.basename(b));
+        } catch (err) {
+          if (err !== MAPA_ILEGIVEL) throw err;
+          return '  ' + path.basename(b) + ' (mapa ilegivel)';
+        }
       }).join('\n') + '\n');
   }
   return bases[0];
@@ -195,7 +211,7 @@ try {
   base = escolherBase();
   pastas = rondasDe(base);
 } catch (err) {
-  falhar('ERRO: nao consegui ler as revisoes (' + err.message + '). Confira a pasta citada e rode de novo.\n');
+  falhar('ERRO: nao consegui ler as revisoes (' + textoLib.causaDoErro(err) + '). Confira a pasta citada e rode de novo.\n');
 }
 // Os caminhos das mensagens: relativos ao cwd, com barra normal, os da base escolhida.
 const baseRel = path.relative(cwd, base).split(path.sep).join('/');
@@ -220,7 +236,7 @@ const rondas = pastas
     let arquivos = null;
     try { arquivos = fs.readdirSync(dir).filter(function (f) { return f.endsWith('.json'); }); } catch (err) {
       if (err && err.code === 'ENOENT') arquivos = [];
-      else semVeredito.push('ERRO: nao consegui ler ' + dirRel + ' (' + err.message + '). Confira essa pasta e ' +
+      else semVeredito.push('ERRO: nao consegui ler ' + dirRel + ' (' + textoLib.causaDoErro(err) + '). Confira essa pasta e ' +
         'rode este comando de novo.');
     }
     if (arquivos === null) return [];

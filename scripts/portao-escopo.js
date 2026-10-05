@@ -47,7 +47,7 @@ io.blindar(function () {
     // vinculada sem estar.
     const frenteAlvo = escopoLib.frenteDoAlvo(alvo);
     if (frenteAlvo && !frenteAlvo.valido) {
-      estado.incrementar(e.session_id, 'fora_do_escopo');
+      estado.incrementar(e.session_id, 'frente_invalida');
       return io.negarFerramenta(escopoLib.motivoNomeDeFrente(alvo));
     }
 
@@ -119,7 +119,7 @@ io.blindar(function () {
     // do "Dentro": a declaracao do "nao vou tocar" e a mais especifica das duas.
     const foraDeclarado = escopoLib.declaradoFora(alvo, esc);
     if (foraDeclarado) {
-      estado.incrementar(e.session_id, 'fora_do_escopo');
+      estado.incrementar(e.session_id, 'fora_declarado');
       return io.negarFerramenta(escopoLib.motivoDeclaradoFora(alvo, foraDeclarado, arquivoEmVigor));
     }
 

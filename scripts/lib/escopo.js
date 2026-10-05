@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const glob = require('./glob.js');
+const textoLib = require('./texto.js');
 
 const ARQUIVO = '.claude/esquadro/escopo.md';
 
@@ -24,7 +25,11 @@ function nomeSeguro(frente) {
  * entre crases vale o que esta entre elas; sem crase, corta em espaco seguido de `(`,
  * travessao, `--`, ` - ` ou `#`.
  */
+// F2-18: regua horizontal do markdown (`---`, `***`, `___`, com ou sem marcador e espacos) separa trechos; nao e caminho.
+const REGUA = /^([-*_])(?:\s*\1){2,}$/;
+
 function caminhoDoItem(t) {
+  if (REGUA.test(t)) return '';
   // 0.3.3, item 23: marcador sozinho na linha (`-`, `*`, `+`) nao e item; sem o `$`, o marcador sem
   // texto sobrava como o caminho `-`.
   const s = t.replace(/^[-*+](?:\s+|$)/, '').trim();
@@ -70,6 +75,20 @@ function frenteDoAlvo(alvoRelativo) {
 }
 
 /**
+ * F2-16 / 0.3.3 item 22: o destino REAL do arquivo fica fora do projeto? `path.relative` do realpath dos dois
+ * lados: fora = comeca com `..` (como pasta) ou e absoluto (outro disco). Lanca se o destino nao se resolve.
+ */
+function destinoForaDoProjeto(cwd, abs) {
+  const rel = path.relative(fs.realpathSync(cwd), fs.realpathSync(abs));
+  return /^\.\.(?:[\\/]|$)/.test(rel) || path.isAbsolute(rel);
+}
+
+/** `destinoForaDoProjeto` que, quando o destino nao se resolve, diz que nao (ai a leitura falha sozinha). */
+function ehDeFora(cwd, abs) {
+  try { return destinoForaDoProjeto(cwd, abs); } catch (e) { return false; }
+}
+
+/**
  * O arquivo de escopo que vale para esta leitura: o da frente, se ela existir
  * no disco; senao o escopo.md de sempre. `frente` vem do estado (arquivo em
  * disco), por isso e saneada de novo aqui, na mesma classe do session_id
@@ -79,14 +98,19 @@ function arquivoEmVigor(cwd, frente) {
   if (!frente) return ARQUIVO;
   const seguro = nomeSeguro(frente);
   try {
-    if (fs.existsSync(path.join(cwd, PASTA_FRENTES + seguro + '.md'))) return PASTA_FRENTES + seguro + '.md';
+    const rel = PASTA_FRENTES + seguro + '.md';
+    // F2-16: a frente cujo destino REAL fica fora do projeto nao vale (como frente que sumiu do disco).
+    if (fs.existsSync(path.join(cwd, rel)) && !ehDeFora(cwd, path.join(cwd, rel))) return rel;
   } catch (e) { /* cai no escopo.md */ }
   return ARQUIVO;
 }
 
 function carregar(cwd, frente) {
   try {
-    return parse(fs.readFileSync(path.join(cwd, arquivoEmVigor(cwd, frente)), 'utf8'));
+    const abs = path.join(cwd, arquivoEmVigor(cwd, frente));
+    // F2-16: escopo cujo destino real fica fora do projeto nao e lido; `null` vira "sem escopo" no portao (mais estrito).
+    if (ehDeFora(cwd, abs)) return null;
+    return parse(fs.readFileSync(abs, 'utf8'));
   } catch (e) {
     return null;
   }
@@ -244,15 +268,17 @@ function avisoHeranca(cwd, frente) {
 
 /**
  * 0.3.3, item 24: o objetivo de uma frente, em uma linha. Arquivo que nao se le diz que nao se leu
- * (com o codigo do erro): e outra coisa que a frente que nao declara objetivo, e quem le a lista
- * precisa saber qual das duas e.
+ * (com a causa, e o que conferir): e outra coisa que a frente que nao declara objetivo, e quem le a
+ * lista precisa saber qual das duas e. F2-19 / F3-22: a causa vem traduzida (`texto.causaDoErro`),
+ * e `oArquivo` diz de qual arquivo e o proximo passo ("da frente"; o escopo.md herdado passa "do escopo").
  */
-function objetivoDaFrente(arquivoAbsoluto) {
+function objetivoDaFrente(arquivoAbsoluto, oArquivo) {
   try {
     const esc = parse(fs.readFileSync(arquivoAbsoluto, 'utf8'));
     return ascii(esc.objetivo || '(sem objetivo)').slice(0, 200);
   } catch (e) {
-    return 'nao se leu o arquivo (' + ascii((e && e.code) || 'erro') + ')';
+    return 'nao se leu o arquivo (' + ascii(textoLib.causaDoErro(e)) + '); confira a permissao do arquivo ' +
+      (oArquivo || 'da frente');
   }
 }
 
@@ -271,13 +297,17 @@ function linhaDaHeranca(cwd) {
   let st;
   try { st = fs.statSync(path.join(cwd, ARQUIVO)); } catch (e) { st = null; }
   if (!st) return null;
-  const esc = carregar(cwd, null);
+  // F2-05: o escopo.md que existe e nao se le diz que nao se leu (como a frente); F2-16: o que resolve para
+  // fora do projeto nao e lido, e a linha diz isso em vez de mostrar o objetivo de um arquivo de fora.
+  const abs = path.join(cwd, ARQUIVO);
+  const objetivo = ehDeFora(cwd, abs)
+    ? 'nao se leu o arquivo (o destino fica fora do projeto)'
+    : objetivoDaFrente(abs, 'do escopo');
   const d = st.mtime;
   const p2 = function (n) { return String(n).padStart(2, '0'); };
   const quando = d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' +
     p2(d.getHours()) + ':' + p2(d.getMinutes());
-  return 'esquadro: escopo herdado de ' + quando + ' - objetivo: ' +
-    ascii((esc && esc.objetivo) || '(sem objetivo)').slice(0, 200) +
+  return 'esquadro: escopo herdado de ' + quando + ' - objetivo: ' + objetivo +
     '. Se a tarefa mudou, reescreva ' + ARQUIVO + ' antes de editar.';
 }
 
@@ -293,10 +323,8 @@ function ehArquivo(cwd, e) {
   try {
     if (!fs.statSync(caminho).isFile()) return false;
     // 0.3.3, item 22: o link so vale se o destino REAL fica dentro do projeto; senao a linha do objetivo
-    // de um arquivo de fora entraria no texto da abertura. `path.relative` do realpath do projeto: fora
-    // = comeca com `..` (como pasta) ou e absoluto (outro disco).
-    const rel = path.relative(fs.realpathSync(cwd), fs.realpathSync(caminho));
-    return !(/^\.\.(?:[\\/]|$)/.test(rel) || path.isAbsolute(rel));
+    // de um arquivo de fora entraria no texto da abertura (a regra e a de `destinoForaDoProjeto`).
+    return !destinoForaDoProjeto(cwd, caminho);
   } catch (x) {
     // 0.3.3, item 19: cai aqui o link quebrado (o destino sumiu), o link sem permissao para ler o destino
     // e o destino que nao se resolve. Fica FORA da lista de proposito: frente que nao se le nao tem
@@ -311,6 +339,16 @@ function ehArquivo(cwd, e) {
  * de fora: a linha do vinculo ja fala dela.
  */
 function blocoDeFrentes(cwd, frente) {
+  // F2-17: a pasta inteira que e link para fora do projeto: lista vazia, e uma linha diz por que.
+  let pastaDeFora = false;
+  try {
+    const pasta = path.join(cwd, PASTA_FRENTES);
+    fs.statSync(pasta);
+    pastaDeFora = destinoForaDoProjeto(cwd, pasta);
+  } catch (e) { pastaDeFora = false; }
+  if (pastaDeFora) {
+    return 'esquadro: a pasta ' + PASTA_FRENTES + ' aponta para fora do projeto, entao nenhuma frente foi lida.';
+  }
   let nomes = [];
   try {
     nomes = fs.readdirSync(path.join(cwd, PASTA_FRENTES), { withFileTypes: true })

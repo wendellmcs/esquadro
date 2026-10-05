@@ -50,9 +50,13 @@ function ler(cwd) {
  * mao. Cache invalido vale o mesmo que cache ausente - e consultar de novo e
  * barato perto de decidir por dado estragado.
  */
-function valido(c) {
+function valido(c, agora) {
   if (!c || typeof c !== 'object' || Array.isArray(c)) return false;
   if (typeof c.consultadoEm !== 'number' || !isFinite(c.consultadoEm)) return false;
+  // F1-C02: data no futuro daria idade negativa e seguraria a janela para sempre. Ate 1 dia
+  // de folga cobre relogio desencontrado; alem disso o cache nao merece confianca.
+  const ref = agora === undefined ? Date.now() : Number(agora);
+  if (c.consultadoEm > ref + DIA) return false;
   if (DESFECHOS.indexOf(c.desfecho) === -1) return false;
   if (!Array.isArray(c.fontes)) return false;
   return true;
@@ -82,7 +86,7 @@ function registrar(desfecho, achados, fontes, agora) {
 }
 
 function idadeEmDias(cache, agora) {
-  if (!valido(cache)) return null;
+  if (!valido(cache, agora)) return null;
   return (Number(agora) - cache.consultadoEm) / DIA;
 }
 
@@ -98,7 +102,7 @@ function deveConsultar(cache, motivo, agora) {
   if (DELIBERADOS.indexOf(motivo) !== -1) {
     return { sim: true, porque: 'consulta deliberada (' + motivo + '): a janela nao se aplica' };
   }
-  if (!valido(cache)) {
+  if (!valido(cache, agora)) {
     return { sim: true, porque: 'nao ha cache valido neste projeto' };
   }
   if (cache.desfecho !== 'ok') {

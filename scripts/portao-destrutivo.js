@@ -66,14 +66,18 @@ io.blindar(function () {
     const quebra = shell.problemasDaTabela(projeto && projeto.plataforma, e.tool_name);
     if (quebra.length && !estado.ler(e.session_id).avisouTabelaShell) {
       // a marca e lida de novo DENTRO do alterar (com a trava): dois comandos ao mesmo tempo nao avisam duas vezes
-      let jaAvisou = true;
-      estado.alterar(e.session_id, function (s) {
-        jaAvisou = !!s.avisouTabelaShell;
-        s.avisouTabelaShell = true;
-        return s;
-      });
+      // F3-20: `jaAvisou` nasce false. Se o estado estiver fora do ar o alterar nem chega a rodar, e
+      // nascendo true o aviso sumia calado: duplicar o aviso e melhor que calar.
+      let jaAvisou = false;
+      try {
+        estado.alterar(e.session_id, function (s) {
+          jaAvisou = !!s.avisouTabelaShell;
+          s.avisouTabelaShell = true;
+          return s;
+        });
+      } catch (err) { /* estado fora do ar: avisa mesmo sem poder gravar a marca */ }
       if (!jaAvisou) {
-        estado.incrementar(e.session_id, 'shell_tabela_quebrada');
+        try { estado.incrementar(e.session_id, 'shell_tabela_quebrada'); } catch (err) { /* idem: o balde vale menos que o aviso */ }
         const texto = shell.avisoTabela(quebra);
         return io.permitir({
           systemMessage: texto,

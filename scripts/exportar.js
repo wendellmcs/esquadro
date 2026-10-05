@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const sanit = require('./lib/sanitacao.js');
+const texto = require('./lib/texto.js');
 
 /**
  * Monta a pasta que vai para o repositorio publico.
@@ -77,7 +78,7 @@ function montar(raiz, destino) {
     } catch (e) {
       // Arquivo apagado no disco mas ainda no indice cai aqui. Some da lista
       // silenciosamente seria o erro de 2026-09-02 outra vez, de outro jeito.
-      faltaram.push(rel + ' (' + (e && e.code) + ')');
+      faltaram.push(rel + ' (' + texto.causaDoErro(e) + ')');
     }
   });
 
@@ -117,6 +118,11 @@ function main() {
     console.log('');
     console.log('PROPOSTA - nada foi escrito. Repita com --gravar para montar.');
     process.exit(0);
+  }
+
+  if (arquivos.length === 0) {
+    console.error('ERRO: superficie vazia: nada a exportar. Montar "0 de 0" parece sucesso e nao e.');
+    process.exit(1);
   }
 
   if (!vazia(destino)) {

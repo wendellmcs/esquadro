@@ -351,7 +351,7 @@ Escolha uma:
 ~~~text
 esquadro - intocavel.
 
-O arquivo .env esta na lista de intocaveis de projeto.json.
+O arquivo .env esta na lista "intocaveis" de .claude/esquadro/projeto.json.
 Nem o escopo declarado libera este caminho.
 
 Mexer nele e decisao do dono do projeto, nao julgamento seu.
@@ -537,20 +537,20 @@ produziu o bug reproduz o bug.
 |---|---|
 | Correção e regressão | Qual dos dois quebra? Entrada concreta que produz resultado errado, com `arquivo:linha`. |
 | Fidelidade ao pedido | O que mudou além do necessário: renomeação, extração, formatação junto de correção funcional. |
-| Estados obrigatórios | Erro, vazio, carregando, limite e timeout tratados — ou só o caso feliz. |
+| Estados obrigatórios (código) | Erro, vazio, carregando, limite e timeout tratados — ou só o caso feliz. |
 | Entrada e borda | `null`, string vazia, lista vazia, número negativo, unicode, caminho com espaço, arquivo enorme. |
 | Segurança e dado sensível | Segredo em texto, log com dado do usuário, entrada não validada que vira comando ou caminho. |
 | Legibilidade e manutenção | O que um leitor novo entende errado: nome que mente, função que faz duas coisas, erro engolido. |
 | Texto que o usuário lê | Mensagem que não diz o que fazer a seguir, jargão, inglês solto, tom que culpa o usuário. |
 | Mexeram no medidor | Teste, baseline, threshold, skip ou mock que mudou junto com o código que ele cobre. |
-| Fidelidade ao design system | Valor cru, gradiente, sombra larga, card aninhado ou tipografia fluida onde o sistema não os tem — citando o token ou a tela irmã. |
+| Fidelidade ao design system (código) | Valor cru, gradiente, sombra larga, card aninhado ou tipografia fluida onde o sistema não os tem — citando o token ou a tela irmã. |
 
 **Tela**
 
 | Lente | O que o inspetor procura |
 |---|---|
-| Fidelidade ao design system | O token literal ou a tela irmã de referência, e o que foge deles. |
-| Estados obrigatórios | Carregando, vazio, erro e limite desenhados — ou só o caso cheio. |
+| Fidelidade ao design system (tela) | O token literal ou a tela irmã de referência, e o que foge deles. |
+| Estados obrigatórios (tela) | Carregando, vazio, erro e limite desenhados — ou só o caso cheio. |
 | Responsividade e overflow | Em qual largura o conteúdo vaza, corta ou empilha errado, com a largura e o elemento. |
 | Acessibilidade | Contraste, alvo de toque, foco visível, ordem de tabulação, rótulo de campo e de botão de ícone. |
 | Microcopy | Texto que não diz o que fazer a seguir, jargão, inglês solto, tom que culpa quem lê. |

@@ -22,14 +22,6 @@ test('design: caminho de estilo pode ser declarado no projeto', () => {
   assert.strictEqual(design.ehArquivoDeEstilo('src/tema/cores.ts', p), true);
 });
 
-test('design: extrai tokens de variaveis CSS', () => {
-  const css = ':root{--cor-marca:#ff6600;--raio-m:8px;--espaco-g:24px;}';
-  const t = design.extrairTokens(css);
-  assert.ok(t.cores.includes('#ff6600'));
-  assert.ok(t.raios.includes('8px'));
-  assert.ok(t.espacos.includes('24px'));
-});
-
 test('design: valor cru fora do sistema e apontado com a linha', () => {
   const css = '.a{color:#ff6600;}\n.b{color:#00ff00;}';
   const r = design.conferir(css, DESIGN);

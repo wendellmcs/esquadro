@@ -161,3 +161,22 @@ test('catalogo: o modulo nao crava nome de modelo nenhum', () => {
     }
   }
 });
+
+// F1-C02: consultadoEm no futuro dava idade negativa e segurava a janela para sempre
+// ("ja se consultou ha -N dia(s)"): relogio errado na hora de gravar calava a conferencia.
+test('catalogo: consultadoEm mais de 1 dia no futuro e invalido; ate 1 dia e tolerado', () => {
+  const agora = Date.now();
+  const base = catalogo.registrar('ok', [], ['pagina'], agora);
+  const futuro = Object.assign({}, base, { consultadoEm: agora + dias(2) });
+  assert.strictEqual(catalogo.valido(futuro), false, 'data no futuro distante nao e cache valido');
+  const tolerado = Object.assign({}, base, { consultadoEm: agora + dias(1) - 60000 });
+  assert.strictEqual(catalogo.valido(tolerado), true, 'folga de relogio de ate 1 dia e normal');
+  // e o efeito que importa: cache de futuro nao segura a janela, manda consultar
+  const r = catalogo.deveConsultar(futuro, 'detector', agora);
+  assert.strictEqual(r.sim, true, r.porque);
+  assert.ok(r.porque.includes('cache'), r.porque);
+  // chega do disco do mesmo jeito: ler() devolve null
+  const dir = pasta();
+  catalogo.gravar(dir, futuro);
+  assert.strictEqual(catalogo.ler(dir), null);
+});

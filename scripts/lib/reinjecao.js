@@ -25,7 +25,12 @@ const LIMITE_DO_VALOR = 200;
 
 function umaLinha(v) {
   const t = String(v).replace(/[\r\n]+/g, ' ').trim();
-  return t.length > LIMITE_DO_VALOR ? t.slice(0, LIMITE_DO_VALOR - 3) + '...' : t;
+  if (t.length <= LIMITE_DO_VALOR) return t;
+  let corte = LIMITE_DO_VALOR - 3;
+  // F2-23: o corte nao parte um par substituto (emoji): se o ultimo caractere que ficaria e a 1a metade, recua um.
+  const ultimo = t.charCodeAt(corte - 1);
+  if (ultimo >= 0xD800 && ultimo <= 0xDBFF) corte -= 1;
+  return t.slice(0, corte) + '...';
 }
 
 /** Texto nao vazio, ou a confissao de que o campo nao foi declarado. Nunca `null`
@@ -35,9 +40,9 @@ function declarado(v) {
   return typeof v === 'string' && v.trim() ? umaLinha(v) : NAO_DECLARADO;
 }
 
-/** 0.3.3, itens 26/28: o codigo do erro (EISDIR, EACCES...), ou o nome dele quando nao ha codigo. So ASCII. */
-function codigoDoErro(e) {
-  return escopoLib.ascii((e && (e.code || e.name)) || 'erro');
+/** 0.3.3, itens 26/28: a causa do erro. F3-22: o codigo do Node vem traduzido ("e uma pasta (EISDIR)"), de `texto.causaDoErro`. So ASCII. */
+function causaDoErro(e) {
+  return escopoLib.ascii(textoLib.causaDoErro(e));
 }
 
 /**
@@ -51,9 +56,9 @@ function causaDoProjetoIlegivel(cwd) {
   } catch (e) {
     if (e && e.code === 'ENOENT') return null;
     return {
-      causa: 'erro de leitura: ' + codigoDoErro(e),
+      causa: 'erro de leitura: ' + causaDoErro(e),
       fazer: 'Confira a permissao do arquivo (ou se ele e uma pasta). ' +
-        'Se ele puder ser escrito, /esquadro:init de novo o regrava com as respostas dadas.'
+        'Se o arquivo aceitar escrita, /esquadro:init de novo o regrava com as respostas dadas.'
     };
   }
   const corrija = 'Corrija o JSON ou rode /esquadro:init de novo (o init regrava o projeto.json com as respostas dadas).';
@@ -144,7 +149,7 @@ function nucleo(cwd) {
     // falha vira uma linha curta com a causa e o que fazer - a abertura nao pode lancar, mas tambem nao pode
     // deixar o agente sem regra achando que nao ha regra.
     if (e && e.code === 'ENOENT') return null;
-    return 'esquadro: as regras deste projeto nao se leram (' + codigoDoErro(e) + '), entao nada delas entra nesta sessao. ' +
+    return 'esquadro: as regras deste projeto nao se leram (' + causaDoErro(e) + '), entao nada delas entra nesta sessao. ' +
       'Confira .claude/esquadro/regras.md (permissao, ou se e uma pasta) e abra a sessao de novo.\n';
   }
 }
@@ -171,12 +176,13 @@ function montar(cwd, sessionId, origem) {
     // tem como saber que o arquivo que manda e o da frente, nao o escopo.md.
     const arquivo = escopoLib.arquivoEmVigor(cwd, frente);
     if (frente && arquivo !== escopoLib.ARQUIVO) linhas.push('Frente: ' + escopoLib.nomeSeguro(frente) + ' (' + arquivo + ')');
-    if (esc.objetivo) linhas.push('Objetivo: ' + esc.objetivo);
+    // F2-20: objetivo e itens vem de um arquivo que o dono edita a mao: passam por `umaLinha` (teto de tamanho).
+    if (esc.objetivo) linhas.push('Objetivo: ' + umaLinha(esc.objetivo));
     linhas.push('Dentro do escopo:');
-    for (const d of esc.dentro) linhas.push('  - ' + d);
+    for (const d of esc.dentro) linhas.push('  - ' + umaLinha(d));
     if (esc.fora.length) {
       linhas.push('Fora de escopo (a parte que funciona):');
-      for (const f of esc.fora) linhas.push('  - ' + f);
+      for (const f of esc.fora) linhas.push('  - ' + umaLinha(f));
     }
     estadoPartes.push(bloco('ESTADO - escopo declarado', linhas));
   }
@@ -184,15 +190,26 @@ function montar(cwd, sessionId, origem) {
   const ativo = planoLib.lerAtivo(cwd);
   // 0.3.3, item 29: plano fora do projeto nao se le (o titulo de tarefa de um arquivo de fora nao entra no
   // contexto); uma linha diz que foi ignorado.
-  if (ativo && typeof ativo.arquivo === 'string' && ativo.arquivo !== '' &&
-      caminhoLib.relativoAoProjeto(ativo.arquivo, cwd) === null) {
+  if (ativo && (typeof ativo.arquivo !== 'string' || ativo.arquivo.trim() === '')) {
+    // F2-22: "arquivo" que nao e texto (numero, objeto, ausente) nao e caminho: diz que o plano ativo nao se
+    // le, e por que, em vez de imprimir `undefined` ou `[object Object]`.
+    const tipo = typeof ativo.arquivo === 'string' || ativo.arquivo === undefined || ativo.arquivo === null
+      ? 'esta vazio ou ausente'
+      : 'nao e um texto (e ' + (Array.isArray(ativo.arquivo) ? 'uma lista' : typeof ativo.arquivo) + ')';
+    estadoPartes.push(bloco('ESTADO - plano em execucao', [
+      'Plano ativo ilegivel: o campo "arquivo" de .claude/esquadro/plano-ativo.json ' + tipo +
+      '. Abra o plano de novo (ou apague esse arquivo).'
+    ]));
+  } else if (ativo && !caminhoLib.dentroPeloCaminhoReal(ativo.arquivo, cwd)) {
+    // F2-21 (D334): "dentro" pelo caminho REAL - um link dentro do projeto que aponta para fora tambem e fora.
     estadoPartes.push(bloco('ESTADO - plano em execucao',
       ['Plano ativo ignorado: ' + umaLinha(ativo.arquivo) + ' fica fora do projeto e nao foi lido.']));
   } else if (ativo) {
     try {
       const tarefas = planoLib.parseTarefas(fs.readFileSync(path.join(cwd, ativo.arquivo), 'utf8'));
       const aberta = tarefas.filter(function (t) { return t.abertos > 0; })[0];
-      const linhas = ['Plano: ' + ativo.arquivo, 'Dono: ' + ativo.sessionId];
+      // F2-20: os dois valores vem de um arquivo editavel a mao: uma linha so, com teto.
+      const linhas = ['Plano: ' + umaLinha(ativo.arquivo), 'Dono: ' + declarado(ativo.sessionId)];
       if (aberta) {
         linhas.push('Tarefa aberta: Tarefa ' + aberta.n + ' - ' + aberta.titulo);
         linhas.push('Passos por marcar: ' + aberta.abertos + ' de ' + aberta.total);
@@ -205,7 +222,7 @@ function montar(cwd, sessionId, origem) {
       // 0.3.3, item 28: plano que nao se le nao derruba a abertura, mas diz que nao se leu (e por que).
       estadoPartes.push(bloco('ESTADO - plano em execucao', [
         'Plano: ' + umaLinha(ativo.arquivo),
-        'O plano nao se leu (' + codigoDoErro(e) + '): confira se o arquivo existe e se le, ou abra o plano de novo.'
+        'O plano nao se leu (' + causaDoErro(e) + '): confira se o arquivo existe e se le, ou abra o plano de novo.'
       ]));
     }
   }

@@ -412,6 +412,38 @@ test('projeto: re-init preserva o que a entrevista nao perguntou de novo', () =>
   assert.strictEqual(r.config.quemDecide, 'Bruno');
 });
 
+// F1-C01: resposta parcial de travas/marchas/limiares trocava o objeto inteiro e apagava as chaves irmas.
+test('projeto: re-init com travas/marchas/limiares PARCIAIS funde por chave', () => {
+  const antes = copia({
+    travas: { fecho: true, escopo: true, destrutivo: false, outraFrente: true },
+    marchas: { rapida: ['a/**'], padrao: ['b/**'], aaa: ['c/**'] },
+    limiares: { x: 1, y: 2 }
+  });
+  const r = projeto.atualizar(antes, {
+    travas: { fecho: false }, marchas: { aaa: ['novo/**'] }, limiares: { y: 3, z: 4 }
+  }, '2026-09-30');
+  assert.deepStrictEqual(r.config.travas,
+    { fecho: false, escopo: true, destrutivo: false, outraFrente: true });
+  assert.deepStrictEqual(r.config.marchas,
+    { rapida: ['a/**'], padrao: ['b/**'], aaa: ['novo/**'] });
+  assert.deepStrictEqual(r.config.limiares, { x: 1, y: 3, z: 4 });
+  assert.deepStrictEqual(r.mudou.sort(), ['geradoEm', 'limiares', 'marchas', 'travas']);
+  const v = projeto.validar(r.config);
+  assert.strictEqual(v.ok, true, v.erros.join(' | '));
+});
+
+test('projeto: a fusao por chave deixa entrar chave nova e nao inventa mudanca', () => {
+  const antes = copia({ limiares: { x: 1 } });
+  const nova = projeto.atualizar(antes, { limiares: { x: 1, novo: 9 } }, '2026-08-08');
+  assert.deepStrictEqual(nova.config.limiares, { x: 1, novo: 9 }, 'chave nova tem de entrar');
+  assert.deepStrictEqual(nova.mudou, ['limiares']);
+  const igual = projeto.atualizar(copia({ limiares: { x: 1 } }), { limiares: { x: 1 } }, '2026-08-08');
+  assert.deepStrictEqual(igual.mudou, [], 'valor igual nao e mudanca');
+  // objeto sobre valor que nao e objeto: nao ha o que fundir, a resposta vale inteira
+  const sobre = projeto.atualizar(copia({ limiares: null }), { limiares: { x: 1 } }, '2026-08-08');
+  assert.deepStrictEqual(sobre.config.limiares, { x: 1 });
+});
+
 test('projeto: re-init move o geradoEm, que era o buraco do H3', () => {
   const antes = copia({});
   assert.strictEqual(antes.geradoEm, '2026-08-08');

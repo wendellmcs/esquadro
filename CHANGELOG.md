@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.4.1 — erros que dizem a causa em portugues, o revisar mais firme e o escopo que nao se perde em link
+
+A primeira metade das pendencias conferidas contra o codigo (mensagens, portoes, escopo e o
+instrumento do revisar). Nenhum portao novo. Os comportamentos novos vem com teste; a suite inteira
+roda com `npm test`.
+
+- **Erro de arquivo dito em portugues, com o codigo no fim.** Os avisos que repetiam a mensagem do
+  Node em ingles passam a dizer a causa: "nao existe", "sem permissao", "e uma pasta", "parte do
+  caminho nao e uma pasta", "em uso", "ja existe", "disco cheio", com o codigo (`ENOENT`, `EACCES`...)
+  entre parenteses. Vale nos scripts do revisar, na reinjecao, no escopo, na auditoria e no exportar.
+- **O escopo nao se perde em link nem em arquivo ilegivel.** Arquivo de frente que existe e nao se le
+  diz a causa e o que conferir. Frente que e link para fora do projeto nao e lida; pasta `escopos/`
+  que e link para fora da lista vazia, com uma linha dizendo por que. Uma linha `---` deixou de virar item. Na
+  reinjecao, o plano ativo se confere pelo caminho real, campo que nao e texto vira "Plano ativo
+  ilegivel" (nunca `undefined`), e o corte da linha longa nao parte um emoji ao meio.
+- **O revisar mais firme.** As duas lentes que tinham o mesmo nome nas duas familias agora se
+  distinguem: "Fidelidade ao design system" e "Estados obrigatorios" ganham "(codigo)" e "(tela)", e a
+  refutacao casa a lente certa. O gravador nao remapeia veredito antigo com o nome sem sufixo. O
+  `apurar` le valor que comeca com `--` como valor, a menos que seja flag do uso; um `mapa.json`
+  estragado vira "(mapa ilegivel)" na listagem em vez de derrubar o comando; entrada nula no
+  `refutados.json` e "entrada invalida". O `preparar` nao deixa pasta vazia quando o arquivamento
+  falha, avisa da revisao fechada no formato antigo, segue se outro `preparar` ja arquivou, e ignora
+  `## ` dentro de bloco de codigo ao achar a regua. O gravador recusa pasta de ronda fora do projeto e,
+  quando grava o veredito mas a marca falha, diz na hora que gravou.
+- **Portoes e libs menores.** `travas`, `marchas` e `limiares` parciais no `projeto.json` se fundem por
+  chave com o padrao, em vez de substituir o bloco inteiro. Catalogo consultado mais de um dia no
+  futuro e invalido. Exportar sem nada para copiar e erro. A abertura diz "nao sei" quando o git nao
+  responde. A auditoria tira o `\r` do CRLF ao medir e diz por que o `regras.md` e ilegivel. O portao
+  destrutivo avisa mesmo quando gravar o estado falha. Sairam o campo `ultimaFerramenta` do estado, a
+  funcao `extrairTokens` e as ferramentas `search` e `ls` da busca, que nada usava.
+- **Dois baldes novos no contador, para o que o portao de escopo barra por motivos diferentes:**
+  `frente_invalida` (nome de arquivo de frente fora da classe permitida) e `fora_declarado` (o arquivo
+  casa o que o escopo declara "Fora"). Antes os dois somavam em `fora_do_escopo`, e quem lia o contador
+  nao sabia qual dos tres motivos tinha barrado. Os dois entram na soma de bloqueios do gatilho de
+  saude. Sao **20 baldes** de contador: 15 que negam, 5 que so contam.
+
 ## 0.4.0 — o bloco de qualidade de resposta, e a economia que saiu
 
 Um recurso novo, ligado por padrao, e uma skill aposentada. Nenhum portao novo: o recurso nao barra

@@ -7,7 +7,7 @@ const LENTES = [
     pergunta: 'Qual dos dois quebra? Entrada concreta que produz resultado errado, com arquivo:linha.' },
   { chave: 'escopo', titulo: 'Fidelidade ao pedido',
     pergunta: 'O que mudou alem do necessario? Renomeacao, extracao, formatacao junto de correcao funcional.' },
-  { chave: 'estados', titulo: 'Estados obrigatorios',
+  { chave: 'estados', titulo: 'Estados obrigatorios (codigo)',
     pergunta: 'Erro, vazio, carregando, limite e timeout estao tratados, ou so o caso feliz?' },
   { chave: 'borda', titulo: 'Entrada e borda',
     pergunta: 'null, string vazia, lista vazia, numero negativo, unicode, caminho com espaco, arquivo enorme.' },
@@ -19,16 +19,18 @@ const LENTES = [
     pergunta: 'Mensagem que nao diz o que fazer a seguir, jargao, ingles solto, tom que culpa o usuario.' },
   { chave: 'medidor', titulo: 'Mexeram no medidor',
     pergunta: 'Teste, baseline, threshold, skip ou mock mudaram junto com o codigo que eles cobrem?' },
-  { chave: 'design', titulo: 'Fidelidade ao design system',
+  { chave: 'design', titulo: 'Fidelidade ao design system (codigo)',
     pergunta: 'Cite o token literal ou a tela irmã de referência. Valor cru, gradiente, sombra larga, card aninhado ou tipografia fluida onde o sistema nao os tem. Sem citar token ou coordenada, o veredito nao conta.' }
 ];
 
 // D121 mediu: 3 exatas, 1 parcial, 4 contra 4 sem contraparte. A causa nao e
 // descuido - a familia de cima e de CODIGO, esta e de TELA. Decisao 8 (2026-09-23):
-// convivem declaradas, nao se fundem. Chaves com sufixo para nunca colidir.
+// convivem declaradas, nao se fundem. Chaves com sufixo para nunca colidir. F6-01 (D335): o titulo tambem
+// nao se repete - o inspetor grava o titulo no campo lente, e o apurar casa a refutacao por esse texto -,
+// entao os dois que as familias dividiam levam "(codigo)" e "(tela)".
 const LENTES_UI = [
-  { chave: 'ui-design', titulo: 'Fidelidade ao design system', pergunta: 'Cite o token literal ou a tela irma de referencia. Valor cru, gradiente, sombra larga, card aninhado ou tipografia fluida onde o sistema nao os tem.' },
-  { chave: 'ui-estados', titulo: 'Estados obrigatorios', pergunta: 'Carregando, vazio, erro e limite estao desenhados, ou so o caso cheio?' },
+  { chave: 'ui-design', titulo: 'Fidelidade ao design system (tela)', pergunta: 'Cite o token literal ou a tela irma de referencia. Valor cru, gradiente, sombra larga, card aninhado ou tipografia fluida onde o sistema nao os tem.' },
+  { chave: 'ui-estados', titulo: 'Estados obrigatorios (tela)', pergunta: 'Carregando, vazio, erro e limite estao desenhados, ou so o caso cheio?' },
   { chave: 'ui-responsivo', titulo: 'Responsividade e overflow', pergunta: 'Em qual largura o conteudo vaza, corta ou empilha errado? Diga a largura e o elemento.' },
   { chave: 'ui-a11y', titulo: 'Acessibilidade', pergunta: 'Contraste, alvo de toque, foco visivel, ordem de tabulacao, rotulo de campo e de botao de icone.' },
   { chave: 'ui-microcopy', titulo: 'Microcopy', pergunta: 'Texto que nao diz o que fazer a seguir, jargao, ingles solto, tom que culpa quem le.' },
@@ -118,8 +120,14 @@ function mesmaLente(a, b) {
 /** D244/defeito 3: refutar tambem exige citar. Refutacao sem prova derruba a apuracao. */
 function conferirRefutados(refutados) {
   const lista = Array.isArray(refutados) ? refutados : [];
-  for (const r of lista) {
-    if (!r || typeof r.prova !== 'string' || r.prova.trim() === '') {
+  for (let i = 0; i < lista.length; i++) {
+    const r = lista[i];
+    // F6-03: o que nao e objeto (null, numero, texto, lista) nao e uma refutacao sem prova: e a forma errada.
+    if (!r || typeof r !== 'object' || Array.isArray(r)) {
+      throw new Error('entrada invalida no refutados.json (posicao ' + (i + 1) + '): cada refutacao e um objeto ' +
+        '{ ronda, lente, arquivo, linha, severidade, prova }');
+    }
+    if (typeof r.prova !== 'string' || r.prova.trim() === '') {
       throw new Error('refutacao sem prova (ronda ' + (r && r.ronda) + ', lente ' + (r && r.lente) + ', linha ' +
         (r && r.linha) + '): cite a fonte primaria - arquivo:linha ou o comando - em "prova"');
     }
@@ -164,6 +172,8 @@ function refutado(lista, ronda, lente, a) {
  *                primaria nao molha. Sem `prova` ou sem `severidade`, lanca erro.
  */
 function apurar(rondas, opcoes) {
+  // F2-14: sem nenhuma ronda nao ha o que apurar (antes saia "ronda 1 chama so as lentes..." sem ronda nenhuma).
+  if (!Array.isArray(rondas) || rondas.length === 0) throw new Error('nenhuma ronda para apurar');
   const op = opcoes || {};
   const mapas = Array.isArray(op.mapas) ? op.mapas : [];
   const refutados = conferirRefutados(op.refutados);
@@ -181,7 +191,8 @@ function apurar(rondas, opcoes) {
     // 0.3.3, item 1: ronda sem nenhum veredito nao e ronda seca - e voto que falta. Sem isto,
     // `apurar([[], []])` fechava aprovado. Diz qual ronda; o apurar-ronda.js confere a pasta antes.
     if (!Array.isArray(ronda) || ronda.length === 0) {
-      throw new Error('ronda ' + (indice + 1) + ' sem nenhum veredito: ronda sem voto nao e ronda seca, e nao se apura');
+      throw new Error('ronda ' + (indice + 1) + ' sem nenhum veredito: ronda sem voto nao e ronda seca, e nao se apura; ' +
+        'grave os vereditos da ronda ' + (indice + 1) + ' na pasta vereditos dela e rode de novo');
     }
     for (const vd of ronda) {
       // D230: o que nao e veredito nao e voto sem achado - seria ronda seca por falta de voto. O

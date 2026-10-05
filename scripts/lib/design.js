@@ -27,26 +27,6 @@ function normalizarValor(v) {
   return String(v).trim().toLowerCase().replace(/\s+/g, '');
 }
 
-function extrairTokens(css) {
-  const t = { cores: [], raios: [], espacos: [], sombras: [] };
-  const linhas = String(css == null ? '' : css).split(/\r?\n/);
-  for (const linha of linhas) {
-    const m = linha.match(/--([\w-]+)\s*:\s*([^;]+);/g) || [];
-    for (const decl of m) {
-      const p = decl.match(/--([\w-]+)\s*:\s*([^;]+);/);
-      if (!p) continue;
-      const nome = p[1].toLowerCase();
-      const valor = normalizarValor(p[2]);
-      if (RE_COR.test(valor)) { RE_COR.lastIndex = 0; t.cores.push(valor); continue; }
-      RE_COR.lastIndex = 0;
-      if (/raio|radius/.test(nome)) t.raios.push(valor);
-      else if (/sombra|shadow/.test(nome)) t.sombras.push(valor);
-      else if (/espac|space|gap|pad|margin/.test(nome)) t.espacos.push(valor);
-    }
-  }
-  return t;
-}
-
 function semVar(linha) {
   return linha.replace(/var\([^)]*\)/g, ' ');
 }
@@ -122,4 +102,4 @@ function motivo(alvo, fora, sistema) {
   return linhas.join('\n');
 }
 
-module.exports = { EXTENSOES_ESTILO, UNIDADES, ehArquivoDeEstilo, extrairTokens, valoresCrus, conferir, motivo };
+module.exports = { EXTENSOES_ESTILO, UNIDADES, ehArquivoDeEstilo, valoresCrus, conferir, motivo };

@@ -413,3 +413,69 @@ test('memoria (H): o metodo diz que a linha cortada no meio conta como de fora',
     assert.ok(/mesmo corte/.test(m.metodo), 'as duas medidas saem do mesmo corte: ' + m.metodo);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// ---------------------------------------------------------------- esquadro-pendencias T5 (F3-09, F3-19, F3-18, F3-22)
+
+// F3-09: a linha cujo TEXTO termina exatamente no byte 25.000, com o \n no byte seguinte, esta dentro.
+test('memoria (F3-09): linha que termina no byte 25.000 com LF logo depois conta como dentro', () => {
+  const dir = pasta('byte-25000-lf');
+  try {
+    const m = aud.medirMemoria(memoria(dir, 'a'.repeat(25000) + '\n' + 'b\n'));
+    assert.strictEqual(m.primeiro, 'bytes');
+    assert.strictEqual(m.linhas, 2);
+    assert.deepStrictEqual(m.foraDaCarga, { linhas: 1, bytes: 3 }, 'so a 2a linha esta fora');
+    // controle do lado oposto: um byte a mais na 1a linha e ela passa a ser a cortada
+    const alem = aud.medirMemoria(memoria(dir, 'a'.repeat(25001) + '\n' + 'b\n'));
+    assert.deepStrictEqual(alem.foraDaCarga, { linhas: 2, bytes: 25001 + 1 + 2 - 25000 });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// F3-19: no CRLF o \r ficava no texto da linha e empurrava para fora a que terminava no byte 25.000.
+test('memoria (F3-19): em CRLF o CR tambem sai da conta da linha que termina no byte 25.000', () => {
+  const dir = pasta('byte-25000-crlf');
+  try {
+    const m = aud.medirMemoria(memoria(dir, 'a'.repeat(25000) + '\r\n' + 'b\r\n'));
+    assert.strictEqual(m.primeiro, 'bytes');
+    assert.strictEqual(m.linhas, 2);
+    assert.deepStrictEqual(m.foraDaCarga, { linhas: 1, bytes: 5 }, 'so a 2a linha esta fora');
+    // o \r de uma linha cortada no meio nao a salva: 25001 caracteres continuam fora
+    const alem = aud.medirMemoria(memoria(dir, 'a'.repeat(25001) + '\r\n' + 'b\r\n'));
+    assert.strictEqual(alem.foraDaCarga.linhas, 2);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// F3-18: erro do parseRegras nao tem `code`; saia "(ERRO)" e "nao consegui ler", como se o arquivo
+// nao tivesse sido aberto. O arquivo abriu - e ilegivel o que ele diz.
+test('regras (F3-18): erro sem code vira "regras.md ilegivel: <motivo>", nao "(ERRO)"', () => {
+  const regraLib = require('../scripts/lib/regra.js');
+  const dir = pasta('regras-parse');
+  const original = regraLib.parseRegras;
+  try {
+    regrasMd(dir, '- ao editar -> rodar git status\n');
+    regraLib.parseRegras = function () { throw new Error('linha 3 quebrada'); };
+    const r = aud.auditar(dir, {});
+    assert.strictEqual(r.regras.lidas, false);
+    assert.ok(r.regras.motivo.includes('regras.md ilegivel: Error: linha 3 quebrada'), r.regras.motivo);
+    assert.ok(!/\(ERRO\)/.test(r.regras.motivo) && !/nao consegui ler/.test(r.regras.motivo), r.regras.motivo);
+    assert.ok(/rode \/esquadro:auditar de novo/.test(r.regras.motivo), 'faltou dizer o que fazer: ' + r.regras.motivo);
+    assert.deepStrictEqual(r.contradicoes, []);
+  } finally {
+    regraLib.parseRegras = original;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// F3-22: o codigo cru do Node some atras da causa em portugues; `causa` no estado segue o codigo.
+test('auditoria (F3-22): as mensagens de leitura traduzem o codigo, e o campo causa guarda o codigo cru', () => {
+  const dir = pasta('causa-pt');
+  try {
+    const mem = aud.medirMemoria(path.join(dir, 'nada', 'MEMORY.md'));
+    assert.strictEqual(mem.causa, 'ENOENT');
+    assert.ok(mem.motivo.includes('(nao existe (ENOENT))'), mem.motivo);
+    assert.ok(/confira o caminho/.test(mem.motivo), 'a dica por codigo continua: ' + mem.motivo);
+    fs.mkdirSync(path.join(dir, '.claude', 'esquadro', 'regras.md'), { recursive: true });
+    const r = aud.auditar(dir, {});
+    assert.strictEqual(r.regras.causa, 'EISDIR');
+    assert.ok(r.regras.motivo.includes('(e uma pasta (EISDIR))'), r.regras.motivo);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

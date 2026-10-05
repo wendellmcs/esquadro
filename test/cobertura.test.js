@@ -211,3 +211,18 @@ test('cobertura: todo portao tem as cinco chaves, sem excecao', () => {
   }
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// F1-C03: a linha do gatilho 2 mostrava a consulta a pagina, que quem grava sao os gatilhos 1 e 4 -
+// o texto sugeria que era o gatilho 2 que consultava.
+test('cobertura: a linha do gatilho 2 diz que a consulta a pagina e dos gatilhos 1 e 4', () => {
+  const dir = pasta();
+  const p = semear(dir);
+  catalogoLib.gravar(dir, catalogoLib.registrar('ok', [], ['fonte'], Date.now()));
+  const cat = porChave(cobertura.relatorio(dir, p), 'catalogo');
+  assert.ok(cat.porque.includes('ultima consulta a pagina (gatilhos 1 e 4): ok'), cat.porque);
+  fs.rmSync(dir, { recursive: true, force: true });
+  const vazio = pasta();
+  const sem = porChave(cobertura.relatorio(vazio, semear(vazio)), 'catalogo');
+  assert.ok(sem.porque.includes('nunca se consultou aqui'), sem.porque);
+  fs.rmSync(vazio, { recursive: true, force: true });
+});

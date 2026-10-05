@@ -16,7 +16,7 @@
  */
 
 /** Ferramentas que contam como ter procurado. */
-const FERRAMENTAS = ['grep', 'glob', 'search', 'read', 'ls'];
+const FERRAMENTAS = ['grep', 'glob', 'read'];
 
 /**
  * Comandos de shell que contam como ter procurado.
@@ -71,7 +71,7 @@ function motivo(alvo) {
     '',
     'Alvo: ' + alvo + '  (nao existe ainda: isto e criacao, nao edicao)',
     '',
-    'A falha de origem: "eu prefiro criar arquivo novo a entender o que ja existe".',
+    'A falha de origem: criar arquivo novo em vez de entender o que ja existe.',
     'Antes de criar, procure - Grep, Glob, ou um grep/find pelo Bash - e diga na',
     'resposta o que a busca devolveu. Se mesmo assim nao houver onde encaixar,',
     'criar passa a ser a resposta certa, e o portao nao atrapalha de novo neste turno.',

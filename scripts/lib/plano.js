@@ -46,7 +46,7 @@ function abrir(cwd, arquivoDoPlano, sessionId) {
   return dado;
 }
 
-/** F17: outra sessao detem este plano. Nao e rascunho abandonado, e nao e convite. */
+/** F17: Outra sessao detem este plano. */
 function donoOutro(ativo, sessionId) {
   if (!ativo || !ativo.sessionId) return false;
   return ativo.sessionId !== String(sessionId || 'sem-sessao');
