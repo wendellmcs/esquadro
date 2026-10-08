@@ -48,7 +48,7 @@ function resultado(extra) {
 function pasta() { return fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro exp ')); }
 function rodar(args, cwd) {
   const r = spawnSync(process.execPath, [SCRIPT].concat(args), { cwd: cwd || RAIZ, encoding: 'utf8' });
-  return { status: r.status, saida: String(r.stdout) + String(r.stderr) };
+  return { status: r.status, saida: String(r.stdout) + String(r.stderr), stdout: String(r.stdout) };
 }
 
 // ── os cinco desfechos ───────────────────────────────────────────────────
@@ -207,7 +207,7 @@ test('experimento: inventario vazio nao produz veredito nenhum', () => {
 test('experimento: o roteiro sai em JSON, com as linhas e como preenche-las', () => {
   const r = rodar([]);
   assert.strictEqual(r.status, 0, r.saida);
-  const j = JSON.parse(r.saida.slice(0, r.saida.lastIndexOf('}') + 1));
+  const j = JSON.parse(r.stdout);
   assert.ok(j.linhas.length >= 55, 'o roteiro saiu com ' + j.linhas.length + ' linhas');
   assert.deepStrictEqual(j.mecanismos, ob.MECANISMOS);
   assert.ok(j.comoExecutar.join(' ').indexOf('NAO pode ser quem executou') !== -1,
@@ -233,7 +233,7 @@ test('experimento: --manual cruza, e marca o que so existe do outro lado', () =>
     '# m\n\n## R\n\nSempre:\n\n- **Par atomico de deploy** nunca sai um lado sem o outro\n', 'utf8');
   const r = rodar(['--manual', outro]);
   assert.strictEqual(r.status, 0, r.saida);
-  const j = JSON.parse(r.saida.slice(0, r.saida.lastIndexOf('}') + 1));
+  const j = JSON.parse(r.stdout);
   assert.strictEqual(j.segundoManual.obrigacoes, 1);
   const perdidas = j.linhas.filter((l) => l.naoMigrada);
   assert.strictEqual(perdidas.length, 1);
@@ -262,7 +262,7 @@ test('experimento: --manual para lugar sem SKILL.md para e diz onde olhou', () =
 test('experimento: --veredito devolve 0 no BASTA, 1 no NAO BASTA e 2 no INVALIDO', () => {
   const dir = pasta();
   const arq = path.join(dir, 'r.json');
-  const inv = JSON.parse(rodar([]).saida.slice(0, rodar([]).saida.lastIndexOf('}') + 1));
+  const inv = JSON.parse(rodar([]).stdout);
   const tres = inv.linhas.slice(0, 3).map((l) => l.id);
 
   const base = (mec) => ({
@@ -339,7 +339,7 @@ test('experimento: o experimento gravado neste ambiente nao e invalido (D83)', (
   let gravado = null;
   try { gravado = JSON.parse(fs.readFileSync(path.join(RAIZ, PROVA), 'utf8')); } catch (e) { gravado = null; }
   if (!gravado) {
-    t.skip('nao verificavel aqui: ninguem rodou o experimento neste ambiente (' + PROVA + ')');
+    t.skip('nao verificavel aqui: ninguem rodou o experimento neste ambiente (' + PROVA.split(path.sep).join('/') + ')');
     return;
   }
   const linhas = ob.linhasDoExperimento(ob.cruzar(ob.inventario(path.join(RAIZ, 'skills', 'padrao')), null));

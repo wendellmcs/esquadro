@@ -56,8 +56,9 @@ test('agents-md: nenhum fato volatil no molde', () => {
   assert.deepStrictEqual(sujos, []);
 });
 
-function pastaComProjeto() {
+function pastaComProjeto(t) {
   const raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro agents-'));
+  t.after(() => fs.rmSync(raiz, { recursive: true, force: true }));
   const dir = path.join(raiz, '.claude', 'esquadro');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'projeto.json'), JSON.stringify(PROJETO, null, 2), 'utf8');
@@ -79,24 +80,24 @@ function rodar(raiz, args) {
   return spawnSync(process.execPath, [GERADOR].concat(args || []), { cwd: raiz, encoding: 'utf8' });
 }
 
-test('agents-md: sem --gravar propoe e nao escreve', () => {
-  const raiz = pastaComProjeto();
+test('agents-md: sem --gravar propoe e nao escreve', (t) => {
+  const raiz = pastaComProjeto(t);
   const r = rodar(raiz, ['--respostas', respostasEmArquivo(raiz)]);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   assert.ok(r.stdout.includes('PROPOSTA'), r.stdout);
   assert.strictEqual(fs.existsSync(path.join(raiz, 'AGENTS.md')), false);
 });
 
-test('agents-md: com --gravar escreve na raiz do projeto', () => {
-  const raiz = pastaComProjeto();
+test('agents-md: com --gravar escreve na raiz do projeto', (t) => {
+  const raiz = pastaComProjeto(t);
   const r = rodar(raiz, ['--respostas', respostasEmArquivo(raiz), '--gravar']);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   assert.ok(fs.existsSync(path.join(raiz, 'AGENTS.md')), r.stdout);
 });
 
 // Muitos projetos ja tem um. Sobrescrever apaga trabalho de meses.
-test('agents-md: AGENTS.md que ja existe nao e tocado', () => {
-  const raiz = pastaComProjeto();
+test('agents-md: AGENTS.md que ja existe nao e tocado', (t) => {
+  const raiz = pastaComProjeto(t);
   const alvo = path.join(raiz, 'AGENTS.md');
   fs.writeFileSync(alvo, '# o AGENTS.md de alguem\n', 'utf8');
   const r = rodar(raiz, ['--respostas', respostasEmArquivo(raiz), '--gravar']);
@@ -104,15 +105,16 @@ test('agents-md: AGENTS.md que ja existe nao e tocado', () => {
   assert.strictEqual(fs.readFileSync(alvo, 'utf8'), '# o AGENTS.md de alguem\n');
 });
 
-test('agents-md: sem projeto.json para com erro legivel', () => {
+test('agents-md: sem projeto.json para com erro legivel', (t) => {
   const raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro vazio-'));
+  t.after(() => fs.rmSync(raiz, { recursive: true, force: true }));
   const r = rodar(raiz, ['--respostas', respostasEmArquivo(raiz), '--gravar']);
   assert.strictEqual(r.status, 1);
   assert.ok(r.stdout.includes('init'), r.stdout);
 });
 
-test('agents-md: sem respostas o gerador recusa e nomeia a fatia que falta', () => {
-  const raiz = pastaComProjeto();
+test('agents-md: sem respostas o gerador recusa e nomeia a fatia que falta', (t) => {
+  const raiz = pastaComProjeto(t);
   const r = rodar(raiz, []);
   assert.strictEqual(r.status, 1, r.stdout);
   assert.ok(r.stdout.includes('RECUSADO'), r.stdout);

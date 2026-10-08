@@ -838,7 +838,7 @@ test('cli: --gerar cujo claude foi parado pelo limite de tempo ou de saida nao d
       "  if (!Array.isArray(args) || args.indexOf('-p') === -1) return original.apply(this, arguments);",
       "  const r = original.apply(this, arguments);",
       "  const e = new Error('spawnSync " + code + "'); e.code = '" + code + "';",
-      "  r.error = e; r.status = null;",
+      "  r.error = e; r.status = null;" + (code === 'ENOENT' ? ' r.pid = 0;' : ''),
       '  return r;',
       '};'
     ]), { ESQUADRO_CLAUDE: a.fake, FAKE_LOG: a.log, CLAUDE_CONFIG_DIR: a.config });
@@ -1318,7 +1318,7 @@ test('cli: --pares tira a montagem de processo morto que sobrou na rodada, e dei
   const mortas = fs.readdirSync(rodada).filter((n) => /^montagem-/.test(n));
   assert.strictEqual(mortas.length, 1, 'a morte nao deixou a montagem: ' + mortas);
   assert.ok(fs.existsSync(path.join(rodada, mortas[0], 'mapa.json')), 'a montagem morta nao tem o mapa.json');
-  const viva = path.join(rodada, 'montagem-' + process.pid + '-1');
+  const viva = path.join(rodada, 'montagem-' + process.pid + '-' + Date.now());
   fs.mkdirSync(viva);
   fs.writeFileSync(path.join(viva, 'mapa.json'), '{}', 'utf8');
   const de_novo = cli(['--pares', rodada]);
@@ -1662,4 +1662,289 @@ test('cli: --gerar sem transcricao da sessao para na condicao caveman e diz o mo
   assert.strictEqual(ger.geracoes[0].aplicou, true, 'o padrao nao precisa da transcricao');
   assert.strictEqual(ger.geracoes[1].aplicou, false);
   assert.ok(ger.geracoes[1].motivos.some((m) => /transcricao da sessao nao achada/.test(m)), JSON.stringify(ger.geracoes[1].motivos));
+});
+
+// ── T4 (plano dos 82): medicao ───────────────────────────────────────────
+
+/** Caracteres fora de ASCII por codigo: o arquivo de teste fica em ASCII, e o editor nao os troca. */
+function U() { return Array.prototype.map.call(arguments, (c) => String.fromCharCode(c)).join(''); }
+
+test('T4/F7-01: "nao sei" em outras palavras do juiz (1a pessoa, fora de aspas) vira empate; 3a pessoa, aspas e D306 seguem', () => {
+  const empate = [
+    'A.txt:3 e melhor, mas nao consigo dizer por que',
+    'A.txt:3 nao da para saber',
+    'A.txt:3 nao tenho como dizer qual e melhor',
+    'A.txt:3 A parece melhor, mas impossivel dizer ao certo',
+    'A.txt:3 n' + U(0xe3) + 'o consigo decidir',
+    'nao consigo escolher; A.txt:3 e B.txt:4 se parecem',
+    'Imposs' + U(0xed) + 'vel julgar? nao: impossivel decidir. A.txt:3 e B.txt:4 empatam'
+  ];
+  empate.forEach((porQue) => assert.strictEqual(medicao.votoDoJuiz(vd('A', porQue)), 'empate', porQue));
+  // controle: 3a pessoa, sobre o texto julgado, e citacao entre aspas contam voto
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 o texto B nao consegue dizer o motivo')), 'A');
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', "A.txt:3 o B cita 'nao consigo dizer' sem contexto")), 'A');
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 o B cita "nao da para saber" e "impossivel dizer"')), 'A');
+  // controle: "nao tenho certeza" e ressalva, nao abstencao
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 e melhor, embora nao tenho certeza do rodape')), 'A');
+  // controle (D306, prender): "nao sei" sem aspas no meio de frase sobre o texto segue empate
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 A diz nao sei o que fazer')), 'empate');
+});
+
+test('T4/F7-02: aspas baixas e angulares simples tambem sao citacao do texto julgado', () => {
+  const casos = [
+    U(0x201e) + 'nao sei' + U(0x201c),
+    U(0x201e) + 'nao sei' + U(0x201d),
+    U(0x2039) + 'nao sei' + U(0x203a),
+    U(0x201a) + 'nao sei' + U(0x2018),
+    U(0x201a) + 'nao sei' + U(0x2019)
+  ];
+  casos.forEach((citado) => assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 traz ' + citado + ' no rodape')), 'A', citado));
+  // controle: abridor baixo sem fecho nao cita nada
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 traz ' + U(0x201e) + 'x e nao sei no rodape')), 'empate');
+});
+
+test('T4/F7-03: os preenchedores do hangul (aparecem como espaco) nao escondem o "nao sei"', () => {
+  [0x3164, 0x115f, 0x1160, 0xffa0].forEach((c) => {
+    assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 nao' + U(c) + 'sei')), 'empate', c.toString(16));
+  });
+  // controle: o mesmo caractere noutro lugar nao muda o voto
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 chega na conclus' + U(0x3164) + 'ao antes')), 'A');
+});
+
+test('T4/F7-04: o fecho curvo usado como abridor (de um lado e do outro) cita; um so, sem par, nao', () => {
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 traz ' + U(0x2019) + 'nao sei' + U(0x2019) + ' no texto')), 'A');
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 traz ' + U(0x201d) + 'nao sei' + U(0x201d) + ' no texto')), 'A');
+  // controle: uma so, sem par
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 nao sei ' + U(0x2019) + ' solto')), 'empate');
+  // aspa curva usada dos dois lados, em numero impar na linha, nao forma citacao: o "nao sei" do juiz aparece
+  [0x2019, 0x201d].forEach((c) => {
+    assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 ' + U(c) + 'x; nao sei qual e melhor; B.txt:2 repete ' + U(c) + 'y' + U(c))), 'empate', c.toString(16));
+  });
+  // controle: o par completo segue citacao
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 traz ' + U(0x2019) + 'nao sei' + U(0x2019) + ' no texto')), 'A');
+  // controle: o par aberto e fechado em curvas distintas (as de sempre) segue citacao
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 traz ' + U(0x2018) + 'nao sei' + U(0x2019) + ' e ' + U(0x201c) + 'nao sei' + U(0x201d))), 'A');
+  // controle: apostrofo de plural (users') nao abre citacao
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 e os users' + U(0x2019) + ' nao sei se ' + U(0x2019) + 'x' + U(0x2019) + ' vale')), 'empate');
+});
+
+test('T4/F7-04: D341: o fecho curvo usado dos dois lados so cita quando e o unico par daquele sinal na linha', () => {
+  // 4 na linha: o 1o e o 2o casariam por cima do "nao sei" do juiz
+  [0x2019, 0x201d].forEach((c) => {
+    assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 ' + U(c) + 'x, nao sei qual e melhor, ' + U(c) + 'y' + U(c) + ' e ' + U(c) + 'z')), 'empate', c.toString(16));
+  });
+  // controle: o par unico segue citacao
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 traz ' + U(0x2019) + 'nao sei' + U(0x2019) + ' no texto')), 'A');
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 traz ' + U(0x201d) + 'nao sei' + U(0x201d) + ' no texto')), 'A');
+  // controle: o u2019 que fecha o u2018 segue fechando, mesmo com mais de 2 na linha
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 cita ' + U(0x2018) + 'a' + U(0x2019) + ' e ' + U(0x2018) + 'nao sei' + U(0x2019))), 'A');
+  // controle: cada sinal conta sozinho; o par unico de u2019 cita mesmo com 4 u201d na linha
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 ' + U(0x2019) + 'nao sei' + U(0x2019) + ' e ' + U(0x201d) + 'a' + U(0x201d) + ' ' + U(0x201d) + 'b' + U(0x201d))), 'A');
+});
+
+test('T4/F7-05: limite conhecido (D340): aspa reta que fecha colada em letra e contracao do juiz tem a mesma forma, e na duvida vale empate', () => {
+  // a citacao que fecha colada em letra segue empate
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', "A.txt:3 'nao sei'ou")), 'empate');
+  // a aspa solta do juiz mais a contracao: o "nao sei" dele nao pode ficar escondido
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', "A.txt:3 'ok, nao sei, don't")), 'empate');
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', "A.txt:3 'x e nao sei o que dizer, d'agua")), 'empate');
+  // controle: apostrofo de palavra
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', "A.txt:3 don't, nao sei")), 'empate');
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', "A.txt:3 it's nao sei 'x'")), 'empate');
+  // controle: citacao com apostrofo dentro e fecho limpo segue citacao
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', "A.txt:2 cita 'don't, nao sei' do texto")), 'A');
+});
+
+test('T4/F7-06: aspa reta em numero impar na linha nao forma citacao e nao esconde o "nao sei" do juiz', () => {
+  assert.strictEqual(medicao.votoDoJuiz(vd('B', 'B.txt:4 repete "x; nao sei qual e melhor; A.txt:2 repete "y"')), 'empate');
+  assert.strictEqual(medicao.votoDoJuiz(vd('B', "B.txt:4 repete 'x; nao sei qual e melhor; A.txt:2 repete 'y'")), 'empate');
+  // controle: dois pares completos seguem citacao
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 cita "nao sei" e "ok"')), 'A');
+  // controle: a conta e por linha: uma aspa sobrando em outra linha nao desfaz a citacao desta
+  assert.strictEqual(medicao.votoDoJuiz(vd('A', 'A.txt:3 usa "x\nB.txt:4 cita "nao sei" aqui')), 'A');
+});
+
+test('T4/F7: os abridores novos e a aspa sobrando nao custam tempo quadratico', () => {
+  [0x201e, 0x201a, 0x2039, 0x2019, 0x201d, 0x22, 0x27].forEach((codigo) => {
+    const t0 = Date.now();
+    medicao.votoDoJuiz(vd('A', 'A.txt:1 ' + String.fromCharCode(codigo).repeat(100001)));
+    const ms = Date.now() - t0;
+    assert.ok(ms < 1000, codigo.toString(16) + ': ' + ms + ' ms em 100001 aspas');
+  });
+});
+
+/** O claude de mentira com um --require que mexe no CLI; `linhas` vem depois de fs e path. */
+function geraComPreload(linhas) {
+  const a = ambienteFalso();
+  const env = Object.assign(preloadDeFalha(linhas), { ESQUADRO_CLAUDE: a.fake, FAKE_LOG: a.log, CLAUDE_CONFIG_DIR: a.config });
+  const r = cli(['--gerar', '--modelo', 'modelo-x', '--destino', path.join(a.dir, 'brinquedos'), '--prompt', 'explicar-1'], { cwd: a.onde, env: env });
+  return { a: a, r: r, ger: () => JSON.parse(fs.readFileSync(path.join(achar(a.onde), 'geracoes.json'), 'utf8')) };
+}
+
+test('T4/F4-01: --prompt sem valor recusa dizendo isso; prompt que nao existe segue com a mensagem de antes', () => {
+  const a = ambienteFalso();
+  const env = { ESQUADRO_CLAUDE: a.fake, FAKE_LOG: a.log, CLAUDE_CONFIG_DIR: a.config };
+  const destino = path.join(a.dir, 'brinquedos');
+  const casos = [
+    ['ultimo argumento', ['--gerar', '--modelo', 'modelo-x', '--destino', destino, '--prompt']],
+    ['seguido de outra flag', ['--gerar', '--prompt', '--modelo', 'modelo-x', '--destino', destino]]
+  ];
+  casos.forEach(([nome, args]) => {
+    const r = cli(args, { cwd: a.onde, env: env });
+    assert.notStrictEqual(r.status, 0, nome);
+    assert.ok(/--prompt sem valor\. Passe o id: --prompt <id>\./.test(r.stderr), nome + ': ' + r.stderr);
+    assert.ok(!/"null"/.test(r.stderr), nome + ': ' + r.stderr);
+    assert.ok(!fs.existsSync(a.log) && !fs.existsSync(destino), nome + ': rodou ou criou pasta');
+  });
+  const outro = cli(['--gerar', '--modelo', 'modelo-x', '--destino', destino, '--prompt', 'nao-existe'], { cwd: a.onde, env: env });
+  assert.notStrictEqual(outro.status, 0);
+  assert.ok(/--prompt "nao-existe" nao esta em modelos\/qualidade-prompts\.json/.test(outro.stderr), outro.stderr);
+});
+
+test('T4/F4-02: arquivo de prompt que cai em .claude/esquadro/ ou .git/ do brinquedo recusa antes de rodar o claude', () => {
+  const caixa = process.platform === 'win32';
+  const ruins = ['.claude/esquadro/projeto.json', '.claude/esquadro/escopo.md', '.git/config', './.git/hooks/pre-commit', '.claude/esquadro'];
+  if (caixa) ruins.push('.GIT/config', '.Claude/Esquadro/regras.md', '.claude\\esquadro\\regras.md', 'src\\..\\.git\\HEAD');
+  else ruins.push('src/../.git/HEAD');
+  const bons = ['.claude/outra.md', 'src/.git-nao.txt', '.gitignore', '.claude/esquadro-nao/x.md'];
+  const rodar = (rel) => {
+    const a = ambienteFalso();
+    const copia = path.join(a.dir, 'plugin');
+    ['scripts', 'modelos'].forEach((d) => fs.cpSync(path.join(RAIZ, d), path.join(copia, d), { recursive: true }));
+    const arquivo = path.join(copia, 'modelos', 'qualidade-prompts.json');
+    const dados = JSON.parse(fs.readFileSync(arquivo, 'utf8'));
+    dados.prompts[1].arquivos = { [rel]: 'conteudo' };
+    fs.writeFileSync(arquivo, JSON.stringify(dados, null, 2), 'utf8');
+    fs.mkdirSync(a.onde, { recursive: true });
+    const r = spawnSync(process.execPath, [path.join(copia, 'scripts', 'medir-qualidade.js'), '--gerar', '--modelo', 'modelo-x',
+      '--destino', path.join(a.dir, 'brinquedos'), '--prompt', dados.prompts[0].id],
+    { cwd: a.onde, encoding: 'utf8', env: Object.assign({}, process.env, { ESQUADRO_CLAUDE: a.fake, FAKE_LOG: a.log, CLAUDE_CONFIG_DIR: a.config }), timeout: 120000 });
+    return { r: r, a: a };
+  };
+  ruins.forEach((rel) => {
+    const { r, a } = rodar(rel);
+    assert.notStrictEqual(r.status, 0, rel + ': gerou');
+    assert.ok(/prompt 2/.test(r.stderr) && /cai em \.claude\/esquadro\/ \(ou \.git\/\) do brinquedo, que a medicao grava/.test(r.stderr), rel + ': ' + r.stderr);
+    assert.ok(!fs.existsSync(a.log), rel + ': o claude rodou');
+  });
+  bons.forEach((rel) => {
+    const { r } = rodar(rel);
+    assert.strictEqual(r.status, 0, rel + ': ' + r.stdout + r.stderr);
+  });
+});
+
+test('T4/F4-04: leitura da saida que lanca vira motivo da geracao; a geracao se grava e a rodada para', () => {
+  const medicaoJs = JSON.stringify(path.join(RAIZ, 'scripts', 'lib', 'medicao.js'));
+  [['lerExecucao', /nao li a saida do claude/], ['sessionIdDe', /nao li o session_id/]].forEach(([funcao, motivo]) => {
+    const { a, r, ger } = geraComPreload([
+      'const m = require(' + medicaoJs + ');',
+      'm.' + funcao + " = function () { throw new Error('leitura de mentira'); };"
+    ]);
+    assert.strictEqual(r.status, 1, funcao + ': ' + r.stdout + r.stderr);
+    assert.strictEqual(fs.readFileSync(a.log, 'utf8').trim().split('\n').length, 1, funcao + ': continuou gastando');
+    const g = ger();
+    assert.strictEqual(g.geracoes.length, 1, funcao + ': a execucao paga sumiu do geracoes.json');
+    assert.strictEqual(g.geracoes[0].ok, false, funcao);
+    assert.ok(g.geracoes[0].motivos.some((m) => motivo.test(m) && /leitura de mentira/.test(m)), funcao + ': ' + JSON.stringify(g.geracoes[0].motivos));
+    assert.strictEqual(g.completo, false, funcao);
+    assert.ok(/PAROU/.test(r.stderr), funcao + ': ' + r.stderr);
+  });
+});
+
+test('T4/F4-05: o geracoes.json que nao grava no fim diz isso, a causa, e que as geracoes ja estao no arquivo', () => {
+  const { r, ger } = geraComPreload([
+    'const original = fs.writeFileSync;',
+    'fs.writeFileSync = function (alvo, dados) {',
+    // so a gravacao do fim leva completo: true
+    "  if (path.basename(String(alvo)) === 'geracoes.json' && String(dados).indexOf('\"completo\": true') !== -1) { const e = new Error('disco cheio de mentira'); e.code = 'ENOSPC'; throw e; }",
+    '  return original.apply(this, arguments);',
+    '};'
+  ]);
+  assert.notStrictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.ok(/nao gravei o geracoes\.json no fim da rodada/.test(r.stderr) && /ENOSPC/.test(r.stderr), r.stderr);
+  assert.ok(/ja estao no arquivo/.test(r.stderr) && /completo/.test(r.stderr), r.stderr);
+  const g = ger();
+  assert.strictEqual(g.geracoes.length, 3, 'as geracoes gravadas uma a uma tem de estar no arquivo');
+  assert.strictEqual(g.completo, false);
+});
+
+test('T4/F4-06: claude que chegou a rodar e foi parado nao e "nao rodou"; o que nem nasceu (pid 0) segue "nao rodou"', () => {
+  const casos = [
+    ['nasceu e foi parado', 'EACCES', '', /rodou e foi parado \(EACCES\)/, /nao rodou/],
+    // controle: o spawnSync devolve pid 0 para o executavel que nao existe
+    ['nao nasceu', 'ENOENT', ' r.pid = 0;', /nao rodou: ENOENT/, /rodou e foi parado/]
+  ];
+  casos.forEach(([nome, code, pid, deve, naoDeve]) => {
+    const { r, ger } = geraComPreload([
+      "const cp = require('child_process');",
+      'const original = cp.spawnSync;',
+      'cp.spawnSync = function (cmd, args) {',
+      "  if (!Array.isArray(args) || args.indexOf('-p') === -1) return original.apply(this, arguments);",
+      '  const r = original.apply(this, arguments);',
+      "  const e = new Error('spawnSync " + code + "'); e.code = '" + code + "';",
+      '  r.error = e; r.status = null;' + pid,
+      '  return r;',
+      '};'
+    ]);
+    assert.strictEqual(r.status, 1, nome + ': ' + r.stdout + r.stderr);
+    const g = ger().geracoes[0];
+    assert.strictEqual(g.ok, false, nome);
+    assert.ok(g.motivos.some((m) => deve.test(m)), nome + ': ' + JSON.stringify(g.motivos));
+    assert.ok(!g.motivos.some((m) => naoDeve.test(m)), nome + ': ' + JSON.stringify(g.motivos));
+  });
+});
+
+test('T4/F4-07: ESQUADRO_CLAUDE entre aspas ganha a dica de tirar as aspas, e nao e consertado sozinho', () => {
+  const a = ambienteFalso();
+  [['aspas duplas', '"' + a.fake + '"'], ['aspas simples', "'" + a.fake + "'"]].forEach(([nome, valor]) => {
+    const destino = path.join(a.dir, 'brinquedos');
+    const r = cli(['--gerar', '--modelo', 'modelo-x', '--destino', destino], { cwd: a.onde, env: { ESQUADRO_CLAUDE: valor, FAKE_LOG: a.log } });
+    assert.notStrictEqual(r.status, 0, nome + ': tirou as aspas sozinho');
+    assert.ok(/ESQUADRO_CLAUDE/.test(r.stderr) && /tire as aspas do valor/.test(r.stderr), nome + ': ' + r.stderr);
+    assert.ok(!fs.existsSync(a.log) && !fs.existsSync(destino), nome);
+  });
+  // controle: valor sem aspas que nao existe nao leva a dica
+  const sem = cli(['--gerar', '--modelo', 'modelo-x', '--destino', path.join(a.dir, 'brinquedos')],
+    { cwd: a.onde, env: { ESQUADRO_CLAUDE: path.join(a.dir, 'sumido.js') } });
+  assert.notStrictEqual(sem.status, 0);
+  assert.ok(!/aspas/.test(sem.stderr), sem.stderr);
+});
+
+test('T4/F4-08: a copia da transcricao que nao grava diz que e a prova do caveman e o que conferir; as outras falhas ficam como eram', () => {
+  const falha = (funcao, arg, sufixo) => geraComPreload([
+    'const original = fs.' + funcao + ';',
+    'fs.' + funcao + ' = function () {',
+    "  if (String(arguments[" + arg + "]).endsWith('" + sufixo + "')) { const e = new Error('disco cheio de mentira'); e.code = 'ENOSPC'; throw e; }",
+    '  return original.apply(this, arguments);',
+    '};'
+  ]);
+  const t = falha('copyFileSync', 1, '.transcricao.jsonl');
+  assert.strictEqual(t.r.status, 1, t.r.stdout + t.r.stderr);
+  const m = t.ger().geracoes[0].motivos.filter((x) => /transcricao/.test(x))[0] || '';
+  assert.ok(/ENOSPC/.test(m) && /prova de que o caveman foi aplicado/.test(m) && /sem ela a geracao nao vale/.test(m), JSON.stringify(m));
+  assert.ok(/espaco em disco/.test(m) && /caminho longo/.test(m) && /permissao da pasta da rodada/.test(m), JSON.stringify(m));
+  assert.strictEqual(t.ger().geracoes[0].ok, false, 'a parada se mantem (D313 6)');
+  // controle: a falha do stream bruto nao ganha o texto da transcricao
+  const s = falha('writeFileSync', 0, '.stream.jsonl');
+  const ms = s.ger().geracoes[0].motivos.filter((x) => /stream/.test(x))[0] || '';
+  assert.ok(/nao gravei o stream bruto \(ENOSPC\)/.test(ms) && !/caveman/.test(ms), JSON.stringify(ms));
+});
+
+test('T4/F4-09: montagem com mais de 10 min sai mesmo com o pid vivo; a recente e a de carimbo no futuro ficam', () => {
+  const rodada = rodadaDeMentira();
+  const agora = Date.now();
+  const nomes = {
+    velha: 'montagem-' + process.pid + '-' + (agora - 11 * 60 * 1000),
+    recente: 'montagem-' + process.pid + '-' + agora,
+    futura: 'montagem-' + process.pid + '-' + (agora + 60 * 60 * 1000)
+  };
+  Object.keys(nomes).forEach((k) => {
+    fs.mkdirSync(path.join(rodada, nomes[k]));
+    fs.writeFileSync(path.join(rodada, nomes[k], 'mapa.json'), '{}', 'utf8');
+  });
+  const r = cli(['--pares', rodada]);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.ok(!fs.existsSync(path.join(rodada, nomes.velha)), 'a montagem velha, de pid vivo, ficou');
+  assert.ok(fs.existsSync(path.join(rodada, nomes.recente, 'mapa.json')), 'apagou a montagem recente de um processo vivo');
+  assert.ok(fs.existsSync(path.join(rodada, nomes.futura, 'mapa.json')), 'apagou a montagem de carimbo no futuro (vale a regra do pid)');
 });

@@ -245,7 +245,7 @@ test('apelidos vivos: nenhum apelido deste ambiente deixou de valer (H4)', (t) =
   }
   if (!c.temProva) {
     t.skip('nao verificavel aqui: ainda nao se sondou. Rode scripts/provar-apelidos.js' +
-      (projeto ? '' : ' --plugin') + ' e grave ' + PROVA);
+      (projeto ? '' : ' --plugin') + ' e grave ' + PROVA.split(path.sep).join('/'));
     return;
   }
   assert.strictEqual(c.reprovados.length + c.camposReprovados.length, 0, apelidos.motivoReprovado(c));

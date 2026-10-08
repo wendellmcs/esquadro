@@ -45,24 +45,48 @@ function perguntaDaCondicao(pergunta, condicao) {
 
 // ── o juiz e o par ───────────────────────────────────────────────────────
 
-// trecho entre aspas (retas, crase, curvas ou angulares), numa linha so: e citacao do texto julgado, nao o
+// trecho entre aspas (retas, crase, curvas, baixas ou angulares), numa linha so: e citacao do texto julgado, nao o
 // juiz falando. O miolo nao aceita o proprio abridor: abridor solto para no seguinte, e o custo fica linear.
-// A aspa reta nao abre colada em letra: users' e plural, nao citacao.
-const ENTRE_ASPAS = /(?<!\p{L})'[^'\n]*'|"[^"\n]*"|`[^`\n]*`|\u2018[^\u2018\u2019\n]*\u2019|\u201c[^\u201c\u201d\n]*\u201d|\u00ab[^\u00ab\u00bb\n]*\u00bb/gu;
+// A aspa reta nao abre colada em letra: users' e plural, nao citacao. O fecho curvo usado como abridor (u2019 e
+// u201d dos dois lados) tambem so abre fora de letra, pelo mesmo motivo, e so quando e o unico par daquele sinal
+// na linha (D341): com 4 na linha, o 1o e o 2o casariam por cima do "nao sei" do juiz. ENTRE_ASPAS[n]: o bit 1
+// liga o u2019, o bit 2 o u201d.
+const ENTRE_ASPAS_BASE = /(?<!\p{L})'[^'\n]*'|"[^"\n]*"|`[^`\n]*`|\u2018[^\u2018\u2019\n]*\u2019|\u201c[^\u201c\u201d\n]*\u201d|\u00ab[^\u00ab\u00bb\n]*\u00bb|\u201e[^\u201e\u201c\u201d\n]*[\u201c\u201d]|\u201a[^\u201a\u2018\u2019\n]*[\u2018\u2019]|\u2039[^\u2039\u203a\n]*\u203a/u.source;
+const FECHO_QUE_ABRE = ['(?<!\\p{L})\\u2019[^\\u2019\\n]*\\u2019', '\\u201d[^\\u201d\\n]*\\u201d'];
+const ENTRE_ASPAS = [0, 1, 2, 3].map(function (n) {
+  return new RegExp(ENTRE_ASPAS_BASE + (n & 1 ? '|' + FECHO_QUE_ABRE[0] : '') + (n & 2 ? '|' + FECHO_QUE_ABRE[1] : ''), 'gu');
+});
 
 // apostrofo entre letras (don't, it's, d'agua) e da palavra, nao aspa: vira espaco antes de procurar aspas.
 // Colado em numero e aspa: A.txt:3'nao sei' cita o texto julgado.
 const APOSTROFO = /(\p{L})['\u2019](?=\p{L})/gu;
 
 // marcas (til, acento, seletor de variante) e caracteres de formato (largura zero, hifen suave, marca de
-// direcao) nao separam nem escondem o "nao sei": somem depois do NFD
-const MARCAS_E_FORMATO = /[\p{M}\p{Cf}]/gu;
+// direcao) nao separam nem escondem o "nao sei": somem depois do NFD. Os 4 preenchedores do hangul (Lo, nao Cf)
+// parecem espaco e tambem escondem.
+const MARCAS_E_FORMATO = /[\p{M}\p{Cf}\u115f\u1160\u3164\uffa0]/gu;
+
+// o juiz que diz que nao sabe, na 1a pessoa: "nao sei" e as frases curtas de abstencao. "nao tenho certeza" e
+// ressalva, nao abstencao: fica de fora
+const NAO_SABE = '(?:nao\\s*(?:sei|consigo\\s*(?:dizer|saber|decidir|escolher|julgar)|da\\s*para\\s*(?:dizer|saber|decidir)|' +
+  'tenho\\s*como\\s*(?:dizer|saber|decidir))|impossivel\\s*(?:dizer|saber|decidir))\\b';
+const NAO_SABE_NO_INICIO = new RegExp('^\\W*' + NAO_SABE, 'i');
+const NAO_SABE_NO_MEIO = new RegExp('\\b' + NAO_SABE, 'i');
+
+// aspas que pareiam entre si numa linha: reta, reta simples, curvas simples (abre u2018/u201a, fecha u2018/u2019) e
+// curvas duplas (u201c/u201d/u201e). Em numero impar na linha nao fecham: ali nao abrem citacao nenhuma.
+const GRUPOS_DE_ASPAS = [/"/g, /'/g, /[\u2018\u2019\u201a]/g, /[\u201c\u201d\u201e]/g];
 
 /**
  * 'A' | 'B' | 'empate'. Vira empate quando o veredito nao existe, nao aponta A ou B, nao cita
  * `A.txt:<n>` ou `B.txt:<n>` no porQue (achado sem citacao nao conta) ou o inspetor disse que nao
  * sabe: o porQue abre com "nao sei" (com ou sem aspas, a forma que o contrato do juiz pede) ou tem
- * "nao sei" fora de aspas. O "nao sei" entre aspas no meio e citacao do texto julgado e conta voto.
+ * "nao sei" fora de aspas. O "nao sei" entre aspas no meio e citacao do texto julgado e conta voto. Valem como
+ * "nao sei" tambem as frases curtas em 1a pessoa (nao consigo dizer, nao da para saber, impossivel decidir...),
+ * com a mesma regra de aspas; "nao tenho certeza" e ressalva e conta voto. Aspa em numero impar na linha nao
+ * forma citacao nenhuma naquela linha; o fecho curvo usado dos dois lados so cita quando e o unico par (D341).
+ * A citacao reta que fecha colada em letra ('nao sei'ou) tem a mesma forma da contracao do juiz (nao sei, don't):
+ * na duvida vale empate (D340).
  */
 function votoDoJuiz(vd) {
   if (!vd || typeof vd !== 'object') return 'empate';
@@ -72,9 +96,23 @@ function votoDoJuiz(vd) {
   if (!/\b[AB]\.txt:\d+/.test(porQue)) return 'empate';
   // com ou sem til, decomposto ou nao, com qualquer espaco ou nenhum: o juiz escreve em portugues
   const texto = porQue.normalize('NFD').replace(MARCAS_E_FORMATO, '');
-  if (/^\W*nao\s*sei\b/i.test(texto)) return 'empate';
-  if (/\bnao\s*sei\b/i.test(texto.replace(APOSTROFO, '$1 ').replace(ENTRE_ASPAS, ' '))) return 'empate';
+  if (NAO_SABE_NO_INICIO.test(texto)) return 'empate';
+  if (NAO_SABE_NO_MEIO.test(foraDeAspas(texto))) return 'empate';
   return vd.melhor;
+}
+
+/** O texto sem as citacoes, linha a linha; as aspas sem par na linha (GRUPOS_DE_ASPAS) saem antes de pesquisar. */
+function foraDeAspas(texto) {
+  const linhas = texto.split('\n').map(function (linha) {
+    let l = linha.replace(APOSTROFO, '$1 ');
+    GRUPOS_DE_ASPAS.forEach(function (g) {
+      if (((l.match(g) || []).length) % 2 === 1) l = l.replace(g, ' ');
+    });
+    const fecho1 = (l.match(/\u2019/g) || []).length === 2 ? 1 : 0;
+    const fecho2 = (l.match(/\u201d/g) || []).length === 2 ? 2 : 0;
+    return l.replace(ENTRE_ASPAS[fecho1 + fecho2], ' ');
+  });
+  return linhas.join('\n');
 }
 
 /**

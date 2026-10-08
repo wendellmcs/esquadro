@@ -48,7 +48,7 @@ Três motivos, todos medidos:
 
 Se a raiz não existir ou não for pasta, **pare e pergunte**. Não tente adivinhar qual era.
 
-### Passo 0b — já existe configuração aqui?
+## Passo 0b — já existe configuração aqui?
 
 Leia `<raiz absoluta>/.claude/esquadro/projeto.json`. **Se existir, isto é um re-init, e o roteiro
 muda:** você não está configurando um projeto novo, está atualizando o de alguém.
@@ -494,6 +494,8 @@ apodrecer quando o projeto mudar.
     node "${CLAUDE_PLUGIN_ROOT}/scripts/gerar-agents-md.js" --respostas <arquivo.json>
 
 **4. Peça a decisão em 3 opções** e só grave depois do OK, com `--gravar`.
+
+**5. Apague o JSON temporário** de respostas, tenha o dono mandado gravar ou não.
 
 **Se o projeto já tiver um `AGENTS.md`, o gerador recusa e não toca em nada.** Isso não é erro:
 aquele arquivo pode ser trabalho de meses. Diga ao dono que existe um, **mostre a proposta mesmo

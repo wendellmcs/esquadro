@@ -28,6 +28,13 @@ const RAIZ = path.join(__dirname, '..');
 //     subtrair: o minimo e o estimador robusto;
 //   - medidas INTERCALADAS, para que um pico nao caia so num dos lados.
 // A chamada de aquecimento tira o custo de compilacao da primeira medida.
+//
+// F1-H05 / F1-H06: so isso ainda oscilou - em 2026-10-06 uma rodada deu 9,24x com
+// teto 8 num codigo linear. Por isso o que os testes chamam e `razaoConfirmada`:
+// 9 repeticoes (eram 5; o minimo de mais amostras cai mais) e, se a primeira
+// medida passa do teto, uma SEGUNDA medida completa - so reprova se as duas
+// passarem. Uma funcao quadratica de verdade passa do teto nas duas (~16x); um
+// pico de escalonamento raramente cai nas duas. O teto em si nao mudou.
 function razaoDeCusto(repeticoes, fnPequeno, fnGrande) {
   fnPequeno(); fnGrande();
   let pequeno = Infinity;
@@ -47,8 +54,25 @@ function razaoDeCusto(repeticoes, fnPequeno, fnGrande) {
 
 // Teto da catraca: 4x de entrada custa ~4x se linear, ~16x se quadratico.
 // 8 fica no meio, em escala log. Medido nesta maquina, 5 rodadas: 4,67 a 5,49
-// sem gatilho e 4,08 a 4,87 com gatilho.
+// sem gatilho e 4,08 a 4,87 com gatilho. A queda de 2026-10-06 (9,24x) foi sob
+// carga, nao mudanca de algoritmo: o teto fica, a medida e que e confirmada.
 const TETO_RAZAO = 8;
+
+const REPETICOES_RAZAO = 9;
+
+// Devolve a medida que decide: a primeira, se ela fica abaixo do teto; senao a menor das
+// duas. `razoes` e o texto com TODAS as razoes medidas, para a mensagem de falha.
+function razaoConfirmada(fnPequeno, fnGrande) {
+  const primeira = razaoDeCusto(REPETICOES_RAZAO, fnPequeno, fnGrande);
+  if (primeira.razao < TETO_RAZAO) {
+    return Object.assign({}, primeira, { razoes: primeira.razao.toFixed(2) + 'x' });
+  }
+  const segunda = razaoDeCusto(REPETICOES_RAZAO, fnPequeno, fnGrande);
+  const melhor = segunda.razao < primeira.razao ? segunda : primeira;
+  return Object.assign({}, melhor, {
+    razoes: primeira.razao.toFixed(2) + 'x na 1a medida e ' + segunda.razao.toFixed(2) + 'x na 2a'
+  });
+}
 
 const DEVE_BARRAR = [
   'rm -rf build',
@@ -792,10 +816,10 @@ test('destrutivo D51: o custo deixa de ser quadratico', () => {
   const cmd = 'rm a '.repeat(12000);
   assert.strictEqual(base.length, 15000);
   assert.strictEqual(cmd.length, 60000);
-  const m = razaoDeCusto(5, () => destrutivo.classificar(base),
+  const m = razaoConfirmada(() => destrutivo.classificar(base),
                             () => destrutivo.classificar(cmd));
   assert.ok(m.razao < TETO_RAZAO,
-    'quadruplicar a entrada custou ' + m.razao.toFixed(2) + 'x (teto ' + TETO_RAZAO +
+    'quadruplicar a entrada custou ' + m.razoes + ' (teto ' + TETO_RAZAO +
     '; linear ~4, quadratico ~16): ' + m.pequeno.toFixed(2) + ' ms para 15 mil e ' +
     m.grande.toFixed(2) + ' ms para 60 mil caracteres');
 });
@@ -1409,10 +1433,10 @@ test('destrutivo D67: as tres burlas do leitor (P0-1/P0-2/P0-3) fecham sem reabr
   const semGatilho = 'rm a '.repeat(12000);
   assert.strictEqual(semGatilhoBase.length, 15000);
   assert.strictEqual(semGatilho.length, 60000);
-  const mSem = razaoDeCusto(5, () => destrutivo.classificar(semGatilhoBase),
+  const mSem = razaoConfirmada(() => destrutivo.classificar(semGatilhoBase),
                                () => destrutivo.classificar(semGatilho));
   assert.ok(mSem.razao < TETO_RAZAO,
-    'sem gatilho, quadruplicar a entrada custou ' + mSem.razao.toFixed(2) + 'x (teto ' +
+    'sem gatilho, quadruplicar a entrada custou ' + mSem.razoes + ' (teto ' +
     TETO_RAZAO + '; linear ~4, quadratico ~16): ' + mSem.pequeno.toFixed(2) + ' ms para 15k e ' +
     mSem.grande.toFixed(2) + ' ms para 60k');
   // E COM gatilho (parenteses) o custo sobe - tres leituras - mas continua linear:
@@ -1423,10 +1447,10 @@ test('destrutivo D67: as tres burlas do leitor (P0-1/P0-2/P0-3) fecham sem reabr
   const comGatilho = '(a) '.repeat(15000);
   assert.strictEqual(comGatilhoBase.length, 15000);
   assert.strictEqual(comGatilho.length, 60000);
-  const mCom = razaoDeCusto(5, () => destrutivo.classificar(comGatilhoBase),
+  const mCom = razaoConfirmada(() => destrutivo.classificar(comGatilhoBase),
                                () => destrutivo.classificar(comGatilho));
   assert.ok(mCom.razao < TETO_RAZAO,
-    'COM gatilho, quadruplicar a entrada custou ' + mCom.razao.toFixed(2) + 'x (teto ' +
+    'COM gatilho, quadruplicar a entrada custou ' + mCom.razoes + ' (teto ' +
     TETO_RAZAO + '; linear ~4, quadratico ~16): ' + mCom.pequeno.toFixed(2) + ' ms para 15k e ' +
     mCom.grande.toFixed(2) + ' ms para 60k');
 });
@@ -2474,9 +2498,9 @@ test('T14: heredoc aberto muitas vezes sem fechamento custa linear', () => {
   const abertos = (n) => Array.from({ length: n }, (_, i) => 'cat <<A' + i).join('\n');
   const base = abertos(1250);
   const cmd = abertos(5000);
-  const m = razaoDeCusto(5, () => destrutivo.classificar(base), () => destrutivo.classificar(cmd));
+  const m = razaoConfirmada(() => destrutivo.classificar(base), () => destrutivo.classificar(cmd));
   assert.ok(m.razao < TETO_RAZAO,
-    'quadruplicar as aberturas custou ' + m.razao.toFixed(2) + 'x (teto ' + TETO_RAZAO +
+    'quadruplicar as aberturas custou ' + m.razoes + ' (teto ' + TETO_RAZAO +
     '; linear ~4, quadratico ~16): ' + m.pequeno.toFixed(2) + ' ms e ' + m.grande.toFixed(2) + ' ms');
   // D246 sec. 5: dois heredocs no mesmo comando leem tudo (antes da D246, este passava)
   assert.strictEqual(destrutivo.classificar('cat > a <<X\nrm -rf a\nX\ncat > b <<X\nrm -rf b\nX').destrutivo, true);

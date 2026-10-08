@@ -53,8 +53,10 @@ test('shell: na segunda tentativa o motivo manda TROCAR DE IDIOMA', () => {
   const p = shell.conferir('rm -rf build', WIN);
   const primeiro = shell.motivo('rm -rf build', p, 1);
   const segundo = shell.motivo('rm -fr build', p, 2);
-  assert.ok(!primeiro.includes('TROQUE DE IDIOMA'));
-  assert.ok(segundo.includes('TROQUE DE IDIOMA'), segundo);
+  // T1/F1-H08: a frase vira tom normal, sem caixa alta gritada
+  assert.ok(!primeiro.includes('Troque de idioma'));
+  assert.ok(segundo.includes('Troque de idioma, nao de variacao.'), segundo);
+  assert.ok(!segundo.includes('TROQUE DE IDIOMA'), segundo);
   assert.ok(/^[\x20-\x7E\n]+$/.test(segundo), 'motivo tem de ser ASCII (R5)');
 });
 
@@ -557,6 +559,7 @@ function shellComTabela(conteudo) {
   fs.mkdirSync(path.join(base, 'scripts', 'lib'), { recursive: true });
   fs.mkdirSync(path.join(base, 'modelos'), { recursive: true });
   fs.copyFileSync(path.join(__dirname, '..', 'scripts', 'lib', 'shell.js'), path.join(base, 'scripts', 'lib', 'shell.js'));
+  fs.copyFileSync(path.join(__dirname, '..', 'scripts', 'lib', 'texto.js'), path.join(base, 'scripts', 'lib', 'texto.js'));
   if (conteudo !== null) fs.writeFileSync(path.join(base, 'modelos', 'shell-win32.json'), conteudo, 'utf8');
   try { return require(path.join(base, 'scripts', 'lib', 'shell.js')); } finally { fs.rmSync(base, { recursive: true, force: true }); }
 }
@@ -646,4 +649,176 @@ test('0.3.5/T2: o texto do aviso nomeia o arquivo ou a regra e a causa, em ASCII
   const r = s.avisoTabela(s.problemasDaTabela(WIN, 'PowerShell'));
   assert.ok(r.includes('regra-quebrada'), r);
   for (const x of [t, r]) assert.ok(/^[\x20-\x7E\n]+$/.test(x), 'aviso tem de ser ASCII: ' + x);
+});
+
+// ---- T1 do plano dos 82: a tabela, as mensagens e o leitor do `cd`
+
+test('T1/F3-10: tabela com BOM na frente se le como a sem BOM', () => {
+  const BOM = String.fromCharCode(0xFEFF);
+  const s = shellComTabela(BOM + TABELA_REAL);
+  assert.deepStrictEqual(s.problemasDaTabela(WIN, 'PowerShell'), []);
+  assert.deepStrictEqual(s.conferir('ls | head', WIN, 'PowerShell').map((x) => x.achado), ['head']);
+  // controle: o que nao e JSON segue sendo problema, com ou sem BOM
+  assert.strictEqual(shellComTabela(BOM + '{ nao e json').problemasDaTabela(WIN, 'PowerShell').length, 1);
+});
+
+test('T1/F3-11: o aviso diz que o comando seguinte ja usa a tabela consertada (cada hook e processo novo)', () => {
+  const quebrada = shellComTabela('{ "quando": ');
+  const t = quebrada.avisoTabela(quebrada.problemasDaTabela(WIN, 'PowerShell'));
+  assert.ok(!t.includes('sessao nova'), t);
+  assert.ok(t.includes('Conserte o arquivo no plugin esquadro; o comando seguinte ja usa a tabela consertada.'), t);
+  assert.ok(t.includes('Este aviso sai uma vez por sessao.'), t);
+});
+
+test('T1/F3-15: o conferir abre pela mesma porta do problemasDaTabela (o SO da tabela), nao pelo quando.so', () => {
+  for (const quando of [undefined, { so: 'linux' }]) {
+    const tabela = JSON.parse(TABELA_REAL);
+    if (quando === undefined) delete tabela.quando; else tabela.quando = quando;
+    const s = shellComTabela(JSON.stringify(tabela));
+    assert.deepStrictEqual(s.conferir('ls | head', WIN, 'PowerShell').map((x) => x.achado), ['head'], JSON.stringify(quando));
+    // controle: fora do win32 a tabela segue sem valer
+    assert.deepStrictEqual(s.conferir('ls | head', LINUX, 'PowerShell'), [], JSON.stringify(quando));
+  }
+});
+
+test('T1/F3-16: padrao vazio ou so de espaco e regra que nao se le, e nao casa tudo', () => {
+  const tabela = JSON.parse(TABELA_REAL);
+  tabela.regras.push({ padrao: '', achado: 'vazio', sugestao: 'x', motivo: 'y' },
+    { padrao: '  ', achado: 'espaco', sugestao: 'x', motivo: 'y' });
+  const s = shellComTabela(JSON.stringify(tabela));
+  assert.deepStrictEqual(s.problemasDaTabela(WIN, 'PowerShell').map((x) => [x.achado, x.causa]),
+    [['vazio', 'o padrao esta vazio (casaria tudo)'], ['espaco', 'o padrao esta vazio (casaria tudo)']]);
+  assert.deepStrictEqual(s.conferir('echo oi', WIN, 'PowerShell'), []);
+  // controle: as regras validas da mesma tabela seguem negando
+  assert.deepStrictEqual(s.conferir('ls | head', WIN, 'PowerShell').map((x) => x.achado), ['head']);
+});
+
+test('T1/F3-17: o motivo nao lanca com regra sem achado', () => {
+  let m = '';
+  assert.doesNotThrow(() => { m = shell.motivo('x', [{ sugestao: 's', motivo: 'm' }], 1); });
+  assert.ok(m.includes('  (sem achado)'), m);
+  // controle: com achado, a linha mostra o achado
+  assert.ok(shell.motivo('x', [{ achado: 'head', sugestao: 's', motivo: 'm' }], 1).includes('  head '));
+});
+
+test('T1/F6-02: o motivo ecoa no maximo 120 caracteres do comando e diz o tamanho quando corta', () => {
+  const linhaComando = (c) => shell.motivo(c, [], 1).split('\n').find((l) => l.startsWith('Comando: '));
+  assert.strictEqual(linhaComando('a'.repeat(500)), 'Comando: ' + 'a'.repeat(120) + '...(500 caracteres)');
+  // controle: 120 sai inteiro, sem sufixo
+  assert.strictEqual(linhaComando('b'.repeat(120)), 'Comando: ' + 'b'.repeat(120));
+});
+
+test('T1/F3-01: atribuicao, time, ! e palavra entre aspas na frente deixam o cd em posicao de comando (Bash)', () => {
+  for (const c of ['x=1 cd y', 'time cd x', '! cd x', "'cd' x", "x='a b' cd y", 'A=1 B=2 cd y', '"cd" x', "c'd' x"]) {
+    const r = shell.cdSolto(c, 'Bash');
+    assert.ok(r && r.achado === 'cd', JSON.stringify(c) + ' -> ' + JSON.stringify(r));
+  }
+});
+test('T1/F3-01 controle: atribuicao e cd entre aspas como argumento, e cd em $( ), seguem livres (Bash)', () => {
+  for (const c of ['echo x=1 cd y', "echo 'cd' x", 'x=1', 'x=$(cd y)']) {
+    assert.strictEqual(shell.cdSolto(c, 'Bash'), null, JSON.stringify(c));
+  }
+  // no PowerShell 'cd' entre aspas e texto, nao comando
+  assert.strictEqual(shell.cdSolto("'cd' x", 'PowerShell'), null);
+});
+
+test('T1/F3-04: function definida e nao chamada nao roda o corpo (PowerShell)', () => {
+  assert.strictEqual(shell.cdSolto('function f { cd x }', 'PowerShell'), null);
+  assert.strictEqual(shell.cdSolto('function f($a) { cd x }', 'PowerShell'), null);
+});
+test('T1/F3-04 controle: a chamada repete o corpo, sem caixa, e & { } segue negando (PowerShell)', () => {
+  for (const c of ['function f { cd x }; f', 'Function F { cd x }; f', 'function f($a) { cd x }; F 1', '& { cd x }']) {
+    const r = shell.cdSolto(c, 'PowerShell');
+    assert.ok(r && r.achado === 'cd', JSON.stringify(c) + ' -> ' + JSON.stringify(r));
+  }
+});
+
+test('T1/F3-04: D342: no PowerShell o que vem depois do = de atribuicao e posicao de comando', () => {
+  for (const c of ['function f { cd x }; $x = f', '$x = Set-Location y', '$x = cd y', 'function f { cd x }; [string]$x = f',
+    'function f { cd x }; $x += f']) {
+    const r = shell.cdSolto(c, 'PowerShell');
+    assert.ok(r && r.forma === 'powershell', JSON.stringify(c) + ' -> ' + JSON.stringify(r));
+  }
+});
+test('T1/F3-04: D342: controle: texto, chave de hashtable, = dentro de argumento e o bash seguem como estavam', () => {
+  for (const c of ['@{ cd = 1 }', "$x = 'cd'", '$x = "cd x"', '$x = 1; Write-Output cd', 'if ($a -eq 1) { }',
+    'Get-Item x -Filter a=b', 'function f { cd x }']) {
+    assert.strictEqual(shell.cdSolto(c, 'PowerShell'), null, JSON.stringify(c));
+  }
+  assert.ok(shell.cdSolto('x=1 cd y', 'Bash'));
+  assert.strictEqual(shell.cdSolto('echo a=b', 'Bash'), null);
+});
+
+test('T1/F3-05: grupo { } em cano roda em subshell e nao nega (Bash)', () => {
+  for (const c of ['{ cd x; } | cat', '{ cd x; } |& cat']) assert.strictEqual(shell.cdSolto(c, 'Bash'), null, JSON.stringify(c));
+});
+test('T1/F3-05 controle: grupo fora de cano segue negando; cd em cano segue livre (Bash)', () => {
+  for (const c of ['{ cd x; }; echo', '{ cd x; } && echo']) assert.ok(shell.cdSolto(c, 'Bash'), JSON.stringify(c));
+  for (const c of ['cd x | cat', 'cat | { cd x; }']) assert.strictEqual(shell.cdSolto(c, 'Bash'), null, JSON.stringify(c));
+});
+
+const aninhado = (k, resto) => 'echo ' + '$('.repeat(k) + 'true' + ')'.repeat(k) + resto;
+test('T1/F3-06: no teto de 100 niveis o comando nao foi lido inteiro e nega, com mensagem propria (Bash e PowerShell)', () => {
+  const casos = [['Bash', aninhado(100, '')], ['Bash', aninhado(100, '; cd x')], ['Bash', '( ' + aninhado(100, '') + ' )'],
+    ['PowerShell', aninhado(100, '')], ['PowerShell', aninhado(100, '; cd x')]];
+  for (const [ferr, c] of casos) {
+    const r = shell.cdSolto(c, ferr);
+    assert.ok(r && r.teto === true, ferr + ' ' + c.length + ' -> ' + JSON.stringify(r));
+    const m = shell.motivoCdSolto(c, r);
+    assert.ok(m.includes('passa de 100 niveis de aninhamento'), m);
+    assert.ok(!/O que o (null|undefined)/.test(m), m);
+    assert.ok(/^[\x20-\x7E\n]+$/.test(m), 'motivo tem de ser ASCII');
+  }
+});
+test('T1/F3-06 controle: 99 niveis sem cd seguem livres; com cd negam pelo cd (Bash)', () => {
+  assert.strictEqual(shell.cdSolto(aninhado(99, ''), 'Bash'), null);
+  const r = shell.cdSolto(aninhado(99, '; cd x'), 'Bash');
+  assert.ok(r && r.achado === 'cd' && !r.teto, JSON.stringify(r));
+});
+
+test('T1/F3-12: popd no corpo de funcao chamada depois de && herda a condicao da chamada (Bash)', () => {
+  const r = shell.cdSolto('pushd a; f() { popd; }; true && f', 'Bash');
+  assert.ok(r && r.achado === 'pushd', JSON.stringify(r));
+});
+test('T1/F3-12 controle: chamada sem condicao desempilha; Push e Pop no mesmo corpo se anulam (Bash)', () => {
+  for (const c of ['pushd a; f() { popd; }; f', 'f() { pushd a; popd; }; true && f']) {
+    assert.strictEqual(shell.cdSolto(c, 'Bash'), null, JSON.stringify(c));
+  }
+});
+
+test('T1/F3-13: pushd a && popd nao nega: se o pushd falha, a pasta nao mudou (Bash)', () => {
+  assert.strictEqual(shell.cdSolto('pushd a && popd', 'Bash'), null);
+  // o grupo logo depois do && tambem so roda se o pushd rodou
+  assert.strictEqual(shell.cdSolto('pushd a && { make; popd; }', 'Bash'), null);
+});
+test('T1/F3-13 controle: com comando entre os dois, ou com ||, segue negando (Bash)', () => {
+  for (const c of ['pushd a && make && popd', 'pushd a || popd']) {
+    const r = shell.cdSolto(c, 'Bash');
+    assert.ok(r && r.achado === 'pushd', JSON.stringify(c) + ' -> ' + JSON.stringify(r));
+  }
+});
+
+test('T1/F3-14: popd dentro de if/then ou while/do pode nao rodar e nao desempilha (Bash)', () => {
+  for (const c of ['pushd a; if make; then popd; fi', 'pushd a; while x; do popd; done']) {
+    const r = shell.cdSolto(c, 'Bash');
+    assert.ok(r && r.achado === 'pushd', JSON.stringify(c) + ' -> ' + JSON.stringify(r));
+  }
+});
+test('T1/F3-14 controle: popd depois do fi, Push e Pop no mesmo bloco e grupo { } desempilham (Bash)', () => {
+  for (const c of ['pushd a; make; popd', 'pushd a; if make; then echo; fi; popd', 'if x; then pushd a; popd; fi',
+    'pushd a; { popd; }']) {
+    assert.strictEqual(shell.cdSolto(c, 'Bash'), null, JSON.stringify(c));
+  }
+});
+
+// D332 secao 3: os dois sao o comportamento do bash; os testes prendem o de hoje.
+test('T1/F3-02 (D332): heredoc sem traco nao fecha com terminador indentado por tab, como no bash', () => {
+  assert.strictEqual(shell.cdSolto('cat <<EOF\n\tEOF\ncd x', 'Bash'), null);
+  // controle: com <<- o tab sai, o heredoc fecha e o cd depois nega
+  assert.ok(shell.cdSolto('cat <<-EOF\n\tEOF\ncd x', 'Bash'));
+});
+test('T1/F3-03 (D332): funcao chamada antes de definida ainda nao existe e nao nega, como no bash', () => {
+  assert.strictEqual(shell.cdSolto('f; f() { cd x; }', 'Bash'), null);
+  // controle: chamada depois da definicao nega
+  assert.ok(shell.cdSolto('f() { cd x; }; f', 'Bash'));
 });

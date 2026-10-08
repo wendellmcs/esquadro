@@ -37,6 +37,8 @@ const ARQUIVO_DE_REGRAS = path.join(RAIZ, 'modelos', 'regras.md');
 const PASTA_DA_MEDICAO = ['.claude', 'esquadro', 'medicao-qr'];
 // Uma execucao com ferramentas pode levar minutos; passar disto e execucao presa, nao lenta.
 const LIMITE_DA_EXECUCAO_MS = 15 * 60 * 1000;
+// A montagem dos pares leva segundos: mais velha que isto esta morta, mesmo com o pid vivo (o Windows reaproveita pid).
+const IDADE_DA_MONTAGEM_MORTA_MS = 10 * 60 * 1000;
 
 const USO = [
   'uso:',
@@ -140,6 +142,13 @@ function dentroDoBrinquedo(dir, rel) {
   return path.resolve(dir, rel).indexOf(path.resolve(dir) + path.sep) === 0;
 }
 
+/** O arquivo cai em .claude/esquadro/ ou .git/ do brinquedo (ou e a propria pasta)? Sem caixa no Windows. */
+function caiNoQueAMedicaoGrava(base, rel) {
+  const partes = path.relative(path.resolve(base), path.resolve(base, rel)).split(path.sep);
+  const p = process.platform === 'win32' ? partes.map(function (x) { return x.toLowerCase(); }) : partes;
+  return p[0] === '.git' || (p[0] === '.claude' && p[1] === 'esquadro');
+}
+
 /**
  * Os `arquivos` de cada prompt, conferidos antes da 1a execucao: o brinquedo do prompt 7 so se monta depois de 18
  * execucoes pagas. `base` e uma pasta de brinquedo de exemplo, no mesmo disco do destino.
@@ -157,6 +166,9 @@ function arquivosRuins(prompts, base) {
     Object.keys(arquivos).forEach(function (rel) {
       if (!dentroDoBrinquedo(base, rel)) ruins.push(onde + ': o arquivo ' + JSON.stringify(rel) + ' cai fora do brinquedo');
       else if (typeof arquivos[rel] !== 'string') ruins.push(onde + ': o arquivo ' + JSON.stringify(rel) + ' nao tem texto');
+      else if (caiNoQueAMedicaoGrava(base, rel)) {
+        ruins.push(onde + ': o arquivo ' + JSON.stringify(rel) + ' cai em .claude/esquadro/ (ou .git/) do brinquedo, que a medicao grava');
+      }
     });
   });
   return ruins;
@@ -248,8 +260,9 @@ function gerar(argv) {
   const ids = prompts.map(function (p) { return p.id; }); // o numero do prompt nas mensagens e o do arquivo
   const so = valorDe(argv, '--prompt');
   if (argv.indexOf('--prompt') !== -1) {
+    if (!so) return recusar('ERRO: --prompt sem valor. Passe o id: --prompt <id>.');
     prompts = prompts.filter(function (p) { return p.id === so; });
-    if (!so || prompts.length === 0) return recusar('ERRO: --prompt "' + so + '" nao esta em modelos/qualidade-prompts.json.');
+    if (prompts.length === 0) return recusar('ERRO: --prompt "' + so + '" nao esta em modelos/qualidade-prompts.json.');
   }
   if (prompts.length === 0) return recusar('ERRO: nenhum prompt em modelos/qualidade-prompts.json.');
 
@@ -258,8 +271,9 @@ function gerar(argv) {
     // com a variavel, o PATH nem e olhado: a mensagem diz o que a variavel aponta
     const apontado = process.env.ESQUADRO_CLAUDE;
     if (apontado) {
+      const dica = /^["'].*["']$/.test(apontado) ? ' Dica: tire as aspas do valor.' : '';
       return recusar('ERRO: nao achei o claude: ESQUADRO_CLAUDE aponta para ' + apontado + (ehArquivo(apontado)
-        ? ', um atalho que nao diz que executavel chama.' : ', que nao existe (ou nao e arquivo).'));
+        ? ', um atalho que nao diz que executavel chama.' : ', que nao existe (ou nao e arquivo).') + dica);
     }
     return recusar('ERRO: nao achei o claude no PATH. Ponha-o no PATH, ou aponte o executavel em ESQUADRO_CLAUDE.');
   }
@@ -310,29 +324,40 @@ function gerar(argv) {
       // tokens, que vao para o geracoes.json (e, se nem ele grava, para a mensagem de erro). Sem a evidencia a
       // geracao nao vale, e a rodada para
       const naoGravou = [];
-      const guardar = function (oQue, fazer) {
-        try { fazer(); } catch (e) { naoGravou.push('nao gravei ' + oQue + ' (' + (e.code || e.message) + ')'); }
+      const guardar = function (oQue, fazer, conferir) {
+        try { fazer(); } catch (e) { naoGravou.push('nao gravei ' + oQue + ' (' + (e.code || e.message) + ')' + (conferir ? ': ' + conferir : '')); }
       };
       guardar('o stream bruto', function () { fs.writeFileSync(path.join(rodada, rotulo + '.stream.jsonl'), saida, 'utf8'); });
       if (r.stderr) guardar('o stderr', function () { fs.writeFileSync(path.join(rodada, rotulo + '.stderr.txt'), r.stderr, 'utf8'); });
 
       // O caveman pedido por stdin nao deixa rastro no stream: a prova e a transcricao da sessao.
       // Ela e copiada para a rodada, como evidencia.
-      const arquivoDaTranscricao = acharTranscricao(medicao.sessionIdDe(saida), process.env);
+      // a leitura que lanca nao leva junto a execucao paga: vira motivo, e a geracao se grava como as outras
+      const naoLi = [];
+      let sessionId = null;
+      try { sessionId = medicao.sessionIdDe(saida); } catch (e) { naoLi.push('nao li o session_id da saida do claude (' + (e.code || e.message) + ')'); }
+      const arquivoDaTranscricao = acharTranscricao(sessionId, process.env);
       const transcricao = arquivoDaTranscricao ? linhasDoArquivo(arquivoDaTranscricao) : null;
       if (arquivoDaTranscricao) {
-        guardar('a copia da transcricao', function () { fs.copyFileSync(arquivoDaTranscricao, path.join(rodada, rotulo + '.transcricao.jsonl')); });
+        guardar('a copia da transcricao', function () { fs.copyFileSync(arquivoDaTranscricao, path.join(rodada, rotulo + '.transcricao.jsonl')); },
+          'a copia e a prova de que o caveman foi aplicado, e sem ela a geracao nao vale; confira o espaco em disco, o caminho longo e a permissao da pasta da rodada');
       }
 
-      const lida = medicao.lerExecucao(saida, { condicao: condicao, marcador: medicao.MARCADOR_DO_BLOCO, transcricao: transcricao });
+      let lida = { ok: false, texto: null, aplicou: false, outputTokens: null, motivos: [] };
+      try {
+        lida = medicao.lerExecucao(saida, { condicao: condicao, marcador: medicao.MARCADOR_DO_BLOCO, transcricao: transcricao });
+      } catch (e) { naoLi.push('nao li a saida do claude (' + (e.code || e.message) + ')'); }
       const motivos = lida.motivos.slice();
       let ok = lida.ok;
+      if (naoLi.length > 0) { ok = false; naoLi.forEach(function (m) { motivos.push(m); }); }
       if (r.error) {
         ok = false;
         const codigo = r.error.code || r.error.message;
-        // o spawnSync tambem preenche error quando para um claude que ja rodou
+        // o spawnSync tambem preenche error quando para um claude que ja rodou; pid 0 e o que nao chegou a nascer
+        const nasceu = r.pid > 0 || r.status !== null || Boolean(r.signal);
         if (codigo === 'ETIMEDOUT') motivos.push('o claude rodou e foi parado ao passar de ' + (LIMITE_DA_EXECUCAO_MS / 60000) + ' min (ETIMEDOUT)');
         else if (codigo === 'ENOBUFS') motivos.push('o claude rodou e foi parado: a saida passou do limite (ENOBUFS)');
+        else if (nasceu) motivos.push('o claude rodou e foi parado (' + codigo + ')');
         else motivos.push('o claude nao rodou: ' + codigo);
       }
       else if (r.status !== 0) { ok = false; motivos.push('o claude saiu com codigo ' + r.status + (r.signal ? ' (sinal ' + r.signal + ')' : '')); }
@@ -355,7 +380,10 @@ function gerar(argv) {
     }
   }
   envelope.completo = !parou && envelope.geracoes.length === total;
-  gravar();
+  try { gravar(); } catch (e) {
+    throw new Error('nao gravei o geracoes.json no fim da rodada (' + (e.code || e.message) +
+      '); as geracoes ja estao no arquivo, gravadas uma a uma: so o campo completo ficou sem atualizar');
+  }
 
   const L = [];
   L.push('rodada: ' + rodada);
@@ -424,12 +452,15 @@ function processoVivo(pid) {
 
 /**
  * A montagem de um processo que morreu no meio (Ctrl+C, queda) fica na rodada com o mapa.json dentro: sai aqui. A de
- * processo vivo pode ser outra montagem em curso, e fica. A que nao sai nao barra nada.
+ * processo vivo pode ser outra montagem em curso, e fica, salvo se for velha (D339). A que nao sai nao barra nada.
  */
 function tirarMontagensMortas(rodada) {
   fs.readdirSync(rodada).forEach(function (nome) {
-    const m = /^montagem-(\d+)-\d+$/.exec(nome);
-    if (!m || processoVivo(Number(m[1]))) return;
+    const m = /^montagem-(\d+)-(\d+)$/.exec(nome);
+    if (!m) return;
+    // carimbo no futuro nao e velho: vale so o pid
+    const velha = Date.now() - Number(m[2]) > IDADE_DA_MONTAGEM_MORTA_MS;
+    if (!velha && processoVivo(Number(m[1]))) return;
     try { fs.rmSync(path.join(rodada, nome), { recursive: true, force: true }); } catch (e) { /* fica para a proxima */ }
   });
 }

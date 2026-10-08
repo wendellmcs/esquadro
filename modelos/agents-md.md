@@ -1,7 +1,7 @@
 # AGENTS.md — {{texto:projeto}}
 
-Este arquivo e o resumo que viaja. A fonte completa esta em `.claude/esquadro/`, e onde os dois
-divergirem, vale o que estiver la.
+Este arquivo é o resumo que viaja. A fonte completa está em `.claude/esquadro/`, e onde os dois
+divergirem, vale o que estiver lá.
 
 ## Como se trabalha aqui
 
@@ -9,21 +9,21 @@ divergirem, vale o que estiver la.
 
 ## Antes de editar
 
-O escopo do trabalho se declara antes de gravar, nos caminhos que este projeto marcou como exigentes.
-O mapa esta em {{campo:marchas}}.
+O escopo do trabalho se declara antes de gravar, nos caminhos que este projeto marcou como
+exigentes. O mapa está em {{campo:marchas}}.
 
-O que nao se toca esta em {{campo:intocaveis}}. Essa lista nao se reduz sem decisao humana.
+O que não se toca está em {{campo:intocaveis}}. Essa lista não se reduz sem decisão humana.
 
 ## Antes de dizer que terminou
 
-Cole a saida de {{campo:provaDePronto}}. O que nao rodou se declara como nao rodado — silencio sobre
-uma verificacao equivale a dizer que ela passou.
+Cole a saída de {{campo:provaDePronto}}. O que não rodou se declara como não rodado — silêncio sobre
+uma verificação equivale a dizer que ela passou.
 
-## Quando a decisao nao e sua
+## Quando a decisão não é sua
 
-Leve a {{campo:quemDecide}}, em tres opcoes, a recomendada em primeiro lugar e marcada como tal, cada
-uma dizendo a consequencia pratica e o custo.
+Leve a {{campo:quemDecide}}, em três opções, a recomendada em primeiro lugar e marcada como tal,
+cada uma dizendo a consequência prática e o custo.
 
-## O que este projeto NAO promete
+## O que este projeto NÃO promete
 
 {{texto:naoPromete}}

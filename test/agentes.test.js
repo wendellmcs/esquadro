@@ -6,10 +6,11 @@ const os = require('node:os');
 const path = require('node:path');
 const agentes = require('../scripts/lib/agentes.js');
 
-function pastaTemporaria() {
+function pastaTemporaria(t) {
   // Espaco E acento no caminho: e o caso normal desta maquina, e e o foco de
   // revisao 5. path.join nunca vira concatenacao de string por causa disto.
   const p = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro projecao-'));
+  t.after(() => fs.rmSync(p, { recursive: true, force: true }));
   return p;
 }
 
@@ -59,23 +60,23 @@ test('agentes: cerca que abre e nunca fecha nao vale como lida', () => {
   assert.deepStrictEqual(r.campos, {});
 });
 
-test('agentes: pasta ausente devolve existe:false, nao lista vazia', () => {
-  const raiz = pastaTemporaria();
+test('agentes: pasta ausente devolve existe:false, nao lista vazia', (t) => {
+  const raiz = pastaTemporaria(t);
   const r = agentes.listar(raiz);
   assert.strictEqual(r.existe, false);
   assert.deepStrictEqual(r.agentes, []);
 });
 
-test('agentes: pasta vazia devolve existe:true com lista vazia', () => {
-  const raiz = pastaTemporaria();
+test('agentes: pasta vazia devolve existe:true com lista vazia', (t) => {
+  const raiz = pastaTemporaria(t);
   fs.mkdirSync(path.join(raiz, '.claude', 'agents'), { recursive: true });
   const r = agentes.listar(raiz);
   assert.strictEqual(r.existe, true);
   assert.deepStrictEqual(r.agentes, []);
 });
 
-test('agentes: le os agentes de uma raiz com espaco e acento no caminho', () => {
-  const raiz = pastaTemporaria();
+test('agentes: le os agentes de uma raiz com espaco e acento no caminho', (t) => {
+  const raiz = pastaTemporaria(t);
   assert.ok(/ /.test(raiz), 'a raiz de teste precisa ter espaco: ' + raiz);
   escrever(raiz, 'busca', '---\nname: busca\nmodel: barato\n---\n');
   escrever(raiz, 'arquiteto', '---\nname: arquiteto\nmodel: caro\n---\n');
@@ -85,8 +86,8 @@ test('agentes: le os agentes de uma raiz com espaco e acento no caminho', () => 
   assert.deepStrictEqual(r.agentes.map((a) => a.model), ['caro', 'barato']);
 });
 
-test('agentes: agente sem model: aparece com model null, e nao some da lista', () => {
-  const raiz = pastaTemporaria();
+test('agentes: agente sem model: aparece com model null, e nao some da lista', (t) => {
+  const raiz = pastaTemporaria(t);
   escrever(raiz, 'solto', '---\nname: solto\n---\n');
   const r = agentes.listar(raiz);
   assert.strictEqual(r.agentes.length, 1);
@@ -94,8 +95,8 @@ test('agentes: agente sem model: aparece com model null, e nao some da lista', (
   assert.strictEqual(r.agentes[0].temFrontmatter, true);
 });
 
-test('agentes: arquivo sem frontmatter entra na lista marcado como tal', () => {
-  const raiz = pastaTemporaria();
+test('agentes: arquivo sem frontmatter entra na lista marcado como tal', (t) => {
+  const raiz = pastaTemporaria(t);
   escrever(raiz, 'rascunho', '# anotacao qualquer\n');
   const r = agentes.listar(raiz);
   assert.strictEqual(r.agentes[0].temFrontmatter, false);
@@ -195,8 +196,8 @@ function rodar(raiz, args) {
 
 const DOIS = [{ agente: 'busca', apelido: 'barato' }, { agente: 'arquiteto', apelido: 'caro' }];
 
-test('agentes: sem --gravar o gerador propoe e NAO escreve arquivo nenhum', () => {
-  const raiz = pastaTemporaria();
+test('agentes: sem --gravar o gerador propoe e NAO escreve arquivo nenhum', (t) => {
+  const raiz = pastaTemporaria(t);
   semearProjeto(raiz, DOIS);
   const r = rodar(raiz, ['--respostas', respostasEmArquivo(raiz, ['busca', 'arquiteto'])]);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
@@ -204,8 +205,8 @@ test('agentes: sem --gravar o gerador propoe e NAO escreve arquivo nenhum', () =
   assert.strictEqual(fs.existsSync(agentes.caminho(raiz, 'busca')), false, 'proposta nao grava');
 });
 
-test('agentes: com --gravar escreve um arquivo por degrau, na pasta certa', () => {
-  const raiz = pastaTemporaria();
+test('agentes: com --gravar escreve um arquivo por degrau, na pasta certa', (t) => {
+  const raiz = pastaTemporaria(t);
   semearProjeto(raiz, DOIS);
   const r = rodar(raiz, ['--respostas', respostasEmArquivo(raiz, ['busca', 'arquiteto']), '--gravar']);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
@@ -215,8 +216,8 @@ test('agentes: com --gravar escreve um arquivo por degrau, na pasta certa', () =
   assert.deepStrictEqual(lido.agentes.map((a) => a.model), ['caro', 'barato']);
 });
 
-test('agentes: agente que ja existe e PULADO, e o gerador diz que pulou', () => {
-  const raiz = pastaTemporaria();
+test('agentes: agente que ja existe e PULADO, e o gerador diz que pulou', (t) => {
+  const raiz = pastaTemporaria(t);
   semearProjeto(raiz, DOIS);
   escrever(raiz, 'busca', '---\nname: busca\nmodel: nao-mexa\n---\ntrabalho de alguem\n');
   const r = rodar(raiz, ['--respostas', respostasEmArquivo(raiz, ['busca', 'arquiteto']), '--gravar']);
@@ -225,8 +226,8 @@ test('agentes: agente que ja existe e PULADO, e o gerador diz que pulou', () => 
   assert.ok(lido.includes('trabalho de alguem'), 'o arquivo de alguem foi sobrescrito');
 });
 
-test('agentes: escada desalinhada faz o gerador parar antes de escrever', () => {
-  const raiz = pastaTemporaria();
+test('agentes: escada desalinhada faz o gerador parar antes de escrever', (t) => {
+  const raiz = pastaTemporaria(t);
   semearProjeto(raiz, DOIS);
   const cfgPath = path.join(raiz, '.claude', 'esquadro', 'projeto.json');
   const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
@@ -237,8 +238,8 @@ test('agentes: escada desalinhada faz o gerador parar antes de escrever', () => 
   assert.strictEqual(fs.existsSync(agentes.caminho(raiz, 'busca')), false, 'nao pode escrever com escada torta');
 });
 
-test('agentes: projeto sem projeto.json para com erro legivel', () => {
-  const raiz = pastaTemporaria();
+test('agentes: projeto sem projeto.json para com erro legivel', (t) => {
+  const raiz = pastaTemporaria(t);
   const r = rodar(raiz, ['--gravar']);
   assert.strictEqual(r.status, 1);
   assert.ok(r.stdout.includes('init'), r.stdout);
@@ -247,8 +248,8 @@ test('agentes: projeto sem projeto.json para com erro legivel', () => {
 // O gerador recusa ANTES de propor quando falta resposta, e diz o que falta.
 // Mesmo desenho do scripts/gerar-skill.js, que ja existia - e foi um ensaio em
 // sandbox que mostrou que a versao anterior deste teste media a coisa errada.
-test('agentes: sem respostas o gerador recusa e nomeia a fatia que falta', () => {
-  const raiz = pastaTemporaria();
+test('agentes: sem respostas o gerador recusa e nomeia a fatia que falta', (t) => {
+  const raiz = pastaTemporaria(t);
   semearProjeto(raiz, DOIS);
   const r = rodar(raiz, []);
   assert.strictEqual(r.status, 1, r.stdout);

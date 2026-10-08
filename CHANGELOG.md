@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.4.2 — o leitor do `cd` mais fiel ao shell, a medicao que nao perde execucao paga e testes mais firmes
+
+A segunda metade das pendencias conferidas contra o codigo: o leitor do `cd` solto e a tabela de
+idioma, a medicao de qualidade e a higiene dos testes. Nenhum portao novo. Os comportamentos novos vem
+com teste; a suite inteira roda com `npm test`.
+
+- **O `cd` solto lido como o shell le.** Atribuicao, `time`, `!` e palavra entre aspas na frente deixam
+  o `cd` em posicao de comando (`x=1 cd y` nega). Funcao do PowerShell so roda quando e chamada, e o
+  que vem depois do `=` de atribuicao e lido como comando (`$x = Set-Location y` nega). Grupo `{ }` em
+  cano roda em subshell e nao nega. `pushd a && popd` nao nega; `popd` dentro de `if`/`while` ou de
+  funcao chamada depois de `&&` pode nao rodar e nao conta como volta. Comando com mais de 100 niveis
+  de aninhamento nao e lido inteiro e passa a ser negado, com mensagem propria.
+- **A tabela de idioma mais robusta.** Arquivo salvo com BOM se le; padrao vazio ou so de espaco e
+  regra que nao se le (antes casava tudo); regra sem `achado` nao derruba a mensagem; o conferir e o
+  aviso da tabela usam a mesma plataforma. O aviso diz que o comando seguinte ja usa a tabela
+  consertada, a frase "troque de idioma" deixou a caixa alta e o eco do comando para em 120
+  caracteres, dizendo o tamanho.
+- **A medicao de qualidade nao perde execucao paga.** Falha ao ler a saida do claude vira motivo da
+  geracao, que se grava; a gravacao final diz o que ficou sem gravar; "o claude rodou e foi parado"
+  se separa de "nao rodou". `--prompt` sem valor e recusado com mensagem propria; arquivo do prompt que
+  cairia em `.claude/esquadro/` ou `.git/` do brinquedo e recusado antes da 1a execucao; a dica de
+  tirar as aspas de `ESQUADRO_CLAUDE`; montagem com mais de 10 minutos e dada como morta mesmo com o pid
+  vivo.
+- **A regua do voto do juiz mudou (leia antes de comparar rodadas).** Valem como "nao sei" tambem as
+  frases curtas em 1a pessoa ("nao consigo dizer", "nao da para saber", "impossivel decidir"); aspas
+  baixas e angulares simples citam; os preenchedores do hangul nao escondem o "nao sei"; aspa em numero
+  impar na linha nao forma citacao; o fecho curvo usado dos dois lados so cita quando e o unico par da
+  linha. Na duvida, o voto vira empate. Os votos reais ja medidos nao mudaram, mas uma rodada nova nao
+  se compara com uma antiga sem dizer isso.
+- **Testes mais firmes.** A catraca de tempo do portao destrutivo mede de novo antes de reprovar (um
+  pico isolado sob carga nao derruba mais a suite); os testes de agentes e do `AGENTS.md` apagam a pasta
+  temporaria que criam; a
+  mensagem de teste pulado mostra o caminho com `/`. No init, o molde do `AGENTS.md` sai com acento e
+  linhas de ate 100 caracteres, e o JSON de respostas e apagado no fim.
+
 ## 0.4.1 — erros que dizem a causa em portugues, o revisar mais firme e o escopo que nao se perde em link
 
 A primeira metade das pendencias conferidas contra o codigo (mensagens, portoes, escopo e o
