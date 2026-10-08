@@ -29,23 +29,34 @@ function encerrarTurno(e, s) {
   }
   const vs = saude.avaliar(Object.assign({}, s, { contadores: acumulados }), projeto && projeto.limiares);
 
+  // T10-1: em laco (stop_hook_active) nao se continua a conversa nem se marca o aviso como dado:
+  // ele fica pendente para o proximo Stop. Continuar dentro do laco e o que a trava de 8 existe para cortar.
+  const avisa = vs.disparou && e.stop_hook_active !== true;
+
   const partes = [];
   const amp = avisoDeAmpliacao(contadores);
   if (amp) partes.push(amp);
-  if (vs.disparou) partes.push(vs.aviso);
+  if (avisa) partes.push(vs.aviso);
 
   // O estado do TURNO morre aqui (trabalhoReal, bloqueouNesteTurno, contadores); o da
   // SESSAO sobrevive. Separar os dois e exatamente o que a T18 existe para fazer.
   // Os campos da SESSAO que os outros portoes gravam - avisos de "uma vez por sessao" e
   // registros - moram em `estado.CAMPOS_DA_SESSAO`: fora dela, morriam a cada turno.
   const sessao = function (dados) { estado.gravar(e.session_id, Object.assign(dados, estado.camposDaSessao(s))); };
-  if (vs.disparou) {
+  if (avisa) {
     // Zera o turno mas guarda que ja avisou: o aviso sai uma vez por sessao.
     sessao({ avisouSaude: true, turnosComTrabalho: s.turnosComTrabalho || 0, gitAbertura: s.gitAbertura || [] });
   } else {
     sessao({ turnosComTrabalho: s.turnosComTrabalho || 0, gitAbertura: s.gitAbertura || [], arquivosTocados: s.arquivosTocados || [], contadoresSessao: acumulados, avisouSaude: s.avisouSaude || false });
   }
-  io.permitir(partes.length ? { systemMessage: partes.join('\n\n') } : undefined);
+  if (!partes.length) return io.permitir();
+  const saida = { systemMessage: partes.join('\n\n') };
+  // T10-1: o systemMessage so o usuario ve. O additionalContext do Stop e o que chega ao modelo
+  // e o faz agir (rodar o handoff e colar o prompt na mesma resposta).
+  if (avisa) {
+    saida.hookSpecificOutput = { hookEventName: 'Stop', additionalContext: saude.instrucaoAoModelo(vs.gatilhos) };
+  }
+  io.permitir(saida);
 }
 
 io.blindar(function () {

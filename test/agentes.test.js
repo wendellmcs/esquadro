@@ -174,6 +174,8 @@ function semearProjeto(raiz, degraus) {
   fs.writeFileSync(path.join(dir, 'projeto.json'), JSON.stringify(cfg, null, 2), 'utf8');
 }
 
+const FATIAS_VALIDAS = { esforco: 'medium', ferramentas: 'Read, Grep, mcp__x__y', maxTurns: '20' };
+
 /** As fatias de texto do molde, uma copia por degrau. O nome e o apelido NAO
  *  entram aqui: saem do projeto.json, e o gerador os injeta. */
 function respostasEmArquivo(raiz, nomes) {
@@ -184,6 +186,9 @@ function respostasEmArquivo(raiz, nomes) {
     for (const s of molde.slots(texto)) {
       if (s.tipo === 'texto') porAgente[nome][s.nome] = 'conteudo de ensaio para ' + s.nome;
     }
+    // As tres fatias com formato proprio (esforco, ferramentas, maxTurns) recusam
+    // texto de ensaio; recebem valor valido, e a prova das recusas fica nos testes abaixo.
+    Object.assign(porAgente[nome], FATIAS_VALIDAS);
   }
   const alvo = path.join(raiz, 'respostas.json');
   fs.writeFileSync(alvo, JSON.stringify(porAgente), 'utf8');
@@ -256,4 +261,163 @@ test('agentes: sem respostas o gerador recusa e nomeia a fatia que falta', (t) =
   assert.ok(r.stdout.includes('RECUSADO'), r.stdout);
   assert.ok(r.stdout.includes('papel'), 'tem de dizer QUAL fatia falta: ' + r.stdout);
   assert.strictEqual(fs.existsSync(agentes.caminho(raiz, 'busca')), false);
+});
+
+// ---- T10-8: effort, tools, maxTurns e a escalada (nº 2 e 4 do inventario) ----
+
+const TRES = [
+  { agente: 'busca', apelido: 'barato' },
+  { agente: 'dev', apelido: 'medio' },
+  { agente: 'arquiteto', apelido: 'caro' }
+];
+
+/** Respostas validas para todos, com `ajuste(nome, fatias)` mexendo numa so. */
+function respostasAjustadas(raiz, nomes, ajuste) {
+  const alvo = respostasEmArquivo(raiz, nomes);
+  const porAgente = JSON.parse(fs.readFileSync(alvo, 'utf8'));
+  for (const nome of nomes) ajuste(nome, porAgente[nome]);
+  fs.writeFileSync(alvo, JSON.stringify(porAgente), 'utf8');
+  return alvo;
+}
+
+function gerar(t, degraus, ajuste) {
+  const raiz = pastaTemporaria(t);
+  semearProjeto(raiz, degraus);
+  const nomes = degraus.map((d) => d.agente);
+  const arq = respostasAjustadas(raiz, nomes, ajuste || function () {});
+  const r = rodar(raiz, ['--respostas', arq, '--gravar']);
+  return { raiz, r };
+}
+
+test('agentes: o molde cheio traz effort, tools, maxTurns e a secao de escalada', (t) => {
+  const { raiz, r } = gerar(t, DOIS);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  const bruto = fs.readFileSync(agentes.caminho(raiz, 'busca'), 'utf8');
+  const f = agentes.frontmatter(bruto);
+  assert.strictEqual(f.ok, true);
+  assert.strictEqual(f.campos.effort, 'medium');
+  assert.strictEqual(f.campos.tools, 'Read, Grep, mcp__x__y');
+  assert.strictEqual(f.campos.maxTurns, '20');
+  assert.ok(bruto.includes('## Quando parar e escalar'), bruto);
+});
+
+test('agentes: escalaPara do degrau do meio e o proximo; a do ultimo aponta quem decide', (t) => {
+  const { raiz, r } = gerar(t, TRES);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  const secao = (nome) => {
+    const bruto = fs.readFileSync(agentes.caminho(raiz, nome), 'utf8');
+    const i = bruto.indexOf('## Quando parar e escalar');
+    assert.ok(i !== -1, nome + ' sem a secao');
+    return bruto.slice(i, bruto.indexOf('\n## ', i + 5) === -1 ? undefined : bruto.indexOf('\n## ', i + 5));
+  };
+  assert.ok(secao('busca').includes('`dev`'), secao('busca'));
+  assert.ok(secao('dev').includes('`arquiteto`'), secao('dev'));
+  const topo = secao('arquiteto');
+  assert.ok(topo.includes('quemDecide'), topo);
+  assert.ok(topo.includes('.claude/esquadro/projeto.json'), topo);
+  assert.ok(!topo.includes('`dev`') && !topo.includes('`busca`'), 'o ultimo degrau nao escala para agente: ' + topo);
+  assert.ok(!topo.includes('dono'), 'D10: o valor de quemDecide nao e impresso: ' + topo);
+});
+
+test('agentes: resposta que tenta sobrescrever escalaPara e ignorada', (t) => {
+  const { raiz, r } = gerar(t, TRES, (nome, fatias) => { fatias.escalaPara = 'o estagiario'; });
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  const bruto = fs.readFileSync(agentes.caminho(raiz, 'busca'), 'utf8');
+  assert.ok(!bruto.includes('estagiario'), bruto);
+  assert.ok(bruto.includes('`dev`'), bruto);
+});
+
+test('agentes: --fatias cita escalaPara junto de nome e apelido como fatias do gerador', (t) => {
+  const raiz = pastaTemporaria(t);
+  semearProjeto(raiz, DOIS);
+  const r = rodar(raiz, ['--fatias']);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  const j = JSON.parse(r.stdout);
+  assert.ok(j.observacao.includes('escalaPara'), j.observacao);
+  for (const f of ['esforco', 'ferramentas', 'maxTurns', 'escalaPara']) {
+    assert.ok(j.fatias.indexOf(f) !== -1, 'falta a fatia ' + f + ': ' + j.fatias.join(','));
+  }
+});
+
+test('agentes: esforco fora de low|medium|high|xhigh|max e RECUSADO, dizendo o aceito', (t) => {
+  const { raiz, r } = gerar(t, DOIS, (nome, f) => { f.esforco = 'altissimo'; });
+  assert.strictEqual(r.status, 1, r.stdout);
+  assert.ok(r.stdout.includes('RECUSADO'), r.stdout);
+  assert.ok(r.stdout.includes('esforco'), r.stdout);
+  assert.ok(r.stdout.includes('low|medium|high|xhigh|max'), r.stdout);
+  assert.strictEqual(fs.existsSync(agentes.caminho(raiz, 'busca')), false, 'recusado nao grava');
+});
+
+test('agentes: maxTurns que nao e inteiro >= 1 e RECUSADO, dizendo o aceito', (t) => {
+  for (const ruim of ['0', '-3', '2.5', 'muitos', '']) {
+    const { raiz, r } = gerar(t, DOIS, (nome, f) => { f.maxTurns = ruim; });
+    assert.strictEqual(r.status, 1, 'maxTurns "' + ruim + '" devia ser recusado: ' + r.stdout);
+    assert.ok(r.stdout.includes('RECUSADO'), r.stdout);
+    assert.ok(r.stdout.includes('maxTurns'), r.stdout);
+    if (ruim !== '') assert.ok(r.stdout.includes('inteiro'), 'tem de dizer o valor aceito: ' + r.stdout);
+    assert.strictEqual(fs.existsSync(agentes.caminho(raiz, 'busca')), false);
+  }
+});
+
+test('agentes: ferramentas vazia ou com item fora de [A-Za-z][A-Za-z0-9_-]* e RECUSADA', (t) => {
+  for (const ruim of ['', ' , ', 'Read, Gre p', 'Read, 9x', 'Read; Grep', 'Read, Bash(rm *)']) {
+    const { raiz, r } = gerar(t, DOIS, (nome, f) => { f.ferramentas = ruim; });
+    assert.strictEqual(r.status, 1, 'ferramentas "' + ruim + '" devia ser recusada: ' + r.stdout);
+    assert.ok(r.stdout.includes('RECUSADO'), r.stdout);
+    assert.ok(r.stdout.includes('ferramentas'), r.stdout);
+    // Vale tambem para a vazia: o POR PREENCHER do molde recusa, mas nao diz o formato aceito.
+    assert.ok(r.stdout.includes('[A-Za-z][A-Za-z0-9_-]*'), 'tem de dizer o valor aceito: ' + r.stdout);
+    assert.strictEqual(fs.existsSync(agentes.caminho(raiz, 'busca')), false);
+  }
+});
+
+test('agentes: caso valido com maxTurns numerico no JSON grava', (t) => {
+  const { raiz, r } = gerar(t, DOIS, (nome, f) => { f.maxTurns = 8; f.esforco = 'xhigh'; });
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  const f = agentes.frontmatter(fs.readFileSync(agentes.caminho(raiz, 'arquiteto'), 'utf8'));
+  assert.strictEqual(f.campos.maxTurns, '8');
+  assert.strictEqual(f.campos.effort, 'xhigh');
+});
+
+test('agentes: validarFatias aceita o caso bom e nao devolve erro', () => {
+  assert.deepStrictEqual(agentes.validarFatias({ esforco: 'low', ferramentas: 'Read,Grep', maxTurns: '1' }), []);
+});
+
+test('agentes: validarFatias aceita nome de ferramenta MCP com hifen', () => {
+  assert.deepStrictEqual(agentes.validarFatias({ ferramentas: 'Read, mcp__claude-in-chrome__navigate' }), []);
+  assert.deepStrictEqual(agentes.validarFatias({ ferramentas: 'mcp__plugin_context-mode_context-mode__ctx_search' }), []);
+});
+
+test('agentes: validarFatias segue recusando parenteses e hifen no comeco', () => {
+  assert.strictEqual(agentes.validarFatias({ ferramentas: 'Bash(rm *)' }).length, 1);
+  assert.strictEqual(agentes.validarFatias({ ferramentas: '-Read' }).length, 1);
+});
+
+test('agentes: validarFatias recusa ferramentas que nao e texto, dizendo o formato e sem chamar de vazia', () => {
+  for (const ruim of [['Read', 'Grep'], 5, null, true]) {
+    const erros = agentes.validarFatias({ ferramentas: ruim });
+    assert.strictEqual(erros.length, 1, JSON.stringify(ruim) + ' -> ' + JSON.stringify(erros));
+    assert.ok(!/vazia/.test(erros[0]), 'nao pode mentir que esta vazia: ' + erros[0]);
+    assert.ok(/separadas por virgula/.test(erros[0]), erros[0]);
+  }
+  const lista = agentes.validarFatias({ ferramentas: ['Read', 'Grep'] });
+  assert.ok(/lista/.test(lista[0]), lista[0]);
+});
+
+test('agentes: validarFatias: ferramentas em string vazia segue "vazia"', () => {
+  for (const vazia of ['', '   ']) {
+    const erros = agentes.validarFatias({ ferramentas: vazia });
+    assert.strictEqual(erros.length, 1, JSON.stringify(erros));
+    assert.ok(/vazia/.test(erros[0]), erros[0]);
+    assert.ok(/separadas por virgula/.test(erros[0]), erros[0]);
+  }
+});
+
+test('agentes: validarFatias recusa esforco e maxTurns de tipo errado, citando o campo', () => {
+  const casos = [['maxTurns', true], ['maxTurns', ['8']], ['maxTurns', null], ['esforco', ['high']], ['esforco', null], ['esforco', false]];
+  for (const [campo, valor] of casos) {
+    const erros = agentes.validarFatias({ [campo]: valor });
+    assert.strictEqual(erros.length, 1, campo + '=' + JSON.stringify(valor) + ' -> ' + JSON.stringify(erros));
+    assert.ok(erros[0].startsWith(campo), erros[0]);
+  }
 });

@@ -443,3 +443,66 @@ test('fecho: todo campo que um script grava no estado tem tempo de vida declarad
     }
   });
 });
+
+// ------------------------------- T10-1 (D357): o aviso de saude chega ao MODELO, nao so a tela
+
+// Projeto com limiar de 1 turno: o primeiro turno com trabalho ja dispara a saude.
+function projetoQueDispara(tmp, nome, limiares) {
+  const dir = fs.mkdtempSync(path.join(tmp, nome + '-'));
+  fs.mkdirSync(path.join(dir, '.claude', 'esquadro'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'projeto.json'),
+    JSON.stringify({ versaoConfig: 1, marchaPadrao: 'padrao', limiares: limiares || { turnosComTrabalho: 1 } }), 'utf8');
+  return dir;
+}
+
+function turnoComTrabalho(tmp, id, cwd, extra) {
+  rodar('marcar-trabalho.js', { session_id: id, cwd: cwd, tool_name: 'Write' }, tmp);
+  return rodar('portao-fecho.js', Object.assign({
+    session_id: id, cwd: cwd, hook_event_name: 'Stop', last_assistant_message: 'Anotado.'
+  }, extra || {}), tmp);
+}
+
+test('T10-1: a saude que dispara manda ao modelo o que fazer, e ao usuario o aviso (additionalContext do Stop)', () => {
+  comTmp((tmp) => {
+    const dir = projetoQueDispara(tmp, 't101');
+    const r = turnoComTrabalho(tmp, 't101', dir);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(r.json && /chat novo/.test(r.json.systemMessage), 'controle: o aviso do usuario segue: ' + r.stdout);
+    const h = r.json.hookSpecificOutput;
+    assert.ok(h, 'faltou hookSpecificOutput: ' + r.stdout);
+    assert.strictEqual(h.hookEventName, 'Stop');
+    const t = h.additionalContext;
+    assert.strictEqual(typeof t, 'string');
+    assert.ok(/turnos com trabalho real \(limiar 1\)/.test(t), 'tem de citar o gatilho que disparou: ' + t);
+    assert.ok(t.indexOf('/esquadro:handoff') !== -1, 'tem de mandar rodar o handoff: ' + t);
+    assert.ok(/chat novo/.test(t), 'tem de mandar dizer que e hora de abrir chat novo: ' + t);
+    assert.ok(/bloco de codigo/.test(t), 'tem de mandar colar o prompt em bloco de codigo: ' + t);
+    assert.ok(/sigo/.test(t), 'tem de proibir o "sigo?": ' + t);
+    assert.ok(/^[\x20-\x7E\n]+$/.test(t), 'additionalContext tem de ser ASCII: ' + JSON.stringify(t));
+  });
+});
+
+test('T10-1: a continuacao sai uma vez por sessao', () => {
+  comTmp((tmp) => {
+    const dir = projetoQueDispara(tmp, 't101b');
+    const primeiro = turnoComTrabalho(tmp, 't101b', dir);
+    assert.ok(primeiro.json && primeiro.json.hookSpecificOutput, 'controle: o primeiro turno tinha de avisar: ' + primeiro.stdout);
+    const segundo = turnoComTrabalho(tmp, 't101b', dir);
+    assert.strictEqual(segundo.json, null, 'o segundo turno repetiu o aviso: ' + segundo.stdout);
+  });
+});
+
+test('T10-1: com stop_hook_active nao continua e nao marca avisouSaude - o aviso fica para o proximo Stop', () => {
+  comTmp((tmp) => {
+    const dir = projetoQueDispara(tmp, 't101c');
+    const laco = turnoComTrabalho(tmp, 't101c', dir, { stop_hook_active: true });
+    assert.strictEqual(laco.status, 0, laco.stderr);
+    assert.strictEqual(laco.json, null, 'em laco nao pode emitir nada (nem continuacao, nem aviso): ' + laco.stdout);
+    assert.ok(!sessaoDe(tmp, 't101c').avisouSaude, 'em laco o avisouSaude nao pode ser marcado');
+    // o proximo Stop, fora do laco, entrega o aviso que ficou pendente
+    const depois = turnoComTrabalho(tmp, 't101c', dir);
+    assert.ok(depois.json && depois.json.hookSpecificOutput && /handoff/.test(depois.json.hookSpecificOutput.additionalContext),
+      'o aviso pendente nao chegou no Stop seguinte: ' + depois.stdout);
+    assert.strictEqual(sessaoDe(tmp, 't101c').avisouSaude, true);
+  });
+});

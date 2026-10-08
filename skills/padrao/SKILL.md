@@ -306,6 +306,12 @@ opção cabe em uma ou duas frases, com a consequência prática e o custo dentr
 reconstrução do raciocínio técnico que levou até ela. Mais que duas frases é sinal de que a opção
 esconde duas escolhas, e elas se separam. Encurtar a forma nunca afrouxa a exigência.
 
+**Escolha visual: mostre a imagem antes de perguntar.** Opção descrita em texto não comunica o que se
+vê, e a escolha feita sem ter visto vira retrabalho no dia seguinte. Envie primeiro a imagem (antes ×
+proposta × referência, ou um mock fotografado com a folha real), **espere o envio confirmar** e só no
+turno seguinte faça as 3 opções, dizendo numa frase o que a recomendada **não** vai mudar. Se a tela
+mostra número, declare se a veracidade do dado foi conferida.
+
 **Ação manual do dono é passo a passo clique a clique.** Quando a entrega exigir que ele mexa em
 console, painel, planilha ou navegador: numerar os passos, dizer **o que ele vai ver em cada tela**
 (não só o que fazer), dar o texto exato de botões e campos, dizer o resultado esperado de cada passo

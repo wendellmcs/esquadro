@@ -202,3 +202,36 @@ test('readme: o bloco da secao "Qualidade de resposta" e IGUAL a qualidade.BLOCO
   assert.deepStrictEqual(numeros, [qualidade.BLOCO.length],
     'a secao cita ' + JSON.stringify(numeros) + ' caracteres e o bloco tem ' + qualidade.BLOCO.length);
 });
+
+// ── T10-6 (D357): o aviso de troca de chat - o que dispara, o que nao, e como conferir ──
+
+test('readme: cada gatilho de saude aparece com a chave de limiares e o valor padrao que o codigo tem', () => {
+  const saude = require('../scripts/lib/saude.js');
+  const s = secao('Como funciona').corpo;
+  const faltando = [];
+  for (const chave of Object.keys(saude.LIMIARES_PADRAO)) {
+    const valor = saude.LIMIARES_PADRAO[chave];
+    const linha = s.split(/\r?\n/).filter((l) => /^\|/.test(l.trim()) && l.indexOf('`' + chave + '`') !== -1)[0];
+    if (!linha) { faltando.push(chave + ': sem linha de tabela com a chave'); continue; }
+    if (!new RegExp('\\|\\s*' + valor + '\\s*\\|').test(linha)) faltando.push(chave + ': a linha nao traz o padrao ' + valor);
+  }
+  assert.deepStrictEqual(faltando, [], 'o README diverge dos limiares padrao de scripts/lib/saude.js');
+});
+
+test('readme: diz o que NAO dispara, como conferir os ganchos e de que o gatilho de commit depende', () => {
+  const s = secao('Como funciona').corpo;
+  assert.ok(/n[aã]o (?:se )?(?:conta|contam|dispara)[^.]*(?:erro|inflação|inflacao)/i.test(s) ||
+    /(?:erro de medição|inflação de contexto)/.test(s), 'falta dizer o que o aviso NAO conta');
+  assert.ok(s.indexOf('esquadro: lendo o estado do repositorio') !== -1, 'falta o texto da abertura que prova que os ganchos rodam');
+  assert.ok(/`node`[^.\n]*PATH|PATH[^.\n]*`node`/.test(README), 'falta dizer que o node tem de estar no PATH');
+  assert.ok(s.indexOf('gitOperation') !== -1 && s.indexOf('2.1.258') !== -1,
+    'falta declarar a dependencia do gitOperation e a versao do Claude Code em que foi medida');
+});
+
+test('readme: ensina a atualizacao automatica pelo settings.json, porque o painel do VS Code nao tem o botao (D346)', () => {
+  const s = secao('Como instalar').corpo;
+  assert.ok(s.indexOf('extraKnownMarketplaces') !== -1 && s.indexOf('autoUpdate') !== -1 &&
+    s.indexOf('settings.json') !== -1, 'falta o caminho pelo settings.json');
+  assert.ok(/VS Code/.test(s), 'falta dizer que o painel do VS Code nao tem o botao');
+  assert.ok(/"esquadro-local"\s*:\s*\{[\s\S]*?"autoUpdate"\s*:\s*true/.test(s), 'falta o trecho literal do settings.json');
+});

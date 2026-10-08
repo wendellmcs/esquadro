@@ -138,8 +138,8 @@ function motivo(comando, problemas, tentativa) {
     'Achado                 Use no lugar'
   ];
   for (const p of problemas) {
-    linhas.push('  ' + String(p.achado || '(sem achado)').padEnd(20) + ' ' + p.sugestao);
-    linhas.push('      por que: ' + p.motivo);
+    linhas.push('  ' + String(p.achado || '(sem achado)').padEnd(20) + ' ' + (p.sugestao || '(sem sugestao)'));
+    if (p.motivo) linhas.push('      por que: ' + p.motivo);
   }
   linhas.push('');
   if (tentativa >= 2) {
@@ -555,7 +555,7 @@ function motivoCdSolto(comando, achado) {
     linhas.push("  git -C '<pasta>' <comando do git>");
     linhas.push("  npm --prefix '<pasta>' <comando do npm>");
   } else {
-    linhas.push('Use no lugar, em subshell (a pasta volta sozinha):');
+    linhas.push('Use no lugar, em subshell (os parenteses abrem um shell filho: o cd vale so dentro dele e a pasta volta sozinha):');
     linhas.push('  ( cd "<pasta>" && <comando> )');
     linhas.push('Ou nao mude de pasta:');
     linhas.push('  git -C "<pasta>" <comando do git>');

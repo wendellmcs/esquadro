@@ -192,6 +192,13 @@ governança.
 não solicitado é achado da lente, não mérito dela**. Em projeto público, ou que seja ele próprio um
 mecanismo de segurança, a regra se inverte. Ler a fatia antes de julgar.
 
+**Antes de abrir P0 de segurança, três conferências obrigatórias.** Primeiro, os **chamadores reais**,
+não o caminho hipotético: se nenhum chega ao estado que você supôs, não há achado. Segundo, **leitura
+não é mutação**: o portão de mutação não barrar uma leitura é o desenho, não o defeito. Terceiro,
+**desenho deliberado não é falha**: padrão repetido e coerente em todo o módulo é intenção até prova em
+contrário. **Sem conseguir confirmar a intenção, o achado nasce P2 com pergunta, nunca P0** — P0
+bloqueia a entrega, e bloquear por desenho aprovado é o dano que a lente existe para evitar.
+
 ---
 
 ## Aplicação por tipo de mudança

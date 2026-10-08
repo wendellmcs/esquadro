@@ -119,7 +119,7 @@ function limpar(sessionId) {
  * CAMPOS_DO_TURNO: morrem no fecho, de proposito.
  */
 const CAMPOS_DA_SESSAO = ['avisouSemConfig', 'avisouTipoErrado', 'avisouApelido', 'gatilho3', 'abertoEm',
-  'frente', 'avisouTabelaShell'];
+  'frente', 'avisouTabelaShell', 'decisoesDoDono', 'commitsFeitos'];
 const CAMPOS_DO_TURNO = ['trabalhoReal', 'bloqueouNesteTurno', 'buscouNesteTurno', 'contadores'];
 
 /** Os campos da sessao que este estado tem, para o fecho carregar adiante. */

@@ -909,3 +909,216 @@ test('fiacao: a caixa do nome nao muda o que e leitura (ronda 2 do 8b)', () => {
       'controle: edit tem de ligar trabalhoReal');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// ------------------------------- T10-2/T10-3/T10-5 (D357): o marcador conta decisao do dono e commit
+
+const respostas = (obj) => ({ questions: [{ question: 'q' }], answers: obj });
+
+test('T10-2: o marcador escuta o AskUserQuestion (hooks.json)', () => {
+  const hooks = JSON.parse(fs.readFileSync(path.join(RAIZ, 'hooks', 'hooks.json'), 'utf8'));
+  const grupo = (hooks.hooks.PostToolUse || []).filter(function (g) {
+    return JSON.stringify(g.hooks || []).indexOf('marcar-trabalho.js') !== -1;
+  })[0];
+  assert.ok(grupo, 'o marcar-trabalho.js saiu do PostToolUse');
+  assert.ok(String(grupo.matcher).split('|').indexOf('AskUserQuestion') !== -1,
+    'o marcador nao escuta o AskUserQuestion: ' + grupo.matcher);
+});
+
+test('T10-2: cada resposta nao vazia do AskUserQuestion soma uma decisao do dono, e perguntar nao e trabalho', () => {
+  const dir = temp('decisao');
+  try {
+    const r1 = rodar('marcar-trabalho.js', dir, { session_id: 'd1', cwd: dir, tool_name: 'AskUserQuestion',
+      tool_response: respostas({ 'Qual caminho?': 'a', 'Outra?': 'b', 'Vazia?': '' }) });
+    assert.strictEqual(r1.status, 0, r1.stderr);
+    const s1 = lerSessao(dir, 'd1');
+    assert.strictEqual(s1.decisoesDoDono, 2, 'so as respostas nao vazias contam: ' + JSON.stringify(s1));
+    assert.strictEqual(s1.trabalhoReal, undefined, 'perguntar nao e trabalho a provar');
+    assert.strictEqual(s1.turnosComTrabalho, undefined, 'perguntar nao conta turno com trabalho');
+    assert.strictEqual(s1.buscouNesteTurno, undefined, 'perguntar nao libera criar arquivo');
+    // soma na sessao, e a caixa do nome nao muda nada
+    rodar('marcar-trabalho.js', dir, { session_id: 'd1', cwd: dir, tool_name: 'askuserquestion',
+      tool_response: respostas({ 'Mais uma?': 'c' }) });
+    assert.strictEqual(lerSessao(dir, 'd1').decisoesDoDono, 3);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T10-2: AskUserQuestion sem tool_response, ou sem answers, conta zero e nao estoura', () => {
+  const dir = temp('decisao-vazia');
+  try {
+    const entradas = [
+      { tool_name: 'AskUserQuestion' },
+      { tool_name: 'AskUserQuestion', tool_response: 'texto solto' },
+      { tool_name: 'AskUserQuestion', tool_response: { questions: [] } },
+      { tool_name: 'AskUserQuestion', tool_response: { answers: ['a', 'b'] } },
+      { tool_name: 'AskUserQuestion', tool_response: { answers: null } }
+    ];
+    entradas.forEach(function (extra, i) {
+      const r = rodar('marcar-trabalho.js', dir, Object.assign({ session_id: 'dv', cwd: dir }, extra));
+      assert.strictEqual(r.status, 0, 'entrada ' + i + ': ' + r.stderr);
+    });
+    const s = lerSessao(dir, 'dv');
+    assert.strictEqual(s.decisoesDoDono || 0, 0, JSON.stringify(s));
+    assert.strictEqual(s.trabalhoReal, undefined);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T10-3: commit que passou (gitOperation.commit.sha) soma um, em Bash e em PowerShell', () => {
+  const dir = temp('commit');
+  try {
+    const op = { gitOperation: { commit: { sha: '776f7b8', kind: 'committed', branch: 'master' } } };
+    for (const f of ['Bash', 'PowerShell']) {
+      const id = 'c-' + f;
+      const r = rodar('marcar-trabalho.js', dir, { session_id: id, cwd: dir, tool_name: f,
+        tool_input: { command: 'git commit -m x' }, tool_response: op });
+      assert.strictEqual(r.status, 0, r.stderr);
+      const s = lerSessao(dir, id);
+      assert.strictEqual(s.commitsFeitos, 1, f + ' nao contou o commit: ' + JSON.stringify(s));
+      assert.strictEqual(s.trabalhoReal, true, 'controle: commit segue sendo trabalho real');
+    }
+    // soma na mesma sessao
+    rodar('marcar-trabalho.js', dir, { session_id: 'c-Bash', cwd: dir, tool_name: 'Bash',
+      tool_response: op });
+    assert.strictEqual(lerSessao(dir, 'c-Bash').commitsFeitos, 2);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T10-3: sem gitOperation.commit.sha nao conta - e o texto do comando nunca decide', () => {
+  const dir = temp('commit-falso');
+  try {
+    const casos = [
+      { tool_input: { command: 'echo "git commit"' } },
+      { tool_input: { command: 'git commit -m x' } },
+      { tool_input: { command: 'git commit -m x' }, tool_response: {} },
+      { tool_input: { command: 'git commit -m x' }, tool_response: { gitOperation: {} } },
+      { tool_input: { command: 'git commit -m x' }, tool_response: { gitOperation: { commit: {} } } },
+      { tool_input: { command: 'git commit -m x' }, tool_response: { gitOperation: { commit: null } } },
+      { tool_input: { command: 'git commit -m x' }, tool_response: 'texto solto' }
+    ];
+    casos.forEach(function (extra, i) {
+      const r = rodar('marcar-trabalho.js', dir, Object.assign({ session_id: 'cf', cwd: dir, tool_name: 'Bash' }, extra));
+      assert.strictEqual(r.status, 0, 'caso ' + i + ': ' + r.stderr);
+    });
+    const s = lerSessao(dir, 'cf');
+    assert.strictEqual(s.commitsFeitos || 0, 0, JSON.stringify(s));
+    assert.strictEqual(s.trabalhoReal, true, 'controle: o Bash segue sendo trabalho real');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T10-2/3: os dois contadores sobrevivem ao fecho', () => {
+  const dir = temp('contadores-fecho');
+  try {
+    rodar('marcar-trabalho.js', dir, { session_id: 'cs', cwd: dir, tool_name: 'AskUserQuestion',
+      tool_response: respostas({ 'a?': 'x', 'b?': 'y' }) });
+    rodar('marcar-trabalho.js', dir, { session_id: 'cs', cwd: dir, tool_name: 'Bash',
+      tool_response: { gitOperation: { commit: { sha: 'abc1234' } } } });
+    const f = rodar('portao-fecho.js', dir, { session_id: 'cs', cwd: dir, hook_event_name: 'Stop',
+      last_assistant_message: 'Anotado.' });
+    assert.strictEqual(f.status, 0, f.stderr);
+    const s = lerSessao(dir, 'cs');
+    assert.strictEqual(s.trabalhoReal, undefined, 'controle: o fecho zerou o turno');
+    assert.strictEqual(s.decisoesDoDono, 2, 'a decisao do dono morreu no fecho: ' + JSON.stringify(s));
+    assert.strictEqual(s.commitsFeitos, 1, 'o commit morreu no fecho: ' + JSON.stringify(s));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T10-5: sem /esquadro:init (sem projeto.json) os dois gatilhos disparam com o limiar padrao', () => {
+  for (const [nome, quando] of [
+    ['decisoes', { tool_name: 'AskUserQuestion', tool_response: respostas({ 'a?': '1', 'b?': '2', 'c?': '3' }) }],
+    ['commits', { tool_name: 'Bash', tool_response: { gitOperation: { commit: { sha: 'abc1234' } } } }]
+  ]) {
+    const dir = temp('sem-init-' + nome);
+    try {
+      assert.ok(!fs.existsSync(path.join(dir, '.claude')), 'controle: a pasta nao tem .claude');
+      const id = 'si-' + nome;
+      const vezes = nome === 'commits' ? 3 : 1;
+      for (let i = 0; i < vezes; i++) rodar('marcar-trabalho.js', dir, Object.assign({ session_id: id, cwd: dir }, quando));
+      rodar('marcar-trabalho.js', dir, { session_id: id, cwd: dir, tool_name: 'Write', tool_input: { file_path: 'a.js' } });
+      const f = rodar('portao-fecho.js', dir, { session_id: id, cwd: dir, hook_event_name: 'Stop',
+        last_assistant_message: 'Anotado.' });
+      assert.strictEqual(f.status, 0, f.stderr);
+      const j = JSON.parse(f.stdout);
+      const dito = nome === 'commits' ? '3 commits nesta sessao (limiar 3)' : '3 decisoes do dono respondidas (limiar 3)';
+      assert.ok(j.systemMessage.indexOf(dito) !== -1, nome + ': ' + f.stdout);
+      assert.ok(j.hookSpecificOutput.additionalContext.indexOf(dito) !== -1, nome + ': ' + f.stdout);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+// ------------------------------- T10-4 (D357): perguntar pela saude do contexto dispara na hora
+
+function abrirComPrompt(dir, id, prompt) {
+  const r = rodar('abrir-turno.js', dir, { session_id: id, cwd: dir, hook_event_name: 'UserPromptSubmit', prompt: prompt });
+  assert.strictEqual(r.status, 0, r.stderr);
+  return r.stdout.trim() ? JSON.parse(r.stdout) : null;
+}
+
+test('T10-4: perguntar se o contexto/memoria esta bom devolve additionalContext mandando trocar de chat', () => {
+  const dir = temp('pergunta-saude');
+  try {
+    const positivos = [
+      'o contexto está bom?', 'o contexto esta bom?', 'como está a memória?', 'como esta a memoria?',
+      'contexto ta cheio?', 'o contexto está cheio?', 'sua memória está ok?', 'esse contexto ainda aguenta?',
+      'is the context ok?', 'how is your context?', 'how is your memory?', 'is your context getting full?',
+      'how is the context window doing?', 'Contexto está bom??'
+    ];
+    positivos.forEach(function (p, i) {
+      const j = abrirComPrompt(dir, 'ps' + i, p);
+      assert.ok(j && j.hookSpecificOutput, 'nao disparou para: ' + p);
+      assert.strictEqual(j.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
+      const t = j.hookSpecificOutput.additionalContext;
+      assert.ok(t.indexOf('/esquadro:handoff') !== -1, 'sem o handoff: ' + t);
+      assert.ok(/chat/.test(t) && /mesma resposta/.test(t) && /bloco de codigo/.test(t), 'texto incompleto: ' + t);
+      assert.ok(/^[\x20-\x7E\n]+$/.test(t), 'additionalContext tem de ser ASCII: ' + JSON.stringify(t));
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T10-4: pedido que so cita contexto/memoria sem perguntar pelo estado NAO dispara', () => {
+  const dir = temp('pergunta-saude-neg');
+  try {
+    const negativos = [
+      'adicione contexto ao README', 'memory leak no módulo de pagamentos', 'corrija o memory leak',
+      'explique o que é context switching', 'mostre a memória usada pelo processo node',
+      'implemente o contexto do React para o tema', 'qual o contexto desse erro no stack trace?',
+      'add a memory cache to the loader', 'the context menu is broken', 'rode os testes', '',
+      'write a memory-safe parser'
+    ];
+    negativos.forEach(function (p, i) {
+      const j = abrirComPrompt(dir, 'pn' + i, p);
+      assert.strictEqual(j, null, 'disparou sem dever para: ' + JSON.stringify(p) + ' -> ' + JSON.stringify(j));
+    });
+    // prompt ausente ou nao-texto nao estoura
+    const r = rodar('abrir-turno.js', dir, { session_id: 'pn-x', cwd: dir, prompt: { x: 1 } });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(r.stdout.trim(), '');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T10-4: dispara toda vez que a pergunta vier, e continua zerando as marcas do turno', () => {
+  const dir = temp('pergunta-saude-sempre');
+  try {
+    const sessoes = path.join(dir, '_sessoes', 'esquadro');
+    fs.mkdirSync(sessoes, { recursive: true });
+    fs.writeFileSync(path.join(sessoes, 'pq.json'), JSON.stringify({
+      trabalhoReal: true, bloqueouNesteTurno: true, buscouNesteTurno: true, contadores: { comando_destrutivo: 4 }
+    }), 'utf8');
+    for (let i = 0; i < 2; i++) {
+      const j = abrirComPrompt(dir, 'pq', 'o contexto está bom?');
+      assert.ok(j && j.hookSpecificOutput, 'pergunta ' + (i + 1) + ' nao disparou');
+    }
+    const s = lerSessao(dir, 'pq');
+    assert.strictEqual(s.trabalhoReal, undefined);
+    assert.strictEqual(s.bloqueouNesteTurno, undefined);
+    assert.strictEqual(s.buscouNesteTurno, undefined);
+    assert.strictEqual(s.contadores.comando_destrutivo, 4);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T10-4/T10-5: a pergunta funciona sem /esquadro:init (pasta sem .claude)', () => {
+  const dir = temp('pergunta-sem-init');
+  try {
+    assert.ok(!fs.existsSync(path.join(dir, '.claude')));
+    const j = abrirComPrompt(dir, 'psi', 'is the context ok?');
+    assert.ok(j && j.hookSpecificOutput && j.hookSpecificOutput.additionalContext.indexOf('/esquadro:handoff') !== -1);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

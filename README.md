@@ -118,6 +118,16 @@ no Windows.
 
 **Depois, no seu projeto:** rode `/esquadro:init`. As travas 3 e 5 já estão de pé antes disso.
 
+**Estilo de resposta (output style):** o `esquadro` não traz um — o tom das respostas é escolha sua, não
+do plugin. Um estilo é um arquivo `.md` com `name` e `description` no cabeçalho e as instruções no
+corpo, guardado em `.claude/output-styles/` (vale para o projeto) ou em `~/.claude/output-styles/`
+(vale para você em todos) e escolhido em `/config` (**Output style**) ou com `/output-style <nome>`.
+Para mudar só o tom e manter o Claude programando como antes, ponha `keep-coding-instructions: true` no
+cabeçalho: sem ele, o estilo tira as instruções de engenharia de software. O estilo novo ou editado só
+vale depois de reabrir o Claude Code. Se o seu estilo encurtar as respostas, mantenha a
+exigência do esquadro: curto não dispensa a prova — uma linha da saída colada, ou a declaração do que
+não rodou.
+
 > ### ⚠️ Ligue a atualização automática — ela vem desligada
 >
 > O Claude Code só atualiza sozinho os plugins dos marketplaces oficiais da Anthropic. O
@@ -133,6 +143,25 @@ no Windows.
 > sozinho. A sessão que já estava aberta segue com a versão antiga e avisa
 > `Plugin updated: esquadro · Run /reload-plugins to apply`: rode `/reload-plugins` ou abra uma
 > sessão nova.
+
+**No painel do VS Code o botão não existe.** O "Manage plugins" do painel não tem o **Enable
+auto-update**. O caminho que funciona nos dois lugares é o `~/.claude/settings.json`: na entrada do
+`esquadro-local` em `extraKnownMarketplaces`, acrescente `"autoUpdate": true`.
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "esquadro-local": {
+      "source": { "source": "git", "url": "https://github.com/wendellmcs/esquadro.git" },
+      "autoUpdate": true
+    }
+  }
+}
+```
+
+Na abertura da sessão seguinte o Claude Code copia a chave para o `known_marketplaces.json`; não é
+preciso o botão. Se você já tem outras entradas em `extraKnownMarketplaces`, acrescente só a chave
+`autoUpdate` na do `esquadro-local`.
 
 **Para atualizar à mão** (sem a atualização automática, ou para pegar a versão nova agora):
 
@@ -232,11 +261,11 @@ O plugin se pendura em oito pontos do ciclo de uma sessão:
 | Quando | Script | O que faz |
 |---|---|---|
 | a sessão abre, reabre ou compacta | `scripts/abertura.js` | fotografa o `git status` (o que já estava modificado é de outra frente), reinjeta as suas regras e o escopo em vigor, avisa escopo herdado de outra tarefa, `intocaveis` que não pegam nada e plano ativo de outra sessão |
-| você manda um pedido | `scripts/abrir-turno.js` | zera as marcas do turno anterior: trabalho feito, busca feita, bloqueio |
+| você manda um pedido | `scripts/abrir-turno.js` | zera as marcas do turno anterior: trabalho feito, busca feita, bloqueio; se você perguntar se o contexto está bom, manda o Claude trocar de chat com o handoff |
 | antes de `Write` e `Edit` | `scripts/portao-escopo.js` | intocáveis, outra frente, "Fora", marcha, escopo, criar sem buscar, catraca e, com design system declarado, token fora do sistema |
 | antes de `Bash` e `PowerShell` | `scripts/portao-destrutivo.js` | comando destrutivo, idioma de shell errado e `cd` solto; avisa, sem negar, quando a tabela de idioma do PowerShell não se lê |
 | antes de `Task` e `Agent` | `scripts/portao-agente.js` · `scripts/portao-apelido.js` | agente caro em marcha rápida; `model:` do agente contra o apelido gravado no projeto |
-| depois de cada ferramenta | `scripts/marcar-trabalho.js` | marca trabalho real, busca feita e arquivos tocados |
+| depois de cada ferramenta | `scripts/marcar-trabalho.js` | marca trabalho real, busca feita e arquivos tocados; conta as decisões suas respondidas e os commits que passaram |
 | um inspetor da revisão cega termina | `scripts/gravar-veredito.js` | grava o veredito dele em `vereditos/<lente>.json` da ronda; não barra nada, não sobrescreve, e avisa o que não gravou (essa lente volta a ser gravada à mão) |
 | o turno termina | `scripts/portao-fecho.js` | cobra evidência, barra etapa com subitem aberto, grava os contadores, avisa quando é hora de trocar de chat |
 
@@ -246,8 +275,10 @@ Três coisas acontecem sem você pedir:
   reinjetados também ao retomar e depois de compactar o contexto — que é justamente quando a regra
   se perde.
 - **Ele avisa quando é hora de abrir chat novo.** Por gatilho contável, não por palpite: 15 turnos
-  com trabalho, 2 revisões independentes fechadas, 6 bloqueios de portão ou 25 arquivos tocados.
-  Basta um, e os limiares se ajustam em `limiares`, no `projeto.json`.
+  com trabalho, 2 revisões independentes fechadas, 6 bloqueios de portão, 25 arquivos tocados,
+  3 decisões suas respondidas ou 3 commits. Basta um, e os limiares se ajustam em `limiares`, no
+  `projeto.json`. O aviso não fica só na tela: chega também ao Claude, que roda o handoff e cola o
+  prompt pronto na mesma resposta (detalhe abaixo). Funciona sem o `/esquadro:init`.
 - **Etapa com subitem aberto não fecha.** Com um plano ativo (`node scripts/plano.js --abrir
   <plano>`), dizer que a etapa terminou enquanto ela ainda tem caixa aberta é barrado pelo fecho.
 
@@ -262,6 +293,48 @@ Se surgiu a duvida "ja e hora?", ja era.
 ~~~
 
 </details>
+
+### O aviso de troca de chat: o que dispara, o que não, e como conferir
+
+O aviso sai **uma vez por sessão**, no fim do turno, e vai para dois lugares: para você (a mensagem
+acima) e para o Claude, que recebe a ordem de rodar `/esquadro:handoff`, dizer com todas as letras
+que é hora de abrir chat novo, citando o gatilho, e colar o prompt pronto em bloco de código, sem
+perguntar "sigo?" antes. Se o fim de turno já for de um laço de continuação, o aviso não
+se soma ao laço: espera o próximo fim de turno com trabalho.
+
+| O que conta | Chave em `limiares` | Padrão |
+|---|---|---|
+| turnos com trabalho real | `turnosComTrabalho` | 15 |
+| revisões independentes fechadas | `revisoesFechadas` | 2 |
+| bloqueios de portão (soma de todas as travas que negam) | `bloqueios` | 6 |
+| arquivos tocados | `arquivosTocados` | 25 |
+| decisões suas respondidas (as perguntas de escolha do Claude) | `decisoesDoDono` | 3 |
+| commits que passaram | `commits` | 3 |
+
+Basta um. Sem `projeto.json`, valem os padrões da tabela; com ele, só as chaves que você escreve
+mudam. O commit entra com 3, e não 1, porque o aviso sai uma vez só: com 1, todo mundo que commita
+receberia o aviso no primeiro commit.
+
+**Perguntar também dispara.** Se você perguntar se o contexto ou a memória da conversa está bom
+("o contexto está bom?", "contexto tá cheio?", "is the context ok?"), a pergunta é a resposta: o
+Claude recebe a ordem de trocar de chat com o handoff, e isso vale a cada vez que perguntar, não só
+a primeira. Pedido que apenas cita contexto ou memória ("adicione contexto ao README", "memory leak
+no módulo") não dispara.
+
+**O que não dispara:** erro de medição (contagem errada, número lido do lugar errado) e a inflação
+de contexto em si. Hook não enxerga nenhum dos dois — ele dispara em ferramenta, não no tamanho da
+conversa —, então o plugin não finge contá-los. Para esses, vale a sua pergunta acima.
+
+**Como conferir que os ganchos rodam:** ao abrir a sessão aparece a linha
+"esquadro: lendo o estado do repositorio". Se ela não aparece, o `node` não está no `PATH` — todo
+gancho é um script `node` — ou o plugin não está ativo; `claude plugin list` mostra o segundo caso.
+
+**Do que o gatilho de commit depende:** de o Claude Code informar `gitOperation.commit.sha` na
+resposta do `git commit` (medido no Claude Code 2.1.258). Sem esse campo o plugin não conta commit
+— ele não adivinha pelo texto do comando, que daria falso positivo com um `echo "git commit"` — e
+os outros cinco gatilhos seguem valendo. O gatilho de decisões depende de o gancho receber a resposta
+das perguntas de escolha; esse formato foi lido na documentação e ainda não foi provado numa sessão
+interativa.
 
 ---
 

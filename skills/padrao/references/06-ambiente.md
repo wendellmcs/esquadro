@@ -20,6 +20,11 @@ Isto aconteceu duas vezes no mesmo dia antes de virar regra. O sintoma é cruel:
 erro, e devolve um número errado — que é exatamente o caso que a regra do medidor em
 [04-verificacao.md](04-verificacao.md) existe para pegar.
 
+**Ferramentas chamadas no mesmo turno rodam em paralelo.** Enviar ou anexar um arquivo e regenerar a
+pasta de onde ele sai no mesmo turno falha **em silêncio** — o envio não acha o arquivo, e a pergunta
+que saiu junto já afirmava a entrega. Envie num turno, pergunte no seguinte, depois de ver a
+confirmação; se precisar regenerar, escreva em outra pasta e mantenha a original até o envio confirmar.
+
 ---
 
 ## 2. Encoding em hook e em saída de processo
@@ -63,6 +68,32 @@ Ao decidir alguma coisa lendo uma linha de comando (portão, filtro, log):
 Se o objetivo for barrar comando perigoso, aceitar que a leitura é aproximada, **declarar o falso
 positivo** que ela produz, e preferir errar barrando.
 
+**Comando que lista o ambiente vaza segredo.** `export`, `env`, `set` e `printenv` sem argumento
+imprimem toda variável — inclusive o token que o ambiente carrega — na transcrição. Para tirar uma
+variável, `unset NOME`; para passá-la só a um comando, `VAR=x comando`. **Se vazar, diga na mesma
+resposta e recomende revogar o token.**
+
+**O código de saída de um comando encanado é o do último elo.** `suite | tail -40` devolve 0 com a
+suíte reprovada: a prova é o exit code do comando sozinho, ou o resumo que ele imprime. A ordem do
+redirecionamento também conta: `cmd 2>&1 > arquivo` manda o erro para o terminal, e
+`cmd > arquivo 2>&1` manda para o arquivo.
+
+**O shell do Git para Windows falha de vez em quando antes de o comando rodar** (erro de `fork`, exit
+5). Não é erro do comando nem da sintaxe: **repetir o mesmo comando resolve**. Reescrevê-lo achando que
+a sintaxe está errada é tempo perdido.
+
+**O `bash` do `PATH` do PowerShell pode ser o do WSL, não o Git Bash.** Provar que "o bash executa isto"
+exige o mesmo bash que a ferramenta usa: conferir que o caminho existe, olhar o `error` e o `status` do
+processo, e incluir um caso que **tem de** executar (controle positivo) — sem ele, "nenhum caso rodou"
+parece resultado e é só o instrumento. O código do plugin já trata isso (`scripts/lib/shell.js`); aqui
+está o porquê.
+
+**Caminho curto do Windows (`NOME~1`, formato 8.3) quebra o que o nega.** Diretório temporário ou de
+usuário pode vir nessa forma; `import.meta.url` a devolve com o til codificado, e derivar o diretório
+do script pelo `pathname` dessa URL dá `ENOENT` num lugar que existe. Ferramentas de agente também
+negam a leitura de um caminho assim por suspeita. **Resolva o caminho real** (`fs.realpathSync.native`)
+antes de usá-lo.
+
 ---
 
 ## 5. Índice do git, CRLF e arquivo fantasma
@@ -80,6 +111,13 @@ git add --renormalize -- <apenas os arquivos fantasma>
 ```
 
 Mexe no índice, não no disco, e nada fica staged.
+
+**Ferramenta de escrita e `sed -i` mexem no arquivo além do que você pediu.** O `sed -i` regrava o
+arquivo inteiro em LF, destruindo o CRLF de um arquivo CRLF, e lê barra-u na substituição como
+"maiúscula no próximo caractere". Write e Edit **convertem o escape de acento digitado em caractere
+real** (e, em arquivo que já usa escapes, o inverso). Para arquivo com escapes ou com CRLF, edite por
+script Node com `replace` exato e confira depois. **Conte o CR por Node** (os bytes 13 do `Buffer`),
+antes e depois: o `grep -c` de CR mentiu, dando 0 num arquivo com centenas.
 
 ---
 
@@ -104,6 +142,11 @@ Skill que precisa valer em vários projetos mora no **diretório do usuário**.
 
 O mesmo vale para output style.
 
+**O campo `skills:` no frontmatter de um agente injeta só o corpo do `SKILL.md`.** Os arquivos de
+`references/` não vêm junto: o agente que depende de rubrica, tabela de valores ou checklist longo
+continua precisando de uma ferramenta de leitura. E agente ou skill criado ou editado agora **só
+existe em sessão nova** — o registro é lido na abertura, e a conversa em curso não o enxerga.
+
 ---
 
 ## 8. Provar hook sem terminal interativo
@@ -124,3 +167,21 @@ permissão e a rodada nunca chega ao fecho.
 **A prova é o rastro em disco, nunca a prosa do modelo.** O modelo dizer "o portão me barrou" é
 relato; o contador gravado no arquivo é evidência. **Criar a pasta de estado antes da rodada** é o que
 transforma um no outro.
+
+---
+
+## 9. Rede que reassina o HTTPS
+
+Rede corporativa com inspeção de TLS entrega todo HTTPS assinado por uma raiz da própria empresa. O
+sistema operacional confia nela; **programa que traz a sua própria lista de certificados, não** — e a
+falha parece de rede (`Transport error`, `unable to verify the first certificate`), não de certificado.
+
+**No Node, `node --use-system-ca` usa a lista do sistema**; a alternativa é apontar
+`NODE_EXTRA_CA_CERTS` para um `.pem` da raiz, que serve também a ferramentas de linha de comando
+empacotadas em Node. A variável só vale no processo em que foi definida: janela nova a perde. O
+`curl` do Windows pode falhar na checagem de revogação com a raiz reassinada, e `--ssl-no-revoke` passa.
+
+Para confirmar a causa, conecte com a verificação desligada **só para imprimir o emissor da cadeia**:
+se não for uma autoridade pública, é reassinatura. **Desligar a verificação não é o conserto.** E passo
+do dono que depende de variável de ambiente vira script que mostra o estado (imprime que a variável
+existe) antes de seguir.

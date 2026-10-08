@@ -38,6 +38,16 @@ mesma regra não pedem uma terceira quebra: pedem uma decisão sobre recalibrá-
 **Ao registrar em documento append-only numerado, ler o último número no disco** — nunca do handoff.
 Ver a seção do Passo -1 em [01-marchas-e-gates.md](01-marchas-e-gates.md).
 
+**Decisão anunciada é decisão gravada, na mesma resposta.** Dizer "registrada" sem ter gravado é
+perder a decisão: outra frente toma o número, e o chat seguinte conclui que nada aconteceu. O
+**ledger é um arquivo só** — fragmento ao lado, em outro formato, é invisível para quem retoma. Ao
+retomar, antes de crer em "não rodou", liste a pasta de material por data e procure a prova.
+
+**Toda hora escrita em arquivo vem depois do `date`, e em outro turno.** Rode o `date` sozinho e só na
+resposta seguinte escreva o texto com a hora lida. Hora digitada no mesmo comando (ou no mesmo Write)
+do `date` é palpite, e palpite de hora erra para frente. Se a hora tiver de entrar num texto grande
+escrito antes, deixe um marcador e troque por script depois do `date`.
+
 **Espelho:** se o projeto mantém duas cópias da mesma regra em arquivos diferentes, alterar as duas
 no mesmo conjunto de mudanças, e conferir qual das duas é a fonte.
 
@@ -124,3 +134,8 @@ todos os subitens estão feitos** — subitem pendente = etapa aberta.
 
 As armadilhas de shell, encoding e índice do git — as que custam sessão inteira quando pegam — estão
 em [06-ambiente.md](06-ambiente.md). Ler antes de escrever script, hook, ou mexer no índice.
+
+**Credencial que o classificador de permissão barra não se contorna.** Medição que exige token vivo
+(do perfil do navegador, da sessão de quem decide) vira **script pronto, com passo a passo clique a
+clique para o dono rodar** — o script imprime o estado (existe ou não) e, no máximo, um prefixo de
+hash, **nunca o segredo**. Registre no ledger que a medição ficou com o dono e o que ela decide.

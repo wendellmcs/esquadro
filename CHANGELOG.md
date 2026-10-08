@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.4.3 — o aviso de troca de chat que chega ao Claude, mensagens que dizem o que fazer e a doutrina de uso comum
+
+Quem instala o plugin passa a ganhar a troca de chat com handoff, que antes so vinha do `CLAUDE.md`
+de quem o escreveu. Nenhum portao novo. Os comportamentos novos vem com teste; a suite inteira roda
+com `npm test`.
+
+- **O aviso de troca de chat chega ao Claude, nao so a tela.** No fim do turno, uma vez por sessao, o
+  Claude recebe a ordem de rodar `/esquadro:handoff`, dizer que e hora de abrir chat novo citando o
+  gatilho e colar o prompt pronto. Se o fim de turno ja for de um laco de continuacao, o aviso espera
+  o proximo. Funciona sem o `/esquadro:init`, com os limiares padrao.
+- **Dois gatilhos novos e uma pergunta que dispara.** Contam as decisoes suas respondidas nas
+  perguntas de escolha (padrao 3) e os commits que passaram (padrao 3, lidos do
+  `gitOperation.commit.sha` que o Claude Code informa; sem o campo, o commit nao conta). Perguntar se
+  o contexto ou a memoria da conversa esta bom dispara na hora, a cada vez.
+- **README:** o que dispara, o que nao (erro de medicao e o tamanho da conversa, que gancho nao
+  enxerga), como conferir que os ganchos rodam, o estilo de resposta (output style) e a atualizacao
+  automatica pelo `~/.claude/settings.json` (`autoUpdate: true` na entrada do `esquadro-local`),
+  porque o painel do VS Code nao tem o botao.
+- **Mensagens que dizem o que fazer.** A medicao de qualidade diz como julgar os pares que faltam, o
+  que conferir quando a abertura do plugin nao aparece ou aparece duas vezes, e qual chave do
+  `projeto.json` falta quando o bloco aparece onde nao devia. A tabela de idioma nao mostra mais
+  "undefined" quando a regra nao tem sugestao, e o subshell sugerido vem explicado.
+- **O molde de agente ganha `effort`, `tools`, `maxTurns` e a escalada.** O gerador recusa, dizendo o
+  valor aceito, esforco fora da lista, `maxTurns` que nao e inteiro positivo, ferramenta com nome
+  invalido (nome de ferramenta MCP, com hifen, vale) e valor de tipo errado; o `escalaPara` sai da
+  ordem da escada, nao da resposta.
+- **Doutrina de uso comum na skill `padrao`.** Agente que edita por casamento exato nao fica no degrau
+  mais barato; subagente que cai por limite de uso e relancado em outro modelo; tres conferencias antes
+  de abrir P0 de seguranca; numero medido so depois da ultima edicao; as duas provas da mutacao;
+  decisao anunciada e decisao gravada; hora so depois do `date`; escolha visual mostra a imagem antes
+  de perguntar. As armadilhas de ambiente (`06-ambiente.md`) ganham: credencial que nao se contorna,
+  envio e regeneracao no mesmo turno, comando que lista o ambiente e vaza segredo, codigo de saida de
+  comando encanado, falha de `fork` do Git Bash, o `bash` do WSL e o caminho curto do Windows. No
+  init, o `AGENTS.md` espelhado e conferido junto do `CLAUDE.md`.
+
 ## 0.4.2 — o leitor do `cd` mais fiel ao shell, a medicao que nao perde execucao paga e testes mais firmes
 
 A segunda metade das pendencias conferidas contra o codigo: o leitor do `cd` solto e a tabela de

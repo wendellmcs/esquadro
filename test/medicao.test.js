@@ -1948,3 +1948,49 @@ test('T4/F4-09: montagem com mais de 10 min sai mesmo com o pid vivo; a recente 
   assert.ok(fs.existsSync(path.join(rodada, nomes.recente, 'mapa.json')), 'apagou a montagem recente de um processo vivo');
   assert.ok(fs.existsSync(path.join(rodada, nomes.futura, 'mapa.json')), 'apagou a montagem de carimbo no futuro (vale a regra do pid)');
 });
+
+// ── T10-7: as mensagens dizem o que fazer ────────────────────────────────
+
+test('T10-7/1: apurar com par sem veredito diz o que fazer: julgar os pares (--pares) e apurar de novo (--veredito)', () => {
+  const r = apurarCom(geracoes(), []);
+  const m = r.motivos.join('\n');
+  assert.ok(/julgu/i.test(m), 'falta a acao de julgar: ' + m);
+  assert.ok(m.indexOf('--pares') !== -1, 'falta o comando que gera o briefing do juiz: ' + m);
+  assert.ok(m.indexOf('--veredito') !== -1, 'falta apurar de novo: ' + m);
+  assert.ok(m.indexOf('vereditos/' + medicao.LENTE.chave + '.json') !== -1, 'falta onde o veredito vai: ' + m);
+});
+
+test('T10-7/2: o CLI --veredito com par faltando repete a mesma acao do nº 1', () => {
+  const rodada = rodadaDeMentira();
+  assert.strictEqual(cli(['--pares', rodada]).status, 0);
+  fs.readdirSync(path.join(rodada, 'pares')).forEach((p) => { if (p !== 'decisao-9-padrao-2') julgar(rodada, p, 'recurso'); });
+  const r = cli(['--veredito', rodada]);
+  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+  const linha = r.stdout.split('\n').find((l) => l.indexOf('VEREDITO: nenhum') === 0) || '';
+  assert.ok(/julgu/i.test(linha), 'a linha do veredito nao diz para julgar: ' + r.stdout);
+  assert.ok(linha.indexOf('--pares') !== -1 && linha.indexOf('--veredito') !== -1, 'falta o comando: ' + r.stdout);
+  assert.ok(r.stdout.indexOf('  falta: decisao-9/padrao/2') !== -1, 'as linhas falta: seguem listando: ' + r.stdout);
+});
+
+test('T10-7/3: abertura 0 vez e abertura 2 vezes dizem causas e acoes diferentes', () => {
+  const zero = ler({ aberturas: 0 }, 'padrao').motivos.filter((m) => /abertura/.test(m)).join('\n');
+  assert.ok(zero, 'sem motivo da abertura');
+  assert.ok(/node/.test(zero) && /PATH/.test(zero), 'sem a causa do node fora do PATH: ' + zero);
+  assert.ok(/plugin/.test(zero) && /carreg/.test(zero), 'sem a causa do plugin nao carregado: ' + zero);
+  assert.ok(!/desligue/i.test(zero), 'o texto do 0 nao pode mandar desligar plugin: ' + zero);
+  assert.ok(!/exatamente 1/.test(zero), zero);
+  const dupla = ler({ aberturas: 2, bloco: true }, 'recurso').motivos.filter((m) => /abertura/.test(m)).join('\n');
+  assert.ok(dupla, 'sem motivo da abertura em dobro');
+  assert.ok(/2 vezes/.test(dupla), 'sem a contagem: ' + dupla);
+  assert.ok(/duas vezes/.test(dupla) && /marketplace/.test(dupla), 'sem a causa da copia dupla: ' + dupla);
+  assert.ok(/desligue/i.test(dupla), 'sem a acao de desligar uma: ' + dupla);
+  assert.ok(!/node/.test(dupla) && !/exatamente 1/.test(dupla), dupla);
+});
+
+test('T10-7/4: bloco na condicao que nao quer bloco aponta o projeto.json e a chave que desliga', () => {
+  const m = ler({ bloco: true }, 'padrao').motivos.filter((x) => /bloco de qualidade apareceu/.test(x)).join('\n');
+  assert.ok(m, 'sem o motivo do bloco');
+  assert.ok(m.indexOf('padrao') !== -1, m);
+  assert.ok(m.indexOf('"qualidadeDeResposta": false') !== -1, 'falta a chave que desliga: ' + m);
+  assert.ok(m.indexOf('.claude/esquadro/projeto.json') !== -1, 'falta o arquivo: ' + m);
+});

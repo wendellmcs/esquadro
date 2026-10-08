@@ -2,6 +2,9 @@
 name: {{texto:nome}}
 description: {{texto:quando}}
 model: {{texto:apelido}}
+effort: {{texto:esforco}}
+tools: {{texto:ferramentas}}
+maxTurns: {{texto:maxTurns}}
 ---
 
 # {{texto:nome}}
@@ -11,6 +14,11 @@ model: {{texto:apelido}}
 ## O que este agente decide sozinho
 
 {{texto:decideSozinho}}
+
+## Quando parar e escalar
+
+Se a tarefa passar do que esta acima, pare e devolva a tarefa a {{texto:escalaPara}},
+dizendo o que viu e por que parou. Nao tente a tarefa do degrau de cima.
 
 ## O que ele leva a quem decide
 

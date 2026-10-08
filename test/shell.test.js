@@ -822,3 +822,25 @@ test('T1/F3-03 (D332): funcao chamada antes de definida ainda nao existe e nao n
   // controle: chamada depois da definicao nega
   assert.ok(shell.cdSolto('f() { cd x; }; f', 'Bash'));
 });
+
+test('T10-7/5: motivo sem sugestao nao imprime undefined, e sem motivo nao ha a linha por que:', () => {
+  const semSugestao = shell.motivo('x', [{ achado: 'head', motivo: 'm' }], 1);
+  assert.ok(!/undefined/.test(semSugestao), semSugestao);
+  assert.ok(semSugestao.includes('(sem sugestao)'), semSugestao);
+  assert.ok(semSugestao.includes('      por que: m'), 'com motivo a linha por que: segue: ' + semSugestao);
+  const semMotivo = shell.motivo('x', [{ achado: 'head', sugestao: 's' }], 1);
+  assert.ok(!/undefined/.test(semMotivo), semMotivo);
+  assert.ok(!/por que:/.test(semMotivo), 'sem motivo nao pode haver a linha por que: ' + semMotivo);
+  assert.ok(semMotivo.includes('  head '), semMotivo);
+  const completo = shell.motivo('x', [{ achado: 'head', sugestao: 's', motivo: 'm' }], 1);
+  assert.ok(completo.includes('s') && completo.includes('por que: m') && !completo.includes('(sem sugestao)'), completo);
+});
+
+test('T10-7/6: o cd solto no Bash explica o termo subshell: shell filho, cd so la dentro, pasta volta sozinha', () => {
+  const m = shell.motivoCdSolto('cd X && y', shell.cdSolto('cd X && y', 'Bash'));
+  const linha = m.split('\n').find((l) => l.indexOf('em subshell') !== -1) || '';
+  assert.ok(linha, 'a expressao em subshell tem de ficar: ' + m);
+  assert.ok(/shell filho/.test(linha), 'falta explicar o que e: ' + linha);
+  assert.ok(/so dentro dele/.test(linha), 'falta dizer que o cd vale so la dentro: ' + linha);
+  assert.ok(/volta sozinha/.test(linha), linha);
+});

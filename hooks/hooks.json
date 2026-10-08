@@ -68,7 +68,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Write|Edit|Bash|PowerShell|Grep|Glob|Read",
+        "matcher": "Write|Edit|Bash|PowerShell|Grep|Glob|Read|AskUserQuestion",
         "hooks": [
           {
             "type": "command",

@@ -73,4 +73,62 @@ function listar(raiz) {
   return { existe: true, agentes: lista };
 }
 
-module.exports = { PASTA, CERCA, frontmatter, caminho, listar };
+const ESFORCOS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const FERRAMENTA = /^[A-Za-z][A-Za-z0-9_-]*$/;
+
+/**
+ * As tres fatias do molde que tem formato proprio. Devolve a lista de erros -
+ * vazia quando vale - e cada erro diz o valor ACEITO, para quem le saber o que
+ * escrever. Aceita numero no JSON de respostas (`"maxTurns": 8`): a entrevista e
+ * conversa, e quem digita 8 nao errou.
+ */
+function validarFatias(valores) {
+  const v = valores || {};
+  const erros = [];
+  function str(x) { return (typeof x === 'string' || typeof x === 'number') ? String(x).trim() : ''; }
+  // Nome do tipo para a mensagem: lista e nulo em vez de "object".
+  function tipo(x) { return Array.isArray(x) ? 'lista' : (x === null ? 'nulo' : typeof x); }
+  function tipoAceito(x) { return typeof x === 'string' || typeof x === 'number'; }
+
+  if (v.esforco !== undefined && !tipoAceito(v.esforco)) {
+    erros.push('esforco tem de ser texto (veio ' + tipo(v.esforco) + '): use um de ' + ESFORCOS.join('|'));
+  }
+  const esforco = str(v.esforco);
+  if (esforco !== '' && ESFORCOS.indexOf(esforco) === -1) {
+    erros.push('esforco "' + esforco + '" invalido: use um de ' + ESFORCOS.join('|'));
+  }
+  if (v.maxTurns !== undefined && !tipoAceito(v.maxTurns)) {
+    erros.push('maxTurns tem de ser um inteiro (veio ' + tipo(v.maxTurns) + ')');
+  }
+  const maxTurns = str(v.maxTurns);
+  if (maxTurns !== '' && !/^[1-9][0-9]*$/.test(maxTurns)) {
+    erros.push('maxTurns "' + maxTurns + '" invalido: use um inteiro maior ou igual a 1');
+  }
+  if (typeof v.ferramentas === 'string' && v.ferramentas.trim() !== '') {
+    const itens = v.ferramentas.split(',').map(function (x) { return x.trim(); });
+    const ruins = itens.filter(function (x) { return !FERRAMENTA.test(x); });
+    if (ruins.length > 0) {
+      erros.push('ferramentas invalidas (' + ruins.map(function (x) { return '"' + x + '"'; }).join(', ') +
+        '): separe por virgula nomes no formato [A-Za-z][A-Za-z0-9_-]*');
+    }
+  } else if (v.ferramentas !== undefined && typeof v.ferramentas !== 'string') {
+    erros.push('ferramentas tem de ser texto, nao ' + tipo(v.ferramentas) +
+      ': liste, separadas por virgula, so as que o papel precisa (formato [A-Za-z][A-Za-z0-9_-]*)');
+  } else if (v.ferramentas !== undefined) {
+    erros.push('ferramentas vazia: liste, separadas por virgula, so as que o papel precisa (formato [A-Za-z][A-Za-z0-9_-]*)');
+  }
+  return erros;
+}
+
+/**
+ * Para quem o agente do degrau `i` devolve o que passa do papel dele: o agente
+ * do degrau de cima; no ultimo degrau, quem decide neste projeto. O valor de
+ * `quemDecide` NAO se imprime (D10, molde.js): o texto aponta o campo.
+ */
+function escalaPara(degraus, i) {
+  const proximo = degraus[i + 1];
+  if (proximo && proximo.agente) return '`' + proximo.agente + '`';
+  return 'quem decide neste projeto (veja `quemDecide` em `.claude/esquadro/projeto.json`)';
+}
+
+module.exports = { PASTA, CERCA, ESFORCOS, frontmatter, caminho, listar, validarFatias, escalaPara };

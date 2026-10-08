@@ -645,7 +645,7 @@ function vereditoDaRodada(argv) {
   L.push('prompts: ' + ger.prompts.length + ' | geracoes: ' + ger.geracoes.length);
   L.push('');
   if (a.veredito === null) {
-    L.push('VEREDITO: nenhum - faltam ' + a.faltam.length + ' julgamento(s). Par sem veredito do juiz NAO vira empate.');
+    L.push('VEREDITO: nenhum - faltam ' + a.faltam.length + ' julgamento(s). Par sem veredito do juiz NAO vira empate. ' + medicao.ACAO_DE_JULGAR);
     a.faltam.forEach(function (f) { L.push('  falta: ' + f); });
     if (ilegiveis.length > 0) L.push('  (JSON ilegivel, tratado como falta: ' + ilegiveis.join(', ') + ')');
     if (semVoto.length > 0) L.push('  (veredito sem o campo melhor em texto, tratado como falta: ' + semVoto.join(', ') + ')');

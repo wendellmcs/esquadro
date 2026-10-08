@@ -30,6 +30,10 @@ const LENTE = {
     'precisava para agir perde, mesmo sendo mais curta. Quem pergunta le no idioma da pergunta.'
 };
 
+/** O que fazer quando faltam julgamentos: a mesma frase no motivo do apurar e na tela do --veredito. */
+const ACAO_DE_JULGAR = 'Julgue os pares que faltam (o briefing do juiz sai de: node scripts/medir-qualidade.js --pares <pasta da rodada>; ' +
+  'cada veredito vai em pares/<par>/vereditos/' + LENTE.chave + '.json) e rode --veredito <pasta da rodada> de novo.';
+
 /** O comando que liga o caveman no modo print. Quem julga nunca o ve: `perguntaDaCondicao` so o poe no envio. */
 const COMANDO_CAVEMAN = '/caveman ';
 
@@ -221,7 +225,7 @@ function apurar(entrada) {
     return saida;
   }
   if (faltam.length > 0) {
-    motivos.push('faltam ' + faltam.length + ' julgamento(s): sem veredito do juiz o par nao vira empate');
+    motivos.push('faltam ' + faltam.length + ' julgamento(s): sem veredito do juiz o par nao vira empate. ' + ACAO_DE_JULGAR);
     return saida;
   }
 
@@ -365,13 +369,19 @@ function lerExecucao(linhas, opcoes) {
     }
   });
 
-  if (aberturas !== 1) {
-    motivos.push('a abertura do esquadro apareceu ' + aberturas + ' vez(es) nos hooks de SessionStart; tem de ser exatamente 1');
+  if (aberturas === 0) {
+    motivos.push('a abertura do esquadro nao apareceu nos hooks de SessionStart: o gancho de abertura nao rodou. ' +
+      'Confira se o plugin foi carregado na sessao medida (a medicao o carrega com --plugin-dir) e se o node esta no PATH.');
+  } else if (aberturas > 1) {
+    motivos.push('a abertura do esquadro apareceu ' + aberturas + ' vezes nos hooks de SessionStart: o plugin foi carregado duas vezes ' +
+      '(por exemplo a copia local, de --plugin-dir, mais a instalada pelo marketplace). Desligue uma das duas e rode de novo.');
   }
   if (falhas.length > 0) motivos.push('hook de SessionStart falhou: ' + falhas.join('; '));
   const querBloco = condicao === 'recurso';
   if (querBloco && comBloco === 0) motivos.push('o bloco de qualidade nao chegou a sessao do recurso');
-  if (!querBloco && comBloco > 0) motivos.push('o bloco de qualidade apareceu na condicao ' + condicao);
+  if (!querBloco && comBloco > 0) motivos.push('o bloco de qualidade apareceu na condicao ' + condicao +
+    ': ela tem de rodar sem o bloco. Confira o .claude/esquadro/projeto.json da pasta medida: a condicao ' + condicao +
+    ' precisa de "qualidadeDeResposta": false.');
   if (condicao === 'caveman') {
     if (!cavemanLigou) {
       motivos.push(transcricao.legivel
@@ -429,7 +439,7 @@ function lerExecucao(linhas, opcoes) {
 }
 
 module.exports = {
-  CONDICOES, RIVAIS, ORDENS, LENTE, COMANDO_CAVEMAN, MARCADOR_DO_BLOCO,
+  ACAO_DE_JULGAR, CONDICOES, RIVAIS, ORDENS, LENTE, COMANDO_CAVEMAN, MARCADOR_DO_BLOCO,
   perguntaDaCondicao, votoDoJuiz, resultadoDoPar, nomeDoPar, apurar, lerExecucao,
   lerTranscricao, cavemanNaTranscricao, sessionIdDe
 };

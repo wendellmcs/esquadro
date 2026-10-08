@@ -2,6 +2,7 @@
 'use strict';
 const io = require('./lib/io.js');
 const estado = require('./lib/estado.js');
+const saude = require('./lib/saude.js');
 
 // UserPromptSubmit: zera as marcas do turno anterior (trabalhoReal, bloqueouNesteTurno,
 // buscouNesteTurno) e preserva todo o resto do estado da sessao (contadores, e as chaves
@@ -15,6 +16,12 @@ io.blindar(function () {
       delete s.buscouNesteTurno;
       return s;
     });
+    // T10-4 (D357): quem pergunta se o contexto/memoria esta bom ja tem a resposta - dispara toda
+    // vez que a pergunta vier (nao e "uma vez por sessao"). Sem projeto.json tambem.
+    if (saude.perguntaSobreSaude(e.prompt)) {
+      return io.permitir({ hookSpecificOutput: {
+        hookEventName: 'UserPromptSubmit', additionalContext: saude.INSTRUCAO_DA_PERGUNTA } });
+    }
     io.permitir();
   });
 });

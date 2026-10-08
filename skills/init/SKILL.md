@@ -401,7 +401,9 @@ Os degraus da pergunta 6 já estão gravados. Agora eles viram arquivo em `.clau
     node "${CLAUDE_PLUGIN_ROOT}/scripts/gerar-agentes.js" --fatias
 
 **2. Preencha as fatias de cada degrau**, com `AskUserQuestion` onde houver escolha real. O `nome` e
-o `apelido` **não se perguntam de novo**: saem do `projeto.json`.
+o `apelido` **não se perguntam de novo**: saem do `projeto.json`. O `escalaPara` também não: o gerador
+o preenche pela ordem da escada (o degrau de cima; no último, quem decide), e resposta sua para essa
+fatia é ignorada.
 
 | Fatia | O que perguntar |
 |---|---|
@@ -409,6 +411,17 @@ o `apelido` **não se perguntam de novo**: saem do `projeto.json`.
 | `papel` | O que ele faz, em duas ou três linhas |
 | `decideSozinho` | O que ele resolve sem perguntar — e onde para |
 | `naoFaz` | O que ele **não** faz, dito agora para não virar promessa quebrada |
+| `esforco` | *"Quanto raciocínio este agente gasta?"* — `low`, `medium`, `high`, `xhigh` ou `max`. É um eixo **independente do modelo**: na dúvida, desce, porque sem declarar o agente herda o padrão e um agente de busca paga raciocínio fundo para rodar `grep` |
+| `ferramentas` | Só as que o papel precisa, separadas por vírgula (`Read, Grep`). Agente que só lê não recebe ferramenta de escrita |
+| `maxTurns` | Quantas voltas ele pode dar antes de parar e devolver — um inteiro de 1 em diante |
+
+**Agente que edita por casamento exato de texto não fica no degrau mais barato.** Edição que falha
+vira escalada, e escalada custa a tarefa inteira de novo: a diferença de preço entre os degraus não
+paga um único retrabalho. Ao preencher `esforco` e `ferramentas`, isso decide em qual degrau cai quem
+tem `Edit`.
+
+Os três valores têm formato próprio, e o gerador recusa (`RECUSADO`, dizendo o valor aceito) o que
+fugir dele — o arquivo só chega à pasta da pessoa com os três válidos.
 
 **3. Grave as respostas num JSON temporário**, com uma chave por nome de agente, e gere a proposta:
 
@@ -448,7 +461,7 @@ demanda e não custa nada quando não é chamada.
 | `dataGeracao` | A data de hoje |
 | `portoes` | *"Que verificação este projeto exige e que nenhum outro exigiria?"* — contrato, gate visual, catraca, suíte por área |
 | `intocaveis` | O que não se toca **além** do que já está em `projeto.json` — e por quê |
-| `decisoes` | Decisões já validadas, na forma "não perguntar de novo", com a data |
+| `decisoes` | Decisões já validadas, na forma "não perguntar de novo", com a data — e **onde cada coisa se registra** (a fatia `ondeRegistrar` da skill de execução): o log de decisões do dono, as dúvidas ainda abertas e o ledger do plano em execução, **um arquivo para cada**, para a decisão não se perder dentro de uma lista de pendências |
 | `naoPromete` | O que este projeto **não** garante, dito agora para não virar promessa quebrada |
 
 **Regra dura ao preencher:** nunca crave versão, flag, preço, nome de modelo ou nome de evento. Se
@@ -500,6 +513,11 @@ apodrecer quando o projeto mudar.
 **Se o projeto já tiver um `AGENTS.md`, o gerador recusa e não toca em nada.** Isso não é erro:
 aquele arquivo pode ser trabalho de meses. Diga ao dono que existe um, **mostre a proposta mesmo
 assim**, e deixe a fusão com ele — nunca junte os dois por conta própria.
+
+**Se o projeto mantém o `AGENTS.md` e o `CLAUDE.md` espelhados**, uma mudança num dos dois vai ao
+outro **no mesmo conjunto de mudanças** — a regra e o porquê estão em `05-governanca.md` §2 e §3 da skill
+`padrao`, e não se repetem aqui. Depois de gerar ou fundir o `AGENTS.md`, confira o `CLAUDE.md`
+antes de dar o passo por fechado.
 
 ## Passo 7e — conferir o catálogo de modelos, porque isto é uma instalação
 

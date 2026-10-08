@@ -30,7 +30,9 @@ Em `.claude/esquadro/handoff/AAAA-MM-DD-<slug>.md`, com **todas** estas seções
    arquivo**, não parafraseado.
 4. **Decisões humanas já tomadas** — na forma "não perguntar de novo", com a data.
 5. **Pendências e bloqueios que NÃO são achado desta sessão** — falha pré-existente é isto, e sem
-   esta seção o próximo chat vai "descobrir" e perder tempo.
+   esta seção o próximo chat vai "descobrir" e perder tempo. **Pendência não fica arrastada de handoff
+   em handoff**: lista que só cresce não tem dono. Antes do prompt, leve cada pendência nova ao dono,
+   juntas e em 3 opções, e escreva aqui só o que já foi decidido ou o que tem dono e lugar declarados.
 6. **Erros de método que custaram tempo** — para não se repetirem.
 7. **Arquivos de terceiros deixados intocados** — do `git status` do passo 1.
 8. **Prompt pronto para colar**, em bloco de código.

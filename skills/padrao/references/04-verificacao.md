@@ -18,6 +18,16 @@ trata do que vale como prova, e de como não se enganar com o próprio instrumen
 - **É rastro, não prosa.** "O portão me barrou" é relato do modelo. O contador gravado no arquivo, o
   exit code, a linha do log — isso é evidência. Quando der para deixar rastro em disco, preparar o
   rastro **antes** da rodada; é o que transforma relato em prova.
+- **Número medido: editar, contar, gravar — nessa ordem.** Número que descreve um arquivo (linhas,
+  folga de teto, contagem) se tira **depois da última edição**, nunca junto: a correção que mexe no
+  arquivo invalida a medida que a acompanha. **Conte por script**, pelo método do teste, nunca por
+  `wc -l` nem por `grep -c` (que conta linhas, não ocorrências). Lista dentro do próprio documento
+  também se conta por script, depois de escrita.
+- **Foto de página: use o protocolo de depuração (CDP), não o navegador headless pela linha de
+  comando.** O headless chamado pelo shell pode devolver exit 0 antes de gravar o arquivo (o `ls`
+  seguinte diz "não existe" e parece falha), ignorar a âncora da URL e não gravar página muito alta —
+  medido num navegador no Windows; exit 0 não prova a foto, o arquivo aberto prova. O CDP, em
+  porta própria e esperando por condição, não por tempo, tira a foto que se pediu.
 
 **Uma linha de saída basta.** Resposta curta não é resposta sem prova: um bloco de uma linha cumpre o
 portão, e é mais barato colar a prova do que consertar depois uma afirmação sem ela.
@@ -42,6 +52,17 @@ O procedimento é curto:
 
 Se o medidor não acusar a mutação plantada, ele não está medindo o que você acha que mede — e todo
 número que ele já deu está sob suspeita, inclusive os que confirmaram o que você esperava.
+
+**A mutação tem duas provas.** Apagar **todas** as ocorrências do que o teste vigia prova que ele
+*sabe* reprovar; apagar **só a ocorrência que carrega o sentido** (o aviso, a regra, a opção) prova que
+ele olha o *lugar certo*. Se a segunda sobrevive, a asserção olha o texto inteiro e se contenta com a
+mesma palavra em outro ponto. É onde a sonda de localidade costuma achar a frouxidão: a fixture que dá
+a ordem certa por acaso, o controle negativo de um lado só, a frase de sucesso impressa sempre.
+
+**Teste novo escrito vermelho de propósito pode esconder o próprio falso positivo.** Ele fica vermelho
+por dois motivos e o protótipo só mostra um: depois de escrever a correção, **rode o teste contra o
+texto ou código certo** antes de fechar a lista dos vermelhos. Todo comentário novo que afirma uma
+ordem ("X vem antes de Y") ganha uma sonda que inverte X e Y.
 
 **Verificar o instrumento antes de acusar o instrumentado.** Quando a medição contradiz o que o
 código parece fazer, o suspeito nº 1 é o medidor, não o código. Essa ordem economiza rodadas

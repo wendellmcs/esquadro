@@ -176,6 +176,14 @@ modelo barato em marcha AAA — portão completo. Isso é o desenho correto, nã
 - Perguntas conversacionais ou que já se sabe responder: responder direto, sem delegar.
 - **Busca e leitura vão para a camada mais barata que sabe ler** — localizar arquivo, achar função,
   responder "onde está X", mapear estrutura. É a delegação mais fácil de esquecer, e a mais barata.
+- **Agente que edita por casamento exato de texto não vai para o degrau mais barato**, e sim para o do
+  meio. A edição que falha vira escalada, e escalada refaz a tarefa inteira: um único retrabalho anula
+  a diferença de preço entre os dois degraus. Busca e leitura, que não editam, seguem no mais barato.
+- **Subagente que cai com limite de uso (erro 429) não espera o reset: relance o mesmo brief em outro
+  modelo.** O limite é por modelo, e trocar destrava na hora. Registre que a ronda mudou de modelo e
+  **conte o agente caído** no total declarado — custo é informação. Modelo mais barato serve para ronda
+  de verificação, com pergunta específica e fatos já provados no brief; não para a primeira ronda, que
+  é a que descobre.
 - Tarefas independentes podem ir em paralelo para agentes diferentes, num único disparo.
 - Após delegar, **repassar ao usuário o resultado relevante** — o relatório do subagente não aparece
   para ele. Nenhum mecanismo garante isso; é regra de texto e some se não for lembrada.
