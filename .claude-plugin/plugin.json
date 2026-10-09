@@ -1,7 +1,7 @@
 {
   "name": "esquadro",
   "displayName": "esquadro",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Oito portoes deterministicos que obrigam o agente a provar em vez de afirmar: fecho sem evidencia, escopo, comando destrutivo, sessao concorrente, agente caro, criar sem procurar, catraca afrouxada. Alem deles, toda sessao abre com um bloco curto de qualidade de resposta, que nao barra nada.",
   "author": { "name": "wendellmcs" },
   "license": "MIT",

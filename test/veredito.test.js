@@ -356,3 +356,35 @@ test('T2/F6-03: entrada de refutados.json que nao e objeto diz "entrada invalida
     assert.throws(() => v.apurar([[veredito('correcao', [])]], { refutados: [semProva] }), /refutacao sem prova/);
   }
 });
+
+// T11-4: a lente de seguranca de codigo ganha as tres conferencias da lente de tela (a Lente 8 da
+// rubrica) antes de um achado poder ser P0; sem confirmar a intencao, nasce P2 com pergunta.
+test('veredito: a pergunta da lente seguranca cobra as tres conferencias e o P2 sem intencao confirmada', () => {
+  const l = v.LENTES.find((x) => x.chave === 'seguranca');
+  assert.strictEqual(l.titulo, 'Seguranca e dado sensivel', 'o apurar casa a refutacao pelo titulo');
+  const p = l.pergunta;
+  assert.ok(/Segredo em texto, log com dado do usuario, entrada nao validada que vira comando ou caminho\./.test(p),
+    'a pergunta de busca que ja existia tem de seguir inteira');
+  assert.ok(/chamador(es)? real|chamadores reais/i.test(p), '1: chamadores reais, nao o caminho hipotetico');
+  assert.ok(/leitura/i.test(p) && /mutac/i.test(p), '2: leitura nao e mutacao');
+  assert.ok(/desenho deliberado/i.test(p), '3: desenho deliberado nao e falha');
+  assert.ok(/P2/.test(p), 'sem confirmar a intencao o achado nasce P2');
+  assert.ok(/nunca P0/i.test(p), 'e nunca P0');
+  assert.ok(!/[^\x00-\x7f]/.test(p), 'a pergunta tem de ser ASCII');
+});
+
+test('veredito: as outras oito lentes de codigo seguem com a pergunta de antes', () => {
+  const antes = {
+    correcao: 'Qual dos dois quebra? Entrada concreta que produz resultado errado, com arquivo:linha.',
+    escopo: 'O que mudou alem do necessario? Renomeacao, extracao, formatacao junto de correcao funcional.',
+    estados: 'Erro, vazio, carregando, limite e timeout estao tratados, ou so o caso feliz?',
+    borda: 'null, string vazia, lista vazia, numero negativo, unicode, caminho com espaco, arquivo enorme.',
+    manutencao: 'O que um leitor novo entende errado? Nome que mente, funcao que faz duas coisas, erro engolido.',
+    microcopy: 'Mensagem que nao diz o que fazer a seguir, jargao, ingles solto, tom que culpa o usuario.',
+    medidor: 'Teste, baseline, threshold, skip ou mock mudaram junto com o codigo que eles cobrem?',
+    design: 'Cite o token literal ou a tela irm\u00e3 de refer\u00eancia. Valor cru, gradiente, sombra larga, card aninhado ou tipografia fluida onde o sistema nao os tem. Sem citar token ou coordenada, o veredito nao conta.'
+  };
+  const hoje = {};
+  for (const l of v.LENTES) if (l.chave !== 'seguranca') hoje[l.chave] = l.pergunta;
+  assert.deepStrictEqual(hoje, antes);
+});

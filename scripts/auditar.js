@@ -12,6 +12,8 @@ function valor(nome) {
 }
 
 const cwd = process.cwd();
-const r = auditoria.auditar(cwd, config.carregarProjeto(cwd) || {}, { memoria: valor('--memoria') });
+// T11-3/D370: sem projeto.json o carregarProjeto devolve null, e a auditoria precisa saber disso
+// (sem projeto, as fontes canonicas candidatas entram no peso); por isso nao ha `|| {}` aqui.
+const r = auditoria.auditar(cwd, config.carregarProjeto(cwd), { memoria: valor('--memoria') });
 process.stdout.write(JSON.stringify(r, null, 2) + '\n');
 process.exit(0);

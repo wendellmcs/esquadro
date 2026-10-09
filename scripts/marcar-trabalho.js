@@ -19,6 +19,22 @@ function contarRespostas(resp) {
   }).length;
 }
 
+// T11-7 (D365 secao 3): o resumo que o `git commit` imprime, `[<branch> <sha>] <mensagem>`. A branch
+// pode ter espaco e parenteses (`master (root-commit)`, `detached HEAD`); o sha tem de 7 a 40 digitos
+// hexadecimais. Tem de ser a linha inteira de saida: texto citado no meio de outra linha nao conta.
+const LINHA_DO_COMMIT = /^\[[^\]\r\n]+ [0-9a-f]{7,40}\] \S/;
+
+/**
+ * T11-7: o Claude Code so preenche `gitOperation` quando a saida do git traz essa linha E o `git -C`
+ * aponta para caminho sem espaco (medido na 2.1.292). Sem o campo, a propria linha do `stdout` prova o
+ * commit. `git commit -q` nao imprime a linha e continua sem contar: o texto do comando nunca decide.
+ * Fica fora do `alterar` pelo mesmo motivo do `contarRespostas`.
+ */
+function commitNaSaida(resp) {
+  if (!resp || typeof resp !== 'object' || typeof resp.stdout !== 'string') return false;
+  return resp.stdout.split(/\r?\n/).some(function (linha) { return LINHA_DO_COMMIT.test(linha); });
+}
+
 // PostToolUse em Write|Edit|Bash|PowerShell|Grep|Glob|Read|AskUserQuestion: houve trabalho real
 // neste turno (o AskUserQuestion so conta a decisao do dono; perguntar nao e trabalho).
 io.blindar(function () {
@@ -50,13 +66,15 @@ io.blindar(function () {
       if (!soLeitura) {
         if (!s.trabalhoReal) s.turnosComTrabalho = (s.turnosComTrabalho || 0) + 1;
         s.trabalhoReal = true;
-        // T10-3 (D357): commit que PASSOU. So o que o proprio Claude Code informa em
+        // T10-3 (D357): commit que PASSOU, pelo que o proprio Claude Code informa em
         // tool_response.gitOperation.commit.sha (medido na 2.1.258) - sem regex no comando, que
         // daria falso positivo com `echo "git commit"`. O commit que falha nem chega ao PostToolUse.
+        // T11-7 (D365): sem o gitOperation, vale a linha `[branch sha]` do stdout. +1 por chamada,
+        // nunca a soma das duas fontes.
         if (nome === 'bash' || nome === 'powershell') {
           const resp = e.tool_response;
           const op = resp && typeof resp === 'object' ? resp.gitOperation : null;
-          if (op && op.commit && op.commit.sha) s.commitsFeitos = (s.commitsFeitos || 0) + 1;
+          if ((op && op.commit && op.commit.sha) || commitNaSaida(resp)) s.commitsFeitos = (s.commitsFeitos || 0) + 1;
         }
         const arquivo = (e.tool_input || {}).file_path;
         if (arquivo) {

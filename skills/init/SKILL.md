@@ -107,6 +107,11 @@ próprios e os dois vão rodar. Pergunte se algum deve sair, e **não desligue n
 Leia o bloco `instrucoes` da varredura e mostre: total, os três arquivos que mais pesam, e o teto.
 **Diga o método junto com o número** — número sem método é opinião com casas decimais.
 
+Se `instrucoes.fontes` vier `candidatas`, ainda não existe `projeto.json`: o número conta os
+candidatos a fonte canônica que a varredura achou, ainda não confirmados (a pergunta 2 do Passo 4
+confirma). **Diga isso ao dono junto com o número.** Se vier `declaradas`, o número conta as fontes que o
+dono já declarou.
+
 - Abaixo do aviso: siga.
 - Entre o aviso e o teto: diga que está perto, e que cada regra nova compete por atenção.
 - **Acima do teto:** pare e leve ao dono em 3 opções. Acrescentar regra a um projeto que já estourou
@@ -257,6 +262,44 @@ achando que você viu.
    Se o projeto não tiver agentes, **deixe a lista vazia** — é resposta legítima, e o portão de
    custo simplesmente não opina. **Um degrau sozinho não é escada** e o validador recusa: ou são
    dois, ou é nenhum.
+
+## Passo 4b — onde cada coisa se registra
+
+Isto **não** é a sétima pergunta do Passo 4: aquelas gravam um campo do `projeto.json`, e a resposta
+daqui não é campo dele. A skill de execução (`padrao`) procura esses três lugares na fatia
+`ondeRegistrar` do adaptador; sem resposta, ela não sabe para onde mandar o que sobrou de uma revisão
+nem a decisão que o dono tomou.
+
+Use `AskUserQuestion`, com 3 opções como nas outras perguntas, e peça **um arquivo para cada**, para a
+decisão não se perder dentro de uma lista de pendências:
+
+1. o **registro das decisões** do dono (o log de decisões: o arquivo onde cada decisão fica com a
+   data);
+2. as **dúvidas ainda abertas**;
+3. o **registro de progresso** do plano em execução (o ledger: o arquivo onde cada tarefa do plano
+   anota o que foi feito).
+
+Na pergunta ao dono, use as palavras em português; o termo em inglês só entre parênteses.
+
+**Ofereça só nomes que apareceram na listagem de primeiro nível do Passo 3b ou na varredura.** Sem
+candidato, diga isso e pergunte aberto (a regra do Passo 4). **Não crie os arquivos** — este passo só
+pergunta onde ficam.
+
+**Para onde a resposta vai:** para a fatia `decisoes` do Passo 7c, a skill do projeto, que a `padrao`
+lê no Passo 0-bis. O 7c usa a resposta daqui **sem perguntar de novo**. Se o dono escolher **Não
+gravar** a skill no 7c, a resposta do 4b não fica gravada em lugar nenhum — **avise isso ao dono
+naquela hora**.
+
+**No re-init, olhe antes se a skill do projeto já existe** (liste `.claude/skills/`: é a pasta com o
+`SKILL.md` que um init anterior gravou pelo 7c, com a fatia `decisoes`), porque o 7c **não grava por cima dela** (o
+script recusa sobrescrever skill que já existe, item 6 do 7c):
+
+- **existe e traz os três arquivos** na fatia `decisoes`: não repergunte; vale o que está lá;
+- **existe sem os três:** faça este passo, mas a resposta **não** vai pelo 7c. Mostre ao dono o
+  trecho com os três arquivos para ele pôr na fatia `decisoes` da skill existente — não edite você:
+  no re-init o `projeto.json` já existe, e o portão de escopo pode negar a escrita (a armadilha do
+  Passo 7e). **Avise que, até ele pôr o trecho, a resposta não fica gravada**;
+- **não existe:** faça este passo; a resposta segue para o 7c.
 
 ## Passo 5 — o mapa de marchas
 
@@ -449,6 +492,9 @@ O `regras.md` é reinjetado em **toda** sessão e por isso tem de ficar curto. O
 os portões próprios, as decisões validadas — vai para uma **skill do projeto**, que carrega sob
 demanda e não custa nada quando não é chamada.
 
+**No re-init com a skill do projeto já gravada, pule este passo e diga isso ao dono:** o script não
+grava por cima (item 6), e o que faltar na fatia `decisoes` segue o caminho do Passo 4b.
+
 **1. Descubra o que o molde pergunta:**
 
     node "${CLAUDE_PLUGIN_ROOT}/scripts/gerar-skill.js" --fatias
@@ -461,7 +507,7 @@ demanda e não custa nada quando não é chamada.
 | `dataGeracao` | A data de hoje |
 | `portoes` | *"Que verificação este projeto exige e que nenhum outro exigiria?"* — contrato, gate visual, catraca, suíte por área |
 | `intocaveis` | O que não se toca **além** do que já está em `projeto.json` — e por quê |
-| `decisoes` | Decisões já validadas, na forma "não perguntar de novo", com a data — e **onde cada coisa se registra** (a fatia `ondeRegistrar` da skill de execução): o log de decisões do dono, as dúvidas ainda abertas e o ledger do plano em execução, **um arquivo para cada**, para a decisão não se perder dentro de uma lista de pendências |
+| `decisoes` | Decisões já validadas, na forma "não perguntar de novo", com a data — e **onde cada coisa se registra** (a fatia `ondeRegistrar` da skill de execução): use a resposta do **Passo 4b**, **sem perguntar de novo** — o log de decisões do dono, as dúvidas ainda abertas e o ledger do plano em execução, **um arquivo para cada** |
 | `naoPromete` | O que este projeto **não** garante, dito agora para não virar promessa quebrada |
 
 **Regra dura ao preencher:** nunca crave versão, flag, preço, nome de modelo ou nome de evento. Se

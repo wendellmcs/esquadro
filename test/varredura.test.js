@@ -447,3 +447,49 @@ test('varrer.js: package.json que e DIRETORIO nao vira "li o package.json"', () 
     assert.strictEqual(saida.inferido.provaDePronto, null, 'nada foi lido, entao nao ha prova');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// T11-3 (R-T24-02): no init o projeto.json ainda nao existe. O peso de instrucao tem de
+// contar os candidatos que a varredura achou, e dizer que sao candidatos; com projeto.json
+// declarado, o que o dono declarou manda.
+function rodarVarrer(dir) {
+  const cli = path.join(__dirname, '..', 'scripts', 'varrer.js');
+  const r = spawnSync(process.execPath, [cli, dir], { encoding: 'utf8', shell: false });
+  assert.strictEqual(r.status, 0, r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+test('varrer.js: sem projeto.json, o CLAUDE.md da raiz entra no peso e vem marcado como candidato', () => {
+  const dir = montar({ 'CLAUDE.md': '- regra um\n- regra dois\n- regra tres\n' });
+  try {
+    const saida = rodarVarrer(dir);
+    assert.strictEqual(saida.instrucoes.fontes, 'candidatas');
+    assert.strictEqual(saida.instrucoes.total, 3);
+    assert.deepStrictEqual(saida.instrucoes.porArquivo.map((p) => p.arquivo), ['CLAUDE.md']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('varrer.js: projeto.json com fontesCanonicas vazio nao deixa o CLAUDE.md entrar', () => {
+  const dir = montar({
+    'CLAUDE.md': '- regra um\n- regra dois\n',
+    '.claude/esquadro/projeto.json': JSON.stringify({ fontesCanonicas: [] })
+  });
+  try {
+    const saida = rodarVarrer(dir);
+    assert.strictEqual(saida.instrucoes.fontes, 'declaradas');
+    assert.strictEqual(saida.instrucoes.total, 0);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('varrer.js: projeto.json que declara outro arquivo conta so o declarado', () => {
+  const dir = montar({
+    'CLAUDE.md': '- a\n- b\n- c\n',
+    'AGENTS.md': '- d\n',
+    '.claude/esquadro/projeto.json': JSON.stringify({ fontesCanonicas: ['AGENTS.md'] })
+  });
+  try {
+    const saida = rodarVarrer(dir);
+    assert.strictEqual(saida.instrucoes.fontes, 'declaradas');
+    assert.strictEqual(saida.instrucoes.total, 1);
+    assert.deepStrictEqual(saida.instrucoes.porArquivo.map((p) => p.arquivo), ['AGENTS.md']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

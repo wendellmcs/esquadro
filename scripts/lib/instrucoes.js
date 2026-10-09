@@ -21,9 +21,20 @@ function limite(v, padrao) {
   return Number.isInteger(v) && v >= 0 ? v : padrao;
 }
 
-function contar(cwd, projeto) {
+// T11-3: no init o projeto.json ainda nao existe, e as fontes canonicas (as que mais pesam)
+// ficavam de fora. Regra: fontesCanonicas declaradas (array, mesmo vazio: o dono declarou) mandam;
+// sem isso, valem os candidatos que a varredura achou, se vierem como array; senao, nenhuma.
+// `fontes` diz de onde veio, para o numero nao se passar por confirmado.
+function escolherFontes(projeto, candidatos) {
+  if (projeto && Array.isArray(projeto.fontesCanonicas)) return { lista: projeto.fontesCanonicas, origem: 'declaradas' };
+  if (Array.isArray(candidatos)) return { lista: candidatos, origem: 'candidatas' };
+  return { lista: [], origem: 'nenhuma' };
+}
+
+function contar(cwd, projeto, candidatos) {
   const alvos = [];
-  for (const f of ((projeto && projeto.fontesCanonicas) || [])) alvos.push(f);
+  const fontes = escolherFontes(projeto, candidatos);
+  for (const f of fontes.lista) alvos.push(f);
   alvos.push(path.join('.claude', 'esquadro', 'regras.md'));
   for (const s of ambiente.detectar(cwd).skills) alvos.push(path.join('.claude', 'skills', s, 'SKILL.md'));
 
@@ -42,6 +53,7 @@ function contar(cwd, projeto) {
     teto: teto,
     avisarA: limite(ambiente.LIMITES.avisarA, 150),
     estourou: total > teto,
+    fontes: fontes.origem,
     metodo: METODO
   };
 }

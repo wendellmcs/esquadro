@@ -479,3 +479,56 @@ test('auditoria (F3-22): as mensagens de leitura traduzem o codigo, e o campo ca
     assert.ok(r.regras.motivo.includes('(e uma pasta (EISDIR))'), r.regras.motivo);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// ---------------------------------------------------------------- T11-3/D370: o peso do auditar sem projeto.json
+// Mesmo defeito que a T11-3 corrigiu no init: sem projeto.json, as fontes canonicas ficavam fora do peso.
+
+function claudeMd(dir) {
+  fs.writeFileSync(path.join(dir, 'CLAUDE.md'), '# Regras\n\n- primeira regra\n- segunda regra\n- terceira regra\n');
+}
+
+test('peso (D370): sem projeto (null), o CLAUDE.md entra no peso como fonte candidata', () => {
+  const dir = pasta('sem-projeto');
+  try {
+    claudeMd(dir);
+    const peso = aud.auditar(dir, null).peso;
+    assert.strictEqual(peso.fontes, 'candidatas');
+    assert.ok(peso.porArquivo.some(function (p) { return p.arquivo === 'CLAUDE.md' && p.n === 3; }), JSON.stringify(peso.porArquivo));
+    assert.strictEqual(peso.total, 3);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('peso (D370): projeto declarado manda - fontesCanonicas vazio e "declaradas" e o CLAUDE.md nao conta', () => {
+  const dir = pasta('declarado-vazio');
+  try {
+    claudeMd(dir);
+    const peso = aud.auditar(dir, { fontesCanonicas: [] }).peso;
+    assert.strictEqual(peso.fontes, 'declaradas');
+    assert.strictEqual(peso.total, 0);
+    assert.ok(!peso.porArquivo.some(function (p) { return p.arquivo === 'CLAUDE.md'; }));
+    // projeto sem a chave: nao e "sem projeto"; nada e varrido e a origem e "nenhuma"
+    const semChave = aud.auditar(dir, {}).peso;
+    assert.strictEqual(semChave.fontes, 'nenhuma');
+    assert.strictEqual(semChave.total, 0);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('peso (D370): auditar.js sem projeto.json pesa o CLAUDE.md como candidata; com projeto.json vazio nao', () => {
+  const dir = pasta('cli-sem-projeto');
+  try {
+    claudeMd(dir);
+    const rodar = function () {
+      const r = spawnSync(process.execPath, [SCRIPT], { cwd: dir, encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, r.stderr);
+      return JSON.parse(r.stdout);
+    };
+    const sem = rodar().peso;
+    assert.strictEqual(sem.fontes, 'candidatas');
+    assert.ok(sem.porArquivo.some(function (p) { return p.arquivo === 'CLAUDE.md'; }));
+    fs.mkdirSync(path.join(dir, '.claude', 'esquadro'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'projeto.json'), JSON.stringify({ fontesCanonicas: [] }));
+    const com = rodar().peso;
+    assert.strictEqual(com.fontes, 'declaradas');
+    assert.strictEqual(com.total, 0);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

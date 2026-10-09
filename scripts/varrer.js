@@ -7,6 +7,9 @@ const varredura = require('./lib/varredura.js');
 const cwd = process.argv[2] || process.cwd();
 const r = varredura.listar(cwd);
 const inferido = varredura.inferir(r.arquivos, cwd, r);
+// T11-3: o projeto.json e lido uma vez. Sem ele (init), os candidatos a fonte canonica que a
+// varredura achou entram no peso de instrucao, marcados como candidatos (`instrucoes.fontes`).
+const projeto = require('./lib/config.js').carregarProjeto(cwd);
 
 // D98 rodada 2: a frase anterior era estatica e afirmava ter lido o package.json ate
 // num repositorio que nao tem package.json nenhum. Trocar uma frase falsa por outra
@@ -39,7 +42,7 @@ const saida = {
       : 'so a lista de caminhos foi varrida; nenhum conteudo de arquivo foi lido'
   },
   ambiente: require('./lib/ambiente.js').detectar(cwd),
-  instrucoes: require('./lib/instrucoes.js').contar(cwd, require('./lib/config.js').carregarProjeto(cwd) || {}),
+  instrucoes: require('./lib/instrucoes.js').contar(cwd, projeto || {}, projeto ? undefined : inferido.candidatosCanonicos),
   inferido: inferido
 };
 

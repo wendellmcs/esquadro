@@ -9,9 +9,12 @@ function raiz() {
 }
 
 /** session_id vira nome de arquivo seguro: nada de '..' nem de barra. */
+function idSaneado(sessionId) {
+  return String(sessionId || 'sem-sessao').replace(/[^a-zA-Z0-9_-]/g, '-');
+}
+
 function caminhoSessao(sessionId) {
-  const id = String(sessionId || 'sem-sessao').replace(/[^a-zA-Z0-9_-]/g, '-');
-  return path.join(raiz(), id + '.json');
+  return path.join(raiz(), idSaneado(sessionId) + '.json');
 }
 
 function ler(sessionId) {
@@ -107,6 +110,47 @@ function limpar(sessionId) {
   try { fs.rmSync(caminhoSessao(sessionId), { force: true }); } catch (e) { /* ja nao existe */ }
 }
 
+// T11-2 (D366): o arquivo de uma sessao parada ha mais de 7 dias nao serve a ninguem. O da sessao que
+// FECHA nunca sai: o --resume mantem o session_id, e apagar o vinculo da frente e a foto do git status
+// refaria o defeito da D46. O SessionEnd tem 1,5 s de orcamento (o timeout de gancho de plugin nao o
+// aumenta), entao a limpeza para sozinha antes disso: o que sobrar sai na proxima.
+const IDADE_LIMPEZA_MS = 7 * 24 * 60 * 60 * 1000;
+const LIMITE_LIMPEZA_MS = 800;
+// Os tres nomes que `gravar` e `travar` criam: <id>.json, <id>.json.trava e <id>.json.<pid>.<rand>.tmp.
+const NOME_DE_SESSAO = /^([a-zA-Z0-9_-]+)\.json(?:\.trava|\.\d+\.[a-z0-9]+\.tmp)?$/;
+
+/**
+ * Apaga, na pasta de estado, so os arquivos de sessao com `mtime` mais velho que 7 dias, nunca os da
+ * sessao atual (comparada pelo id saneado, sem diferenciar caixa: ABC e abc sao o mesmo arquivo no
+ * Windows). Nao apaga mais nada: marca de veredito, nome desconhecido, pasta e a propria raiz ficam.
+ * Nao usa `alterar` nem `travar` (nao pode esperar a trava de 2 s), nunca lanca e devolve quantos apagou.
+ * `opcoes.limiteMs` e `opcoes.idadeMs` existem para o teste.
+ */
+function limparVelhos(sessionIdAtual, agoraMs, opcoes) {
+  const o = opcoes || {};
+  const limite = Date.now() + (typeof o.limiteMs === 'number' ? o.limiteMs : LIMITE_LIMPEZA_MS);
+  const idade = typeof o.idadeMs === 'number' ? o.idadeMs : IDADE_LIMPEZA_MS;
+  const agora = typeof agoraMs === 'number' ? agoraMs : Date.now();
+  const atual = idSaneado(sessionIdAtual).toLowerCase();
+  let apagados = 0;
+  try {
+    const pasta = raiz();
+    for (const entrada of fs.readdirSync(pasta, { withFileTypes: true })) {
+      if (Date.now() > limite) break;
+      if (!entrada.isFile()) continue;
+      const m = NOME_DE_SESSAO.exec(entrada.name);
+      if (!m || m[1].toLowerCase() === atual) continue;
+      try {
+        const arquivo = path.join(pasta, entrada.name);
+        if (agora - fs.statSync(arquivo).mtimeMs <= idade) continue;
+        fs.unlinkSync(arquivo);
+        apagados++;
+      } catch (e) { /* sumiu no meio, EPERM, EBUSY: segue com o proximo */ }
+    }
+  } catch (e) { /* pasta inexistente ou ilegivel: nada a limpar */ }
+  return apagados;
+}
+
 /**
  * O estado tem dois tempos de vida, e todo campo que um script grava nele esta numa
  * destas duas listas - um teste le os scripts e reprova o campo que nao estiver. O
@@ -173,5 +217,5 @@ function descarregar(cwd, contadores) {
   return true;
 }
 
-module.exports = { caminhoSessao, caminhoTrava, ler, gravar, alterar, limpar, CAMPOS_DA_SESSAO, CAMPOS_DO_TURNO,
-  camposDaSessao, incrementar, descarregar };
+module.exports = { caminhoSessao, caminhoTrava, ler, gravar, alterar, limpar, limparVelhos, IDADE_LIMPEZA_MS,
+  LIMITE_LIMPEZA_MS, CAMPOS_DA_SESSAO, CAMPOS_DO_TURNO, camposDaSessao, incrementar, descarregar };

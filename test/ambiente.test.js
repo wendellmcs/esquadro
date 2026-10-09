@@ -136,3 +136,42 @@ test('rubrica: proibicao solta em lista de regras e recusada (criterio 1)', () =
   assert.strictEqual(r.ok, false);
   assert.ok(r.erros.some((e) => e.includes('gatilho')));
 });
+
+// T11-3 (R-T24-02): no init o projeto.json ainda nao existe, e o peso de instrucao ignorava
+// justamente o CLAUDE.md. Os candidatos da varredura entram como 3o parametro.
+test('instrucoes: sem fontes declaradas, os candidatos entram e o retorno diz que sao candidatas', () => {
+  const dir = montar({ 'CLAUDE.md': '- a\n- b\n- c\n' });
+  try {
+    const r = instrucoes.contar(dir, {}, ['CLAUDE.md']);
+    assert.strictEqual(r.total, 3);
+    assert.strictEqual(r.fontes, 'candidatas');
+    assert.deepStrictEqual(r.porArquivo.map((p) => p.arquivo), ['CLAUDE.md']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('instrucoes: fontesCanonicas declaradas mandam, mesmo vazias, e os candidatos ficam de fora', () => {
+  const dir = montar({ 'CLAUDE.md': '- a\n- b\n', 'AGENTS.md': '- c\n' });
+  try {
+    const vazio = instrucoes.contar(dir, { fontesCanonicas: [] }, ['CLAUDE.md']);
+    assert.strictEqual(vazio.total, 0, 'o dono declarou lista vazia: candidato nao entra');
+    assert.strictEqual(vazio.fontes, 'declaradas');
+    const outro = instrucoes.contar(dir, { fontesCanonicas: ['AGENTS.md'] }, ['CLAUDE.md', 'AGENTS.md']);
+    assert.strictEqual(outro.total, 1, 'so o declarado conta');
+    assert.strictEqual(outro.fontes, 'declaradas');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('instrucoes: com 2 argumentos segue como antes e diz nenhuma/declaradas; candidatos que nao e lista nao lanca', () => {
+  const dir = montar({ 'CLAUDE.md': '- a\n' });
+  try {
+    const sem = instrucoes.contar(dir, {});
+    assert.strictEqual(sem.total, 0);
+    assert.strictEqual(sem.fontes, 'nenhuma');
+    assert.strictEqual(instrucoes.contar(dir, { fontesCanonicas: ['CLAUDE.md'] }).fontes, 'declaradas');
+    for (const ruim of ['CLAUDE.md', 7, { a: 1 }, null]) {
+      const r = instrucoes.contar(dir, null, ruim);
+      assert.strictEqual(r.total, 0, 'candidato nao-lista nao conta: ' + JSON.stringify(ruim));
+      assert.strictEqual(r.fontes, 'nenhuma');
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

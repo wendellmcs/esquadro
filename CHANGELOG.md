@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.4.4 — o estilo escrito pelo shell passa pelo design, o fim de sessao limpa o estado velho e o commit conta pela linha do git
+
+Tres pendencias que o usuario sente, do backlog de achados, e ajustes no init, na lente de seguranca,
+no `/esquadro:auditar` e no README. Os comportamentos novos vem com teste; a suite inteira roda com
+`npm test`.
+
+- Sao **21 baldes** de contador: 16 que negam, 5 que so contam.
+- **O arquivo de estilo escrito por comando de shell passa pelo design.** Gancho novo na entrada
+  `Bash|PowerShell` (`portao-estilo.js`, balde `estilo_por_shell`): com `.claude/esquadro/design.json`,
+  o comando que escreve arquivo de estilo e negado, e a mensagem manda usar Write ou Edit, que conferem
+  os tokens. Sem o `design.json`, nada muda. O leitor do comando e heuristico: o que ele nao pega esta
+  em "O que o esquadro NAO promete", no README.
+- **O fim de sessao limpa o estado velho.** Gancho `SessionEnd` novo (`fim-sessao.js`): apaga os
+  arquivos de sessao parados ha mais de 7 dias, nunca o da sessao que fecha, para o `--resume` seguir
+  funcionando.
+- **O commit conta pela linha do git.** Quando o Claude Code nao informa o `gitOperation` (ele some com
+  `-q` e com `git -C` em caminho com espaco), o contador le a linha `[branch sha]` que o `git commit`
+  imprime. Commit com `-q` nao imprime a linha e segue sem contar; o README diz isso.
+- **O peso de instrucao conta as fontes candidatas.** Sem `projeto.json`, o init e o `/esquadro:auditar`
+  somam ao peso os candidatos a fonte canonica que a varredura achou, marcados como candidatos
+  (`fontes: 'candidatas'`). Fontes declaradas no `projeto.json` mandam, mesmo vazias.
+- **Init: onde cada coisa se registra.** Passo 4b novo: pergunta um arquivo para as decisoes do dono,
+  um para as duvidas abertas e um para o progresso do plano. No re-init com a skill do projeto ja
+  gravada, o 7c nao grava por cima: o init mostra o trecho para o dono por na skill e avisa quando a
+  resposta nao fica gravada.
+- **Lente de seguranca de codigo:** tres conferencias antes de abrir P0 e a regra do P2, como a lente
+  de tela.
+- **README:** a versao nova chega alguns minutos depois de abrir a sessao e o aviso pode nao aparecer
+  no painel (`claude plugin list` confere o que esta no disco); tabela de ganchos com os dois novos;
+  subtitulo e link dos comandos corrigidos.
+
 ## 0.4.3 — o aviso de troca de chat que chega ao Claude, mensagens que dizem o que fazer e a doutrina de uso comum
 
 Quem instala o plugin passa a ganhar a troca de chat com handoff, que antes so vinha do `CLAUDE.md`

@@ -283,7 +283,9 @@ const TRAVA_DO_BALDE = {
   comando_destrutivo: 5, shell_idioma_errado: 5, outra_frente: 5, cd_solto: 5,
   agente_caro_em_marcha_rapida: 6, criou_sem_buscar: 7, catraca_afrouxada: 8,
   // o modulo de design nega, mas e opcional e nao e trava: so existe com design.json
-  token_fora_do_sistema: null
+  token_fora_do_sistema: null,
+  // T11-1: o mesmo modulo de design, quando o estilo e escrito por comando de shell
+  estilo_por_shell: null
 };
 const TRAVA_DO_COMANDO = { init: 1, revisar: 2 };
 
@@ -474,4 +476,110 @@ test('publicacao: o texto que vai a publico nao cita codigo de registro que nao 
 test('publicacao: o pacote segue privado para o npm - publicar aqui e outro caminho', () => {
   assert.strictEqual(json('package.json').private, true,
     'este plugin se instala por marketplace do Claude Code, nunca por npm publish');
+});
+
+// ── T11: o roteiro do init e o README dizem o que o codigo faz ─────────────
+
+const secaoDoInit = (inicio) => {
+  const t = ler('skills/init/SKILL.md');
+  const i = t.indexOf('\n## ' + inicio);
+  assert.ok(i !== -1, 'sumiu o passo "' + inicio + '" do init');
+  const f = t.indexOf('\n## ', i + 4);
+  return t.slice(i, f === -1 ? t.length : f);
+};
+// a prosa quebra linha no meio da frase: as frases se conferem com o espaco normalizado
+const plano = (s) => s.replace(/\n>/g, '\n').replace(/\s+/g, ' ');
+
+test('T11-3: o Passo 2c do init diz que o peso conta candidatos a fonte quando instrucoes.fontes e candidatas', () => {
+  const p = plano(secaoDoInit('Passo 2c'));
+  assert.ok(/instrucoes\.fontes/.test(p), 'o passo nao cita o campo instrucoes.fontes');
+  assert.ok(/`candidatas`/.test(p), 'o passo nao diz o valor candidatas');
+  assert.ok(/candidatos? a fonte can/i.test(p), 'o passo nao diz que o numero conta candidatos a fonte canonica');
+  assert.ok(/ainda n[ãa]o confirmados/i.test(p), 'o passo nao diz que ainda nao estao confirmados');
+  assert.ok(/pergunta 2 do Passo 4/.test(p), 'o passo nao manda para a pergunta 2 do Passo 4');
+  assert.ok(/junto com o n[úu]mero/i.test(p), 'o passo nao manda dizer isso ao dono junto com o numero');
+});
+
+test('T11-5: o Passo 4b pergunta onde cada coisa se registra, depois do 4 e antes do 5, sem virar a 7a pergunta', () => {
+  const t = ler('skills/init/SKILL.md');
+  const i4 = t.indexOf('\n## Passo 4 ');
+  const i4b = t.indexOf('\n## Passo 4b');
+  const i5 = t.indexOf('\n## Passo 5 ');
+  assert.ok(i4 !== -1 && i4b !== -1 && i5 !== -1, 'faltou o Passo 4, o 4b ou o 5');
+  assert.ok(i4 < i4b && i4b < i5, 'o 4b tem de vir depois do 4 e antes do 5');
+  const p = plano(secaoDoInit('Passo 4b'));
+  assert.ok(/^ ## Passo 4b [—-] onde cada coisa se registra/.test(p), 'titulo do 4b');
+  assert.ok(/log de decis[õo]es/i.test(p), 'faltou o destino: log de decisoes');
+  assert.ok(/d[úu]vidas (ainda )?abertas/i.test(p), 'faltou o destino: duvidas abertas');
+  assert.ok(/ledger/i.test(p), 'faltou o destino: ledger do plano em execucao');
+  assert.ok(/ondeRegistrar/.test(p), 'o 4b nao cita a fatia ondeRegistrar');
+  assert.ok(/AskUserQuestion/.test(p), 'o 4b nao usa AskUserQuestion');
+  assert.ok(/Passo 3b/.test(p), 'o 4b nao manda oferecer so nome da listagem do Passo 3b');
+  assert.ok(/N[ãa]o crie os arquivos|n[ãa]o cri(e|ar) os arquivos/i.test(p), 'o 4b nao diz que nao cria os arquivos');
+  assert.ok(/Passo 7c/.test(p) && /decisoes/.test(p), 'o 4b nao diz que a resposta vai para a fatia decisoes do 7c');
+  assert.ok(/N[ãa]o gravar/.test(p) && /lugar nenhum/.test(p),
+    'o 4b nao avisa que, com "Nao gravar" a skill no 7c, a resposta nao fica gravada em lugar nenhum');
+  // o 4b nao e a 7a pergunta do Passo 4 (ondeRegistrar nao e campo do projeto.json)
+  assert.strictEqual(projetoLib.CHAVES.indexOf('ondeRegistrar'), -1);
+  const p4 = secaoDoInit('Passo 4 ');
+  assert.ok(!/ondeRegistrar/.test(p4), 'o Passo 4 nao pode carregar a pergunta do 4b');
+});
+
+test('T11-5: a linha decisoes do Passo 7c remete ao 4b e nao pergunta de novo', () => {
+  const linha = secaoDoInit('Passo 7c').split('\n').filter((l) => /^\| `decisoes` \|/.test(l))[0];
+  assert.ok(linha, 'sumiu a linha decisoes do 7c');
+  assert.ok(/Passo 4b/.test(linha), 'a linha decisoes nao remete ao Passo 4b');
+  assert.ok(/sem perguntar de novo/i.test(linha), 'a linha decisoes nao diz que nao se pergunta de novo');
+});
+
+test('T11-6: o README nao promete o aviso Plugin updated como certo e diz que a versao chega minutos depois', () => {
+  const i = README.indexOf('Ligue a atualiza');
+  const f = README.indexOf('**No painel do VS Code o bot', i);
+  assert.ok(i !== -1 && f > i, 'sumiu o bloco da atualizacao automatica do README');
+  const bloco = plano(README.slice(i, f));
+  assert.ok(/alguns minutos depois/i.test(bloco), 'o README nao diz que a versao chega minutos depois');
+  assert.ok(!/avisa\s+`?Plugin updated/i.test(bloco), 'o README ainda promete o aviso Plugin updated');
+  assert.ok(/pode n[ãa]o aparecer/i.test(bloco), 'o README nao diz que o aviso pode nao aparecer');
+  assert.ok(/painel do VS Code/.test(bloco), 'o README nao cita o painel do VS Code');
+  assert.ok(/\/reload-plugins/.test(bloco), 'o README nao manda rodar /reload-plugins');
+  assert.ok(/claude plugin list/.test(bloco), 'o README nao ensina o claude plugin list');
+  assert.ok(!/a cada sess[ãa]o nova/i.test(bloco), 'o README ainda diz que a versao baixa a cada sessao nova, na abertura');
+});
+
+test('T11-6: todo script ligado no hooks.json aparece na tabela de ganchos do README, na ordem dos eventos', () => {
+  const hooks = json('hooks/hooks.json').hooks;
+  const ligados = [];
+  for (const grupos of Object.values(hooks)) {
+    for (const g of grupos) {
+      for (const h of g.hooks) {
+        const nome = path.basename(h.args[0]);
+        if (ligados.indexOf(nome) === -1) ligados.push(nome);
+      }
+    }
+  }
+  const i = README.indexOf('O plugin se pendura em ');
+  assert.ok(i !== -1, 'sumiu a tabela de ganchos do README');
+  const f = README.indexOf('\nTr', README.indexOf('| Quando |', i));
+  const tabela = README.slice(i, f);
+  const faltam = ligados.filter((n) => tabela.indexOf('scripts/' + n) === -1);
+  assert.deepStrictEqual(faltam, [], 'script ligado no hooks.json e ausente da tabela de ganchos do README');
+  const linhas = tabela.split('\n').filter((l) => /^\| /.test(l) && !/^\| Quando /.test(l) && !/^\|---/.test(l));
+  const dito = tabela.match(/se pendura em (\S+) pontos/);
+  assert.ok(dito, 'a tabela nao diz em quantos pontos o plugin se pendura');
+  assert.strictEqual(NUMEROS[dito[1].toLowerCase()], linhas.length, 'o texto conta outros pontos que as linhas da tabela');
+  // fim da sessao e a ultima linha, depois do fim do turno
+  assert.ok(/fim-sessao\.js/.test(linhas[linhas.length - 1]), 'o fim da sessao tem de ser a ultima linha da tabela');
+  assert.ok(/portao-fecho\.js/.test(linhas[linhas.length - 2]), 'o fim do turno vem antes do fim da sessao');
+  const shell = linhas.filter((l) => /portao-estilo\.js/.test(l))[0];
+  assert.ok(shell && /portao-destrutivo\.js/.test(shell), 'o portao-estilo vai na linha do Bash e PowerShell, ao lado do destrutivo');
+});
+
+// T11-4 (sessao 24): o README copia a pergunta de cada lente; a de seguranca ganhou as tres
+// conferencias antes de P0 no veredito.js, e a copia do README tem de dizer o mesmo.
+test('publicacao: a lente de seguranca do README cita as tres conferencias antes de P0', () => {
+  const linha = README.split('\n').filter((l) => /^\| Seguran\u00e7a e dado sens\u00edvel \|/.test(l))[0];
+  assert.ok(linha, 'sumiu a linha da lente de seguranca na tabela das lentes do README');
+  assert.ok(/Antes de P0, tr\u00eas confer\u00eancias/.test(linha), 'a lente de seguranca do README nao cita as tres conferencias');
+  assert.ok(/chamadores reais/.test(linha) && /leitura n\u00e3o \u00e9 muta\u00e7\u00e3o/.test(linha), 'faltam conferencias na lente do README');
+  assert.ok(/P2 com pergunta/.test(linha), 'a lente do README nao diz que o achado sem intencao confirmada nasce P2');
 });

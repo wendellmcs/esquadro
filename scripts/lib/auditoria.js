@@ -6,6 +6,7 @@ const instrucoes = require('./instrucoes.js');
 const regraLib = require('./regra.js');
 const rubrica = require('./rubrica.js');
 const textoLib = require('./texto.js');
+const varredura = require('./varredura.js');
 
 const VAZIAS = new Set([
   'use', 'quando', 'para', 'com', 'sem', 'que', 'uma', 'um', 'o', 'a', 'os', 'as', 'de', 'do', 'da',
@@ -200,8 +201,16 @@ function auditar(cwd, projeto, opcoes) {
     if (!r.ok) foraDaRubrica.push({ skill: s.nome, erros: r.erros });
   }
 
+  // T11-3/D370: sem projeto.json (projeto falsy) o peso usa os candidatos a fonte canonica da
+  // varredura, como o init; com projeto, o que ele declara manda (D368) e nao se varre nada.
+  let candidatos;
+  if (!projeto) {
+    const r = varredura.listar(cwd);
+    candidatos = varredura.inferir(r.arquivos, cwd, r).candidatosCanonicos;
+  }
+
   return {
-    peso: instrucoes.contar(cwd, projeto || {}),
+    peso: instrucoes.contar(cwd, projeto || {}, candidatos),
     skills: skills.map(function (s) { return s.nome; }),
     sobreposicoes: sobreposicoes(skills),
     contradicoes: contradicoes(regras),

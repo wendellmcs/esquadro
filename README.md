@@ -7,7 +7,7 @@
 
 <p align="center">
   <strong>Um plugin do Claude Code que força o agente a provar em vez de afirmar.</strong><br>
-  Seis portões de custo zero e dois comandos. Todo portão é um script determinístico: nenhum modelo no meio.
+  Oito travas: seis portões de custo zero e dois dos cinco comandos. Todo portão é um script determinístico: nenhum modelo no meio.
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
   <a href="#como-instalar">Instalar</a> ·
   <a href="#um-exemplo-do-começo-ao-fim">Exemplo</a> ·
   <a href="#as-oito-travas">As travas</a> ·
-  <a href="#os-seis-comandos">Os comandos</a> ·
+  <a href="#os-cinco-comandos">Os comandos</a> ·
   <a href="#o-que-ele-já-pegou-em-uso-real">Casos reais</a> ·
   <a href="#o-que-o-esquadro-não-promete">O que não promete</a>
 </p>
@@ -139,10 +139,12 @@ não rodou.
 > 3. Selecione `esquadro-local`.
 > 4. Escolha **Enable auto-update**.
 >
-> Daí em diante, a cada sessão nova o Claude Code confere o marketplace e baixa a versão nova
-> sozinho. A sessão que já estava aberta segue com a versão antiga e avisa
-> `Plugin updated: esquadro · Run /reload-plugins to apply`: rode `/reload-plugins` ou abra uma
-> sessão nova.
+> Daí em diante o Claude Code confere o marketplace e baixa a versão nova sozinho, mas a versão
+> chega alguns minutos depois de a sessão abrir, não na abertura. A sessão que já estava aberta
+> segue com a versão antiga: depois que a nova chegar, rode `/reload-plugins` ou abra uma sessão
+> nova. O aviso na tela (`Plugin updated: esquadro · Run /reload-plugins to apply`) pode não
+> aparecer; no painel do VS Code, não apareceu. Para conferir a versão que está no disco, rode
+> `claude plugin list` no terminal: ele mostra a instalada, não a que a sessão carregou.
 
 **No painel do VS Code o botão não existe.** O "Manage plugins" do painel não tem o **Enable
 auto-update**. O caminho que funciona nos dois lugares é o `~/.claude/settings.json`: na entrada do
@@ -256,18 +258,19 @@ token, e um modelo julgando se houve evidência é o mesmo modelo que inventou a
 portão nega, a mensagem diz o motivo e as saídas possíveis — o agente lê e corrige o rumo no mesmo
 turno.
 
-O plugin se pendura em oito pontos do ciclo de uma sessão:
+O plugin se pendura em nove pontos do ciclo de uma sessão:
 
 | Quando | Script | O que faz |
 |---|---|---|
 | a sessão abre, reabre ou compacta | `scripts/abertura.js` | fotografa o `git status` (o que já estava modificado é de outra frente), reinjeta as suas regras e o escopo em vigor, avisa escopo herdado de outra tarefa, `intocaveis` que não pegam nada e plano ativo de outra sessão |
 | você manda um pedido | `scripts/abrir-turno.js` | zera as marcas do turno anterior: trabalho feito, busca feita, bloqueio; se você perguntar se o contexto está bom, manda o Claude trocar de chat com o handoff |
 | antes de `Write` e `Edit` | `scripts/portao-escopo.js` | intocáveis, outra frente, "Fora", marcha, escopo, criar sem buscar, catraca e, com design system declarado, token fora do sistema |
-| antes de `Bash` e `PowerShell` | `scripts/portao-destrutivo.js` | comando destrutivo, idioma de shell errado e `cd` solto; avisa, sem negar, quando a tabela de idioma do PowerShell não se lê |
+| antes de `Bash` e `PowerShell` | `scripts/portao-destrutivo.js` · `scripts/portao-estilo.js` | comando destrutivo, idioma de shell errado e `cd` solto; avisa, sem negar, quando a tabela de idioma do PowerShell não se lê. Com design system declarado, nega arquivo de estilo escrito por comando de shell e manda usar `Write` ou `Edit` |
 | antes de `Task` e `Agent` | `scripts/portao-agente.js` · `scripts/portao-apelido.js` | agente caro em marcha rápida; `model:` do agente contra o apelido gravado no projeto |
 | depois de cada ferramenta | `scripts/marcar-trabalho.js` | marca trabalho real, busca feita e arquivos tocados; conta as decisões suas respondidas e os commits que passaram |
 | um inspetor da revisão cega termina | `scripts/gravar-veredito.js` | grava o veredito dele em `vereditos/<lente>.json` da ronda; não barra nada, não sobrescreve, e avisa o que não gravou (essa lente volta a ser gravada à mão) |
 | o turno termina | `scripts/portao-fecho.js` | cobra evidência, barra etapa com subitem aberto, grava os contadores, avisa quando é hora de trocar de chat |
+| a sessão fecha | `scripts/fim-sessao.js` | apaga os arquivos de sessão parados há mais de 7 dias, nunca o da sessão que está fechando |
 
 Três coisas acontecem sem você pedir:
 
@@ -329,12 +332,14 @@ conversa —, então o plugin não finge contá-los. Para esses, vale a sua perg
 "esquadro: lendo o estado do repositorio". Se ela não aparece, o `node` não está no `PATH` — todo
 gancho é um script `node` — ou o plugin não está ativo; `claude plugin list` mostra o segundo caso.
 
-**Do que o gatilho de commit depende:** de o Claude Code informar `gitOperation.commit.sha` na
-resposta do `git commit` (medido no Claude Code 2.1.258). Sem esse campo o plugin não conta commit
-— ele não adivinha pelo texto do comando, que daria falso positivo com um `echo "git commit"` — e
-os outros cinco gatilhos seguem valendo. O gatilho de decisões depende de o gancho receber a resposta
-das perguntas de escolha; esse formato foi lido na documentação e ainda não foi provado numa sessão
-interativa.
+**Do que o gatilho de commit depende:** de o plugin ver que o `git commit` passou. Ele conta o commit
+pelo `gitOperation.commit.sha` que o Claude Code informa na resposta (medido no Claude Code 2.1.258)
+**ou** pela linha `[branch sha] mensagem` que o próprio `git commit` imprime — o Claude Code deixa de
+preencher o `gitOperation` quando o `git -C` aponta para caminho com espaço. O `git commit -q` não
+imprime a linha e **não conta**. O plugin não adivinha pelo texto do comando, que daria falso positivo
+com um `echo "git commit"`, e os outros cinco gatilhos seguem valendo. O gatilho de decisões depende de
+o gancho receber a resposta das perguntas de escolha; esse formato foi provado no painel do VS Code
+(a pergunta respondida contou).
 
 ---
 
@@ -612,7 +617,7 @@ produziu o bug reproduz o bug.
 | Fidelidade ao pedido | O que mudou além do necessário: renomeação, extração, formatação junto de correção funcional. |
 | Estados obrigatórios (código) | Erro, vazio, carregando, limite e timeout tratados — ou só o caso feliz. |
 | Entrada e borda | `null`, string vazia, lista vazia, número negativo, unicode, caminho com espaço, arquivo enorme. |
-| Segurança e dado sensível | Segredo em texto, log com dado do usuário, entrada não validada que vira comando ou caminho. |
+| Segurança e dado sensível | Segredo em texto, log com dado do usuário, entrada não validada que vira comando ou caminho. Antes de P0, três conferências: os chamadores reais, não o caminho hipotético; leitura não é mutação; padrão repetido e coerente no módulo é desenho, não falha. Sem confirmar a intenção, o achado nasce P2 com pergunta. |
 | Legibilidade e manutenção | O que um leitor novo entende errado: nome que mente, função que faz duas coisas, erro engolido. |
 | Texto que o usuário lê | Mensagem que não diz o que fazer a seguir, jargão, inglês solto, tom que culpa o usuário. |
 | Mexeram no medidor | Teste, baseline, threshold, skip ou mock que mudou junto com o código que ele cobre. |
@@ -774,7 +779,9 @@ Dito agora para não virar promessa quebrada depois:
 - **Julgar se a interface ficou bonita.**
 - **Regressão silenciosa do provedor.**
 - **Impedir que o agente amplie o próprio escopo.**
-- **Barrar escrita de arquivo feita por comando de shell.**
+- **Barrar escrita de arquivo feita por comando de shell.** A exceção é o arquivo de estilo com
+  design system declarado: o portão de estilo lê o comando e nega o que reconhece, sem cobrir toda
+  forma de escrever.
 - **Distinguir citação de execução num comando.**
 - **Tratar caixa de letra igual em todo sistema de arquivos.**
 - **Interpretar o comando como um shell interpreta.**

@@ -12,7 +12,10 @@ const LENTES = [
   { chave: 'borda', titulo: 'Entrada e borda',
     pergunta: 'null, string vazia, lista vazia, numero negativo, unicode, caminho com espaco, arquivo enorme.' },
   { chave: 'seguranca', titulo: 'Seguranca e dado sensivel',
-    pergunta: 'Segredo em texto, log com dado do usuario, entrada nao validada que vira comando ou caminho.' },
+    pergunta: 'Segredo em texto, log com dado do usuario, entrada nao validada que vira comando ou caminho. ' +
+      'Antes de P0, tres conferencias: (1) os chamadores reais, nao o caminho hipotetico; ' +
+      '(2) leitura nao e mutacao; (3) desenho deliberado, padrao repetido e coerente no modulo, nao e falha. ' +
+      'Sem confirmar a intencao, o achado nasce P2 com pergunta, nunca P0.' },
   { chave: 'manutencao', titulo: 'Legibilidade e manutencao',
     pergunta: 'O que um leitor novo entende errado? Nome que mente, funcao que faz duas coisas, erro engolido.' },
   { chave: 'microcopy', titulo: 'Texto que o usuario le',
