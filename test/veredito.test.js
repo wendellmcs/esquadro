@@ -388,3 +388,157 @@ test('veredito: as outras oito lentes de codigo seguem com a pergunta de antes',
   for (const l of v.LENTES) if (l.chave !== 'seguranca') hoje[l.chave] = l.pergunta;
   assert.deepStrictEqual(hoje, antes);
 });
+
+// ---------------------------------------------------------------------------------------------
+// D387 (#11c): paresCandidatos e provaveisMesmos. O juiz so avisa: nenhuma conta muda.
+// ---------------------------------------------------------------------------------------------
+
+const MAPA_AB = { A: 'trabalho', B: 'HEAD' };
+const MAPA_BA = { A: 'HEAD', B: 'trabalho' };
+const CHAVES = (pares) => pares.map((p) => [p.novo.chave, p.outro.chave]);
+
+test('D387/pares: distancia 10 entra e 11 fica fora', () => {
+  const r = v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 50), achado('P2', 'A.txt', 60), achado('P2', 'A.txt', 39)])]],
+    { mapas: [MAPA_AB] });
+  assert.deepStrictEqual(CHAVES(r.paresCandidatos), [['P1|trabalho|50|correcao', 'P2|trabalho|60|correcao']]);
+  assert.strictEqual(r.paresCandidatos[0].distancia, 10);
+  assert.strictEqual(v.DISTANCIA_PAR, 10);
+});
+
+test('D387/pares: o par leva o que o juiz le dos dois lados', () => {
+  const r = v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 5, 'quebra um')]),
+    veredito('borda', [achado('P2', 'A.txt', 8, 'quebra dois')])]], { mapas: [MAPA_AB] });
+  assert.strictEqual(r.paresCandidatos.length, 1);
+  assert.deepStrictEqual(r.paresCandidatos[0], {
+    novo: { chave: 'P1|trabalho|5|correcao', ronda: 1, lente: 'correcao', severidade: 'P1', linha: 5, descricao: 'quebra um' },
+    outro: { chave: 'P2|trabalho|8|borda', ronda: 1, lente: 'borda', severidade: 'P2', linha: 8, descricao: 'quebra dois' },
+    distancia: 3
+  });
+});
+
+test('D387/pares: a mesma chave nunca faz par com ela mesma', () => {
+  // mesma lente, mesma severidade, mesmo lado, mesma linha, duas vezes: um achado so
+  const r = v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 5), achado('P1', 'A.txt', 5)])]], { mapas: [MAPA_AB] });
+  assert.deepStrictEqual(r.paresCandidatos, []);
+});
+
+test('D387/pares: sem P0/P1 novo na ultima ronda nao ha par', () => {
+  const r1 = v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 5), achado('P2', 'A.txt', 6)])],
+    [veredito('correcao', [achado('P2', 'A.txt', 7), achado('P2', 'A.txt', 9)])]], { mapas: [MAPA_AB, MAPA_AB] });
+  assert.deepStrictEqual(r1.paresCandidatos, [], 'P1 so da ronda 1 nao e A');
+  const r2 = v.apurar([[veredito('correcao', [achado('P2', 'A.txt', 5), achado('P2', 'A.txt', 6)])]], { mapas: [MAPA_AB] });
+  assert.deepStrictEqual(r2.paresCandidatos, [], 'so P2 nao e A');
+});
+
+test('D387/pares: o novo da ultima ronda faz par com achado de ronda anterior, e a ronda do par e a 1a em que a chave apareceu', () => {
+  const r = v.apurar([[veredito('correcao', [achado('P2', 'A.txt', 20, 'antigo')])],
+    [veredito('correcao', [achado('P2', 'A.txt', 20, 'antigo')]), veredito('borda', [achado('P1', 'A.txt', 25, 'novo')])]],
+  { mapas: [MAPA_AB, MAPA_AB] });
+  assert.deepStrictEqual(CHAVES(r.paresCandidatos), [['P1|trabalho|25|borda', 'P2|trabalho|20|correcao']]);
+  assert.strictEqual(r.paresCandidatos[0].outro.ronda, 1);
+  assert.strictEqual(r.paresCandidatos[0].novo.ronda, 2);
+});
+
+test('D387/pares: achado refutado ainda serve de B (e a repeticao de algo ja tratado)', () => {
+  const r = v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 20)])],
+    [veredito('correcao', [achado('P1', 'A.txt', 20)]), veredito('borda', [achado('P1', 'A.txt', 24)])]],
+  { mapas: [MAPA_AB, MAPA_AB], refutados: [{ ronda: 1, lente: 'correcao', arquivo: 'A.txt', linha: 20, severidade: 'P1', prova: 'x.js:1' }] });
+  assert.deepStrictEqual(CHAVES(r.paresCandidatos), [['P1|trabalho|24|borda', 'P1|trabalho|20|correcao']]);
+});
+
+test('D387/pares: achado do lado HEAD nao entra, nem como A nem como B', () => {
+  // lado novo = B nas duas rondas (MAPA_BA): A.txt e HEAD
+  const r = v.apurar([[veredito('correcao', [achado('P2', 'B.txt', 10), achado('P2', 'A.txt', 12)])],
+    [veredito('borda', [achado('P1', 'A.txt', 11), achado('P1', 'B.txt', 11)])]], { mapas: [MAPA_BA, MAPA_BA] });
+  // o P1 de B.txt:11 (ultima ronda) so faz par com o P2 de B.txt:10; os de A.txt (HEAD) ficam fora
+  assert.deepStrictEqual(CHAVES(r.paresCandidatos), [['P1|trabalho|11|borda', 'P2|trabalho|10|correcao']]);
+  const soHead = v.apurar([[veredito('correcao', [achado('P1', 'B.txt', 11), achado('P2', 'B.txt', 12)])]], { mapas: [MAPA_AB] });
+  assert.deepStrictEqual(soHead.paresCandidatos, []);
+});
+
+test('D387/pares: com mapa, o mesmo lado vale mesmo com os rotulos trocados entre as rondas', () => {
+  const r = v.apurar([[veredito('correcao', [achado('P2', 'A.txt', 30, 'velho')])],
+    [veredito('borda', [achado('P1', 'B.txt', 33, 'novo')])]], { mapas: [MAPA_AB, MAPA_BA] });
+  assert.deepStrictEqual(CHAVES(r.paresCandidatos), [['P1|trabalho|33|borda', 'P2|trabalho|30|correcao']]);
+});
+
+test('D387/pares: sem mapa, o mesmo rotulo; rotulos diferentes nao fazem par', () => {
+  const mesmo = v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 5), achado('P2', 'A.txt', 9)])]]);
+  assert.strictEqual(mesmo.paresCandidatos.length, 1);
+  const outro = v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 5), achado('P2', 'B.txt', 9)])]]);
+  assert.deepStrictEqual(outro.paresCandidatos, []);
+});
+
+test('D387/pares: dois novos da ultima ronda dao um par so', () => {
+  const r = v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 5)]), veredito('borda', [achado('P0', 'A.txt', 8)])]],
+    { mapas: [MAPA_AB] });
+  assert.strictEqual(r.paresCandidatos.length, 1);
+  assert.deepStrictEqual(CHAVES(r.paresCandidatos), [['P1|trabalho|5|correcao', 'P0|trabalho|8|borda']]);
+});
+
+test('D387/conferirMesmos: forma errada lanca erro com a posicao e o que fazer', () => {
+  const existentes = new Set(['k1', 'k2']);
+  const erro = (lista, re) => assert.throws(() => v.conferirMesmos(lista, existentes), re);
+  erro({}, /mesmos\.json nao e uma lista/);
+  erro(null, /mesmos\.json nao e uma lista \(veio null\)/);
+  erro(['x'], /posicao 1.*objeto/);
+  erro([null], /posicao 1/);
+  erro([[]], /posicao 1/);
+  erro([{ novo: 'k1', outro: 'k2', resposta: 'sim' }, { novo: 5, outro: 'k2', resposta: 'sim' }], /posicao 2.*"novo"/);
+  erro([{ novo: 'k1', outro: 'nao-existe', resposta: 'sim' }], /"outro" \(nao-existe\) nao e a chave de nenhum achado/);
+  erro([{ novo: 'k1', outro: 'k2', resposta: 'talvez' }], /"resposta" tem de ser/);
+  erro([{ novo: 'k1', outro: 'k2' }], /"resposta" tem de ser/);
+  assert.deepStrictEqual(v.conferirMesmos([], existentes), []);
+  assert.strictEqual(v.conferirMesmos([{ novo: 'k1', outro: 'k2', resposta: 'nao-sei' }], existentes).length, 1);
+});
+
+test('D387/apurar: mesmos com chave que nao existe entre os achados apurados lanca erro', () => {
+  assert.throws(() => v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 5)])]],
+    { mapas: [MAPA_AB], mesmos: [{ novo: 'P1|trabalho|5|correcao', outro: 'P1|trabalho|99|correcao', resposta: 'sim' }] }),
+  /mesmos\.json.*nao e a chave de nenhum achado/);
+});
+
+test('D387/provaveisMesmos: so a resposta sim vira aviso; nao, nao-sei e ausencia nao', () => {
+  const rondas = [[veredito('correcao', [achado('P2', 'A.txt', 20, 'a')])],
+    [veredito('correcao', [achado('P2', 'A.txt', 20, 'a')]), veredito('borda', [achado('P1', 'A.txt', 24, 'b')])]];
+  const op = { mapas: [MAPA_AB, MAPA_AB] };
+  const K_B = 'P1|trabalho|24|borda';
+  const K_A = 'P2|trabalho|20|correcao';
+  const sim = v.apurar(rondas, Object.assign({ mesmos: [{ novo: K_B, outro: K_A, resposta: 'sim' }] }, op));
+  assert.deepStrictEqual(sim.provaveisMesmos, [{ chave: K_B, mesmoQue: K_A, lente: 'correcao', ronda: 1,
+    texto: 'provavel mesmo defeito que ' + K_A + ' (lente correcao, ronda 1)' }]);
+  for (const resposta of ['nao', 'nao-sei']) {
+    assert.deepStrictEqual(v.apurar(rondas, Object.assign({ mesmos: [{ novo: K_B, outro: K_A, resposta }] }, op)).provaveisMesmos, []);
+  }
+  assert.deepStrictEqual(v.apurar(rondas, op).provaveisMesmos, [], 'sem mesmos: lista vazia');
+  // a chave pode vir em "outro": a resposta vale para quem e novo da ultima ronda
+  const invertido = v.apurar(rondas, Object.assign({ mesmos: [{ novo: K_A, outro: K_B, resposta: 'sim' }] }, op));
+  assert.deepStrictEqual(invertido.provaveisMesmos.map((p) => [p.chave, p.mesmoQue]), [[K_B, K_A]]);
+  // quem nao e novo da ultima ronda (K_A, so da ronda 1) nunca recebe o aviso
+  assert.ok(sim.provaveisMesmos.every((p) => p.chave !== K_A));
+});
+
+test('D387/contagem: com e sem mesmos, secas, encerrar, motivo, novos, placar e achados do lado antigo sao identicos', () => {
+  const casos = [
+    [[veredito('correcao', [achado('P2', 'A.txt', 20)])],
+      [veredito('correcao', [achado('P2', 'A.txt', 20)]), veredito('borda', [achado('P1', 'A.txt', 24)])]],
+    [[veredito('correcao', [achado('P1', 'A.txt', 20)])], [veredito('borda', [achado('P1', 'A.txt', 22)])],
+      [veredito('estados', [achado('P1', 'A.txt', 25)])]],
+    [[veredito('correcao', [])], [veredito('correcao', [])]]
+  ];
+  const mapas = [MAPA_AB, MAPA_AB, MAPA_AB];
+  const todosSim = (rondas) => v.apurar(rondas, { mapas: mapas }).paresCandidatos
+    .map((p) => ({ novo: p.novo.chave, outro: p.outro.chave, resposta: 'sim' }));
+  for (const rondas of casos) {
+    const sem = v.apurar(rondas, { mapas: mapas });
+    const com = v.apurar(rondas, { mapas: mapas, mesmos: todosSim(rondas) });
+    for (const campo of ['ronda', 'secas', 'encerrar', 'motivo', 'novos', 'placar', 'achadosDoLadoAntigo', 'refutados', 'paresCandidatos']) {
+      assert.deepStrictEqual(com[campo], sem[campo], campo + ' muda com mesmos');
+    }
+  }
+  // o caso 2 chega ao teto de 3 rondas com 3 P1 abertos, e o juiz dizendo "sim" nao o desfaz
+  const teto = v.apurar(casos[1], { mapas: mapas, mesmos: todosSim(casos[1]) });
+  assert.strictEqual(teto.encerrar, true);
+  assert.match(teto.motivo, /teto de 3 rondas com 3 achado/);
+  assert.ok(teto.provaveisMesmos.length > 0);
+});

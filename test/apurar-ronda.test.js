@@ -1026,3 +1026,128 @@ test('T2/F3-22: pasta vereditos que nao se le (ENOTDIR) diz a causa traduzida', 
     assert.ok(r.stdout.includes(REL_BASE + '/2/vereditos/ (parte do caminho nao e uma pasta (ENOTDIR))'), r.stdout);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// D387 (#11c): mesmos.json (resposta do juiz-mesmo). Tratado como o refutados.json; so alimenta
+// provaveisMesmos, nunca a contagem.
+// ---------------------------------------------------------------------------------------------
+
+const K_NOVO = 'P1|trabalho|5|borda';
+const K_VELHO = 'P2|trabalho|3|correcao';
+
+/** Ronda 1: um P2 em A.txt:3. Ronda 2: um P1 novo em A.txt:5 (2 linhas de distancia: um par candidato). */
+function baseComPar(cwd) {
+  gravarNaBase(cwd, 'src__a.js', 'src/a.js', 1, [{ lente: 'correcao', melhor: 'A',
+    achados: [{ severidade: 'P2', arquivo: 'A.txt', linha: 3, descricao: 'raiz' }] }]);
+  gravarNaBase(cwd, 'src__a.js', 'src/a.js', 2, [{ lente: 'borda', melhor: 'A',
+    achados: [{ severidade: 'P1', arquivo: 'A.txt', linha: 5, descricao: 'repete a raiz' }] }]);
+  return path.join(cwd, '.claude', 'esquadro', 'revisao', 'src__a.js');
+}
+
+test('D387/mesmos.json: ausente deixa a saida de hoje e acrescenta paresCandidatos e provaveisMesmos', () => {
+  comRepo((cwd, tmp) => {
+    baseComPar(cwd);
+    const r = rodar(['--sessao', 'mz-aus'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.strictEqual(r.json.encerrar, false);
+    assert.strictEqual(r.json.rondasSecas, 0);
+    assert.strictEqual(r.json.achadosNovosP0P1.length, 1);
+    assert.deepStrictEqual(r.json.paresCandidatos.map((p) => [p.novo.chave, p.outro.chave, p.distancia]), [[K_NOVO, K_VELHO, 2]]);
+    assert.deepStrictEqual(r.json.provaveisMesmos, []);
+  });
+});
+
+test('D387/mesmos.json: sem par candidato, os dois campos saem como lista vazia', () => {
+  comRepo((cwd, tmp) => {
+    baseFechada(cwd);
+    const r = rodar(['--sessao', 'mz-vazio'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.deepStrictEqual(r.json.paresCandidatos, []);
+    assert.deepStrictEqual(r.json.provaveisMesmos, []);
+  });
+});
+
+test('D387/mesmos.json: com "sim" o aviso aparece e a contagem e a mesma de sem o arquivo', () => {
+  comRepo((cwd, tmp) => {
+    const base = baseComPar(cwd);
+    const sem = rodar(['--sessao', 'mz-sem'], cwd, tmp);
+    fs.writeFileSync(path.join(base, 'mesmos.json'), JSON.stringify([{ novo: K_NOVO, outro: K_VELHO, resposta: 'sim' }]), 'utf8');
+    const com = rodar(['--sessao', 'mz-com'], cwd, tmp);
+    assert.strictEqual(com.status, 0, com.stdout);
+    assert.deepStrictEqual(com.json.provaveisMesmos, [{ chave: K_NOVO, mesmoQue: K_VELHO, lente: 'correcao', ronda: 1,
+      texto: 'provavel mesmo defeito que ' + K_VELHO + ' (lente correcao, ronda 1)' }]);
+    for (const campo of ['ronda', 'rondasSecas', 'encerrar', 'motivo', 'placarDaUltimaRonda', 'achadosNovosP0P1',
+      'achadosDoLadoAntigo', 'refutados', 'paresCandidatos']) {
+      assert.deepStrictEqual(com.json[campo], sem.json[campo], campo + ' muda com o mesmos.json');
+    }
+    assert.strictEqual(com.json.achadosNovosP0P1.length, 1, 'o achado novo segue molhando a ronda');
+  });
+});
+
+test('D387/mesmos.json: "nao" e "nao-sei" nao geram aviso', () => {
+  comRepo((cwd, tmp) => {
+    const base = baseComPar(cwd);
+    for (const resposta of ['nao', 'nao-sei']) {
+      fs.writeFileSync(path.join(base, 'mesmos.json'), JSON.stringify([{ novo: K_NOVO, outro: K_VELHO, resposta }]), 'utf8');
+      const r = rodar(['--sessao', 'mz-' + resposta], cwd, tmp);
+      assert.strictEqual(r.status, 0, r.stdout);
+      assert.deepStrictEqual(r.json.provaveisMesmos, []);
+    }
+  });
+});
+
+test('D387/mesmos.json: ilegivel para com erro que cita o caminho e diz o que fazer, sem contar', () => {
+  comRepo((cwd, tmp) => {
+    const base = baseFechada(cwd);
+    fs.writeFileSync(path.join(base, 'mesmos.json'), '[ { "novo": ', 'utf8');
+    const r = rodar(['--sessao', 'mz-ile'], cwd, tmp);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.strictEqual(r.json, null, r.stdout);
+    assert.ok(r.stdout.startsWith('ERRO:'), r.stdout);
+    assert.ok(r.stdout.includes(REL_BASE + '/mesmos.json ilegivel'), 'cita o caminho: ' + r.stdout);
+    assert.ok(/corrija/i.test(r.stdout) && /apague/i.test(r.stdout) && /de novo/.test(r.stdout), 'diz o que fazer: ' + r.stdout);
+    assert.strictEqual(fs.existsSync(path.join(base, 'fechada.json')), false);
+    assert.ok(nadaGravadoEm(tmp), 'nao apurou, nao conta');
+  });
+});
+
+test('D387/mesmos.json: o que se le mas nao e lista para com erro que cita o arquivo e a forma', () => {
+  comRepo((cwd, tmp) => {
+    const base = baseFechada(cwd);
+    for (const conteudo of ['{}', '5', 'null', '"x"', 'true']) {
+      fs.writeFileSync(path.join(base, 'mesmos.json'), conteudo, 'utf8');
+      const r = rodar(['--sessao', 'mz-forma'], cwd, tmp);
+      assert.strictEqual(r.status, 1, conteudo + ' nao pode sair 0: ' + r.stdout);
+      assert.ok(r.stdout.startsWith('ERRO:'), r.stdout);
+      assert.ok(r.stdout.includes(REL_BASE + '/mesmos.json nao e uma lista'), 'cita o arquivo: ' + r.stdout);
+      assert.ok(r.stdout.includes('[]'), 'diz a forma: ' + r.stdout);
+      assert.strictEqual(r.json, null, r.stdout);
+      assert.ok(nadaGravadoEm(tmp), conteudo + ' nao conta');
+    }
+    // controle: [] e a forma de "o juiz nao achou par" e segue valendo
+    fs.writeFileSync(path.join(base, 'mesmos.json'), '[]', 'utf8');
+    const ok = rodar(['--sessao', 'mz-forma'], cwd, tmp);
+    assert.strictEqual(ok.status, 0, ok.stdout);
+    assert.deepStrictEqual(ok.json.provaveisMesmos, []);
+  });
+});
+
+test('D387/mesmos.json: item fora da forma ou com chave que nao existe para com erro que cita o mesmos.json', () => {
+  comRepo((cwd, tmp) => {
+    const base = baseComPar(cwd);
+    const ruins = [
+      [{ novo: K_NOVO, outro: 'P1|trabalho|99|borda', resposta: 'sim' }],
+      [{ novo: K_NOVO, outro: K_VELHO, resposta: 'talvez' }],
+      ['x']
+    ];
+    for (const ruim of ruins) {
+      fs.writeFileSync(path.join(base, 'mesmos.json'), JSON.stringify(ruim), 'utf8');
+      const r = rodar(['--sessao', 'mz-item'], cwd, tmp);
+      assert.strictEqual(r.status, 1, JSON.stringify(ruim) + ': ' + r.stdout);
+      assert.ok(r.stdout.startsWith('ERRO:') && r.stdout.includes('mesmos.json'), r.stdout);
+      assert.ok(r.stdout.includes('Corrija ' + REL_BASE + '/mesmos.json'), 'a 2a linha manda corrigir o mesmos.json: ' + r.stdout);
+      assert.ok(!r.stdout.includes('refutados.json'), 'nao confunde com o refutados.json: ' + r.stdout);
+      assert.ok(nadaGravadoEm(tmp));
+    }
+  });
+});

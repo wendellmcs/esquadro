@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.5.0 — o juiz que aponta achado repetido e o portao da pergunta ao dono
+
+Duas pecas da frente do decisor local: um modelo pequeno entra na revisao cega so para
+avisar, e a regra das 3 opcoes deixa de ser so texto. Os comportamentos novos vem com teste; a suite
+inteira roda com `npm test`.
+
+- **O juiz de "mesmo defeito" so avisa.** Agente novo `juiz-mesmo` (`model: haiku`, `effort: low`,
+  sem `Write` nem `Edit`). O `apurar-ronda.js` passa a listar `paresCandidatos`: cada achado P0/P1
+  novo da ultima ronda ao lado de outro achado do lado novo, no mesmo arquivo, a ate 10 linhas, com
+  chave diferente. No Passo 3 do `/esquadro:revisar`, um juiz recebe a lista (lotes de ate 50 pares),
+  a resposta vai em `mesmos.json` e a saida mostra `provaveisMesmos`. **A contagem nao muda:** ronda
+  seca, abertos e teto seguem iguais, e o achado novo continua molhando a ronda. Repeticao de algo ja
+  corrigido se prova na fonte, pelo `refutados.json`; a palavra do juiz nao e prova. `mesmos.json`
+  ilegivel ou que nao e lista para a apuracao com a instrucao de corrigir ou apagar.
+- **A pergunta ao dono passa por um portao.** Gancho novo antes do `AskUserQuestion`
+  (`portao-decisao.js`): barra a pergunta que nao tem exatamente 3 opcoes, ou cuja primeira opcao
+  nao traz a marca entre parenteses — `(Recomendado)`, `(Recomendada)`, `(Recommended)` ou
+  `(Recom.)`, em qualquer caixa. Palavra solta ("Recomendado: x") ou negacao ("Nao recomendado") nao
+  e a marca. A mensagem diz o que refazer. Um projeto com outra regra o desliga com
+  `"portaoDecisao": false` no `.claude/esquadro/projeto.json` (so o booleano desliga). Falha do
+  proprio portao libera a pergunta.
+- **README:** tabela de ganchos com o portao novo (dez pontos do ciclo); a secao dos agentes e a
+  excecao declarada de modelo passam a nomear o `inspetor` e o `juiz-mesmo`.
+
 ## 0.4.4 — o estilo escrito pelo shell passa pelo design, o fim de sessao limpa o estado velho e o commit conta pela linha do git
 
 Tres pendencias que o usuario sente, do backlog de achados, e ajustes no init, na lente de seguranca,

@@ -164,6 +164,44 @@ function refutado(lista, ronda, lente, a) {
   });
 }
 
+// D387 (#11c): dois achados do mesmo arquivo a ate 10 linhas um do outro viram "par candidato" para o
+// juiz de mesmo defeito. Distancia 10 entra; 11 fica fora.
+const DISTANCIA_PAR = 10;
+const RESPOSTAS_MESMO = ['sim', 'nao', 'nao-sei'];
+
+/**
+ * D387 (#11c): o mesmos.json e a resposta do juiz-mesmo: [{ novo, outro, resposta }], com as chaves de
+ * achado que o apurar usa. Molde do conferirRefutados: o que nao tem a forma certa para, com a posicao.
+ * `chavesExistentes` e o conjunto de chaves dos achados apurados (Set ou lista).
+ */
+function conferirMesmos(lista, chavesExistentes) {
+  if (!Array.isArray(lista)) {
+    throw new Error('mesmos.json nao e uma lista (veio ' + (lista === null ? 'null' : typeof lista) + '): a forma e ' +
+      'uma lista de { novo, outro, resposta }, e [] quando o juiz nao achou par');
+  }
+  const existentes = chavesExistentes instanceof Set ? chavesExistentes : new Set(chavesExistentes || []);
+  for (let i = 0; i < lista.length; i++) {
+    const m = lista[i];
+    const onde = 'entrada invalida no mesmos.json (posicao ' + (i + 1) + '): ';
+    if (!m || typeof m !== 'object' || Array.isArray(m)) {
+      throw new Error(onde + 'cada item e um objeto { "novo": "<chave>", "outro": "<chave>", "resposta": "sim" | "nao" | "nao-sei" }');
+    }
+    for (const campo of ['novo', 'outro']) {
+      if (typeof m[campo] !== 'string' || m[campo].trim() === '') {
+        throw new Error(onde + '"' + campo + '" tem de ser o texto da chave do achado, copiada de paresCandidatos');
+      }
+      if (!existentes.has(m[campo])) {
+        throw new Error(onde + '"' + campo + '" (' + m[campo] + ') nao e a chave de nenhum achado apurado; copie a chave ' +
+          'exatamente como veio em paresCandidatos');
+      }
+    }
+    if (RESPOSTAS_MESMO.indexOf(m.resposta) === -1) {
+      throw new Error(onde + '"resposta" tem de ser "sim", "nao" ou "nao-sei" (veio ' + JSON.stringify(m.resposta) + ')');
+    }
+  }
+  return lista;
+}
+
 /**
  * rondas: lista de rondas; cada ronda e uma lista de vereditos.
  * Ronda seca = zero achado NOVO de P1 ou acima.
@@ -173,6 +211,10 @@ function refutado(lista, ronda, lente, a) {
  *                passa a ser pelo LADO: o rotulo A/B e sorteado a cada ronda.
  *   refutados  = [{ ronda, lente, arquivo, linha, severidade, prova }]: achado refutado na fonte
  *                primaria nao molha. Sem `prova` ou sem `severidade`, lanca erro.
+ *   mesmos     = [{ novo, outro, resposta }] (D387, #11c): so ALIMENTA provaveisMesmos; nao entra em
+ *                secas, encerrar, motivo, novos, abertos nem no teto. A palavra do juiz e aviso, nao prova.
+ * paresCandidatos sai sempre: achado P0/P1 novo da ultima ronda x outro achado do lado novo, mesmo
+ * arquivo (o lado, com mapa; o rotulo, sem), a ate DISTANCIA_PAR linhas, chave diferente.
  */
 function apurar(rondas, opcoes) {
   // F2-14: sem nenhuma ronda nao ha o que apurar (antes saia "ronda 1 chama so as lentes..." sem ronda nenhuma).
@@ -184,11 +226,16 @@ function apurar(rondas, opcoes) {
   const abertos = new Set();
   let secas = 0;
   let novosDaUltima = [];
+  let novosChavesDaUltima = [];
   let antigosDaUltima = [];
+  // D387: todo achado valido visto (chave -> o que o juiz le) e, a parte, os do lado novo em ordem.
+  const metas = new Map();
+  const doLadoNovo = [];
   const placar = { A: 0, B: 0, empate: 0 };
 
   rondas.forEach(function (ronda, indice) {
     const novos = [];
+    const novosChaves = [];
     const antigos = [];
     const mapa = mapas[indice] && typeof mapas[indice] === 'object' ? mapas[indice] : null;
     // 0.3.3, item 1: ronda sem nenhum veredito nao e ronda seca - e voto que falta. Sem isto,
@@ -210,19 +257,59 @@ function apurar(rondas, opcoes) {
         const k = lado ? [a.severidade, lado, a.linha, vd.lente].join('|') : chaveAchado(a, vd.lente);
         if (vistos.has(k)) continue;
         vistos.add(k);
+        const meta = { chave: k, ronda: indice + 1, lente: vd.lente, severidade: a.severidade, linha: a.linha,
+          descricao: a.descricao };
+        metas.set(k, meta);
+        // Achado do lado HEAD tem linha do arquivo antigo: nao faz par. Sem lado e sem rotulo, nao ha como
+        // dizer que dois achados sao do mesmo arquivo: tambem nao faz par.
+        const grupo = lado || rotulo;
+        if (lado !== 'HEAD' && grupo) doLadoNovo.push({ meta: meta, grupo: grupo });
         if (a.severidade !== 'P0' && a.severidade !== 'P1') continue;
         if (lado === 'HEAD') { antigos.push(a); continue; }
         if (refutado(refutados, indice + 1, vd.lente, a)) continue;
         abertos.add(k);
         novos.push(a);
+        novosChaves.push(k);
       }
     }
     if (novos.length === 0) secas += 1; else secas = 0;
-    if (indice === rondas.length - 1) { novosDaUltima = novos; antigosDaUltima = antigos; }
+    if (indice === rondas.length - 1) { novosDaUltima = novos; novosChavesDaUltima = novosChaves; antigosDaUltima = antigos; }
   });
 
+  // D387 (#11c): pares para o juiz. Nada aqui entra na contagem acima.
+  const ehNovoDaUltima = new Set(novosChavesDaUltima);
+  const paresCandidatos = [];
+  doLadoNovo.forEach(function (x, i) {
+    if (!ehNovoDaUltima.has(x.meta.chave)) return;
+    doLadoNovo.forEach(function (y, j) {
+      if (x.meta.chave === y.meta.chave || x.grupo !== y.grupo) return;
+      const distancia = Math.abs(x.meta.linha - y.meta.linha);
+      if (distancia > DISTANCIA_PAR) return;
+      // Os dois novos da ultima ronda: o par sai uma vez so, na ordem em que apareceram.
+      if (ehNovoDaUltima.has(y.meta.chave) && j < i) return;
+      paresCandidatos.push({ novo: x.meta, outro: y.meta, distancia: distancia });
+    });
+  });
+
+  const provaveisMesmos = [];
+  if (op.mesmos !== undefined) {
+    const mesmos = conferirMesmos(op.mesmos, vistos);
+    const vistosPares = new Set();
+    for (const m of mesmos) {
+      if (m.resposta !== 'sim') continue;
+      for (const [chave, outra] of [[m.novo, m.outro], [m.outro, m.novo]]) {
+        if (!ehNovoDaUltima.has(chave) || vistosPares.has(chave + '\u0000' + outra)) continue;
+        vistosPares.add(chave + '\u0000' + outra);
+        const o = metas.get(outra);
+        provaveisMesmos.push({ chave: chave, mesmoQue: outra, lente: o.lente, ronda: o.ronda,
+          texto: 'provavel mesmo defeito que ' + outra + ' (lente ' + o.lente + ', ronda ' + o.ronda + ')' });
+      }
+    }
+  }
+
   const ronda = rondas.length;
-  const extra = { achadosDoLadoAntigo: antigosDaUltima, refutados: refutados };
+  const extra = { achadosDoLadoAntigo: antigosDaUltima, refutados: refutados, paresCandidatos: paresCandidatos,
+    provaveisMesmos: provaveisMesmos };
 
   if (secas >= 2) {
     return Object.assign({ ronda: ronda, secas: secas, encerrar: true,
@@ -239,4 +326,4 @@ function apurar(rondas, opcoes) {
 }
 
 module.exports = { LENTES, LENTES_UI, FAMILIAS, familiasPara, SEVERIDADES, TETO, chaveAchado, errosDoVeredito,
-  validarVeredito, apurar };
+  validarVeredito, apurar, conferirMesmos, DISTANCIA_PAR };

@@ -258,7 +258,7 @@ token, e um modelo julgando se houve evidência é o mesmo modelo que inventou a
 portão nega, a mensagem diz o motivo e as saídas possíveis — o agente lê e corrige o rumo no mesmo
 turno.
 
-O plugin se pendura em nove pontos do ciclo de uma sessão:
+O plugin se pendura em dez pontos do ciclo de uma sessão:
 
 | Quando | Script | O que faz |
 |---|---|---|
@@ -267,6 +267,7 @@ O plugin se pendura em nove pontos do ciclo de uma sessão:
 | antes de `Write` e `Edit` | `scripts/portao-escopo.js` | intocáveis, outra frente, "Fora", marcha, escopo, criar sem buscar, catraca e, com design system declarado, token fora do sistema |
 | antes de `Bash` e `PowerShell` | `scripts/portao-destrutivo.js` · `scripts/portao-estilo.js` | comando destrutivo, idioma de shell errado e `cd` solto; avisa, sem negar, quando a tabela de idioma do PowerShell não se lê. Com design system declarado, nega arquivo de estilo escrito por comando de shell e manda usar `Write` ou `Edit` |
 | antes de `Task` e `Agent` | `scripts/portao-agente.js` · `scripts/portao-apelido.js` | agente caro em marcha rápida; `model:` do agente contra o apelido gravado no projeto |
+| antes de `AskUserQuestion` | `scripts/portao-decisao.js` | barra pergunta ao dono sem exatamente 3 opções ou sem a recomendada em primeiro; desliga com `"portaoDecisao": false` no `projeto.json` |
 | depois de cada ferramenta | `scripts/marcar-trabalho.js` | marca trabalho real, busca feita e arquivos tocados; conta as decisões suas respondidas e os commits que passaram |
 | um inspetor da revisão cega termina | `scripts/gravar-veredito.js` | grava o veredito dele em `vereditos/<lente>.json` da ronda; não barra nada, não sobrescreve, e avisa o que não gravou (essa lente volta a ser gravada à mão) |
 | o turno termina | `scripts/portao-fecho.js` | cobra evidência, barra etapa com subitem aberto, grava os contadores, avisa quando é hora de trocar de chat |
@@ -672,12 +673,14 @@ chat; decisão do dono sempre em exatamente três opções, a recomendada marcad
 precisa provar. Sem adaptador do projeto, ele roda em modo degradado e **declara** o que não
 consegue verificar.
 
-### O agente `inspetor`
+### Os agentes `inspetor` e `juiz-mesmo`
 
-É quem o `revisar` despacha, um por lente. Não tem `Write` nem `Edit`, recebe só os dois artefatos
-e a régua, e devolve veredito em JSON. É o único arquivo do plugin que declara modelo e esforço —
-para que toda revisão não saia no modelo mais caro da sessão —, e essa exceção está declarada nos
-limites, mais abaixo.
+O `inspetor` é quem o `revisar` despacha, um por lente. Não tem `Write` nem `Edit`, recebe só os
+dois artefatos e a régua, e devolve veredito em JSON. O `juiz-mesmo` entra no Passo 3 do `revisar`,
+quando a apuração lista pares de achados vizinhos: lê só as descrições e diz se cada par é o mesmo
+defeito. É aviso: a contagem da ronda não muda. São os dois únicos arquivos do plugin que declaram
+modelo e esforço — para que toda revisão não saia no modelo mais caro da sessão —, e essa exceção
+está declarada nos limites, mais abaixo.
 
 ---
 
@@ -832,9 +835,10 @@ Há um sétimo, menor, que vale dizer junto porque surpreende: **a auditoria de 
 regra e histórico por palavra exata.** `publicar` não casa `publicado`. A lista de "sem cicatriz"
 que ela devolve é pergunta, não sentença.
 
-**E uma exceção, declarada.** O plugin não guarda nome de modelo, com uma exceção: o agente
-`inspetor`, que o `/esquadro:revisar` despacha, declara no próprio arquivo um apelido de modelo
-e um esforço, para que toda revisão não saia no modelo mais caro da sessão. É o único lugar. Se
+**E uma exceção, declarada.** O plugin não guarda nome de modelo, com uma exceção: os agentes
+que o `/esquadro:revisar` despacha — o `inspetor` e o `juiz-mesmo` — declaram no próprio arquivo um
+apelido de modelo e um esforço, para que toda revisão não saia no modelo mais caro da sessão. São os
+únicos lugares. Se
 o apelido deixar de valer, o teste de apelidos vivos acusa e diz qual — rode
 `node scripts/provar-apelidos.js --plugin` e sonde de novo.
 

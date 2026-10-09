@@ -583,3 +583,35 @@ test('publicacao: a lente de seguranca do README cita as tres conferencias antes
   assert.ok(/chamadores reais/.test(linha) && /leitura n\u00e3o \u00e9 muta\u00e7\u00e3o/.test(linha), 'faltam conferencias na lente do README');
   assert.ok(/P2 com pergunta/.test(linha), 'a lente do README nao diz que o achado sem intencao confirmada nasce P2');
 });
+
+// D387/D388 (0.5.0): o juiz de "mesmo defeito" e o portao do AskUserQuestion estao ligados onde devem.
+test('D387: agents/juiz-mesmo.md existe com model haiku e sem Write, e o corpo nao nomeia modelo', () => {
+  const t = ler('agents/juiz-mesmo.md');
+  const cab = t.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  assert.ok(cab, 'o agente nao tem frontmatter');
+  assert.ok(/^name: juiz-mesmo$/m.test(cab[1]), 'o name do agente e juiz-mesmo');
+  assert.ok(/^model: haiku$/m.test(cab[1]), 'o juiz roda no apelido haiku');
+  const proibidas = cab[1].match(/^disallowedTools: (.*)$/m);
+  assert.ok(proibidas && /\bWrite\b/.test(proibidas[1]), 'o juiz nao pode ter Write');
+  const corpo = t.slice(cab[0].length);
+  assert.ok(!/haiku|sonnet|opus|fable|claude-|\bv?\d+\.\d+\.\d+\b|\$\s?\d/i.test(corpo), 'o corpo do juiz nao nomeia modelo, versao nem preco');
+});
+
+test('D387: o Passo 3 do revisar manda despachar esquadro:juiz-mesmo e gravar o mesmos.json', () => {
+  const t = ler('skills/revisar/SKILL.md');
+  const i = t.indexOf('## Passo 3');
+  const f = t.indexOf('## Passo 4');
+  assert.ok(i !== -1 && f > i, 'sumiu o Passo 3 do revisar');
+  const passo3 = t.slice(i, f);
+  assert.ok(passo3.includes('esquadro:juiz-mesmo'), 'o Passo 3 nao cita o esquadro:juiz-mesmo');
+  assert.ok(passo3.includes('mesmos.json') && passo3.includes('paresCandidatos') && passo3.includes('provaveisMesmos'),
+    'o Passo 3 nao cita mesmos.json, paresCandidatos e provaveisMesmos');
+});
+
+test('D388: o hooks.json liga o portao-decisao.js no PreToolUse com o matcher AskUserQuestion, depois do Task|Agent', () => {
+  const grupos = json('hooks/hooks.json').hooks.PreToolUse;
+  const g = grupos.filter((x) => x.matcher === 'AskUserQuestion');
+  assert.strictEqual(g.length, 1, 'tem de haver um grupo PreToolUse para o AskUserQuestion');
+  assert.deepStrictEqual(g[0].hooks.map((h) => path.basename(h.args[0])), ['portao-decisao.js']);
+  assert.ok(grupos.indexOf(g[0]) > grupos.findIndex((x) => x.matcher === 'Task|Agent'), 'o portao vem depois do Task|Agent');
+});

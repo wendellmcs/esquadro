@@ -294,13 +294,33 @@ if (fs.existsSync(arqRefutados)) {
   }
 }
 
+// D387 (#11c): a resposta do juiz-mesmo. Mesmo tratamento do refutados.json: ausente = nada muda;
+// ilegivel ou fora da forma = erro. Ela so alimenta provaveisMesmos: nao entra em nenhuma conta.
+let mesmos;
+const arqMesmos = path.join(base, 'mesmos.json');
+if (fs.existsSync(arqMesmos)) {
+  try { mesmos = JSON.parse(fs.readFileSync(arqMesmos, 'utf8')); } catch (err) {
+    process.stdout.write('ERRO: ' + baseRel + '/mesmos.json ilegivel (' + err.message + '). Corrija o JSON ' +
+      'ou apague o arquivo se o juiz nao respondeu, e rode este comando de novo.\n');
+    process.exit(1);
+  }
+  if (!Array.isArray(mesmos)) {
+    process.stdout.write('ERRO: ' + baseRel + '/mesmos.json nao e uma lista (veio ' +
+      (mesmos === null ? 'null' : typeof mesmos) + '). A forma e uma lista de { novo, outro, resposta }, e [] ' +
+      'quando o juiz nao achou par. Corrija o arquivo ou apague-o, e rode este comando de novo.\n');
+    process.exit(1);
+  }
+}
+
 let r;
 try {
-  r = veredito.apurar(rondas, { mapas: mapas, refutados: refutados });
+  r = veredito.apurar(rondas, { mapas: mapas, refutados: refutados, mesmos: mesmos });
 } catch (err) {
   // 0.3.3, item 7: o erro diz o defeito; a linha seguinte diz onde corrigir e o que fazer depois.
-  process.stdout.write('ERRO: ' + err.message + '\n' + 'Corrija a refutacao em ' + baseRel + '/refutados.json ' +
-    '(ou o veredito que o erro cita) e rode este comando de novo.\n');
+  const doMesmos = err.message.indexOf('mesmos.json') !== -1;
+  process.stdout.write('ERRO: ' + err.message + '\n' + (doMesmos
+    ? 'Corrija ' + baseRel + '/mesmos.json (ou apague o arquivo) e rode este comando de novo.\n'
+    : 'Corrija a refutacao em ' + baseRel + '/refutados.json (ou o veredito que o erro cita) e rode este comando de novo.\n'));
   process.exit(1);
 }
 const descartados = [];
@@ -371,6 +391,8 @@ process.stdout.write(JSON.stringify({
   achadosNovosP0P1: r.novos,
   achadosDoLadoAntigo: r.achadosDoLadoAntigo,
   refutados: r.refutados,
+  paresCandidatos: r.paresCandidatos,
+  provaveisMesmos: r.provaveisMesmos,
   rondasSemMapa: semMapa,
   vereditosDescartados: descartados,
   revisaoFechadaContada: contada,

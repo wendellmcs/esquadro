@@ -89,6 +89,13 @@ Quem decide se a ronda foi seca é o script, não você. Cole a saída dele na r
   `[{ "ronda": 2, "lente": "design", "arquivo": "B.txt", "linha": 471, "severidade": "P1", "prova": "<arquivo:linha ou comando>" }]`.
   A `severidade` é a do achado: refutar o P1 de uma linha não derruba o P0 da mesma linha. Sem `prova`
   ou sem `severidade`, o script para com erro. A saída lista os refutados para o dono conferir.
+- **Achados vizinhos podem ser o mesmo defeito.** Se a saída traz `paresCandidatos` não vazio, despache **um**
+  subagente `esquadro:juiz-mesmo` com a lista inteira (acima de ~50 pares, lotes de até 50, um subagente por
+  lote, no mesmo disparo). Grave o que ele devolver em `mesmos.json`, na mesma pasta do `refutados.json`, pelo
+  Write: `[{ "novo": "<chave>", "outro": "<chave>", "resposta": "sim" }]`, e rode o script de novo. A saída passa
+  a trazer `provaveisMesmos`. **Nada na contagem muda:** o achado novo segue molhando a ronda. Se ele for repetição
+  de algo já corrigido, prove isso na fonte e use o `refutados.json`; a palavra do juiz não é prova. Juiz que
+  falha ou não responde: siga sem `mesmos.json`, e a saída é a de sempre.
 
 Quando a revisão **fecha**, o próprio script conta um `revisao_fechada` — é o gatilho contável de
 troca de chat, e nada mais no plugin o incrementa. Ele descobre a sessão sozinho; passe

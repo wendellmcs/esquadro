@@ -70,6 +70,17 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/portao-decisao.js"],
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [
