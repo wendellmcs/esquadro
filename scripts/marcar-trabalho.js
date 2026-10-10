@@ -43,11 +43,14 @@ function commitNaSaida(resp) {
 io.blindar(function () {
   io.lerEntrada(function (e) {
     estado.alterar(e.session_id, function (s) {
+      // A caixa do nome nao decide (ronda 2 do Passo 8b): normalizado uma vez, vale para tudo abaixo.
+      const nome = String(e.tool_name || '').toLowerCase();
+
       // T10-2 (D357): decisao do dono = resposta do AskUserQuestion. Cada chave de `answers` com
       // valor nao vazio e uma decisao. Perguntar NAO e trabalho a provar: sai antes de ligar
       // trabalhoReal, turnosComTrabalho e buscouNesteTurno. `tool_response` ausente ou sem
       // `answers` conta zero (o formato do gancho nao foi provado em sessao interativa).
-      if (String(e.tool_name || '').toLowerCase() === 'askuserquestion') {
+      if (nome === 'askuserquestion') {
         const n = contarRespostas(e.tool_response);
         if (n) s.decisoesDoDono = (s.decisoesDoDono || 0) + n;
         return s;
@@ -64,7 +67,6 @@ io.blindar(function () {
       // contava, e sem ele no matcher quem leu o vizinho era negado ao criar.
       // A caixa do nome nao decide, como na busca: com `read`, a busca ligava e o
       // turno ainda virava trabalho a provar (ronda 2 do Passo 8b).
-      const nome = String(e.tool_name || '').toLowerCase();
       const soLeitura = nome === 'grep' || nome === 'glob' || nome === 'read';
       if (!soLeitura) {
         if (!s.trabalhoReal) s.turnosComTrabalho = (s.turnosComTrabalho || 0) + 1;
@@ -84,7 +86,8 @@ io.blindar(function () {
           s.arquivosTocados = s.arquivosTocados || [];
           if (s.arquivosTocados.indexOf(arquivo) === -1) s.arquivosTocados.push(arquivo);
           // D412: marca do TURNO (arquivosTocados e da sessao): o fecho cobra o prompt no chat.
-          // So Write e Edit chegam aqui com file_path: o Read saiu acima, como so leitura.
+          // Hoje so Write e Edit chegam aqui com file_path: e o matcher do hooks.json que garante
+          // (o Read saiu acima, como so leitura). Ferramenta nova no matcher com file_path tambem marca.
           if (saude.ehArquivoDeHandoff(arquivo)) s.gravouHandoff = true;
         }
       }

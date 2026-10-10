@@ -55,7 +55,8 @@ function encerrarTurno(e, s) {
   // e o faz agir (rodar o handoff e colar o prompt na mesma resposta).
   if (avisa) {
     // D412: o turno que gravou o handoff e ja colou o bloco nao recebe a ordem de colar de novo.
-    const jaColado = s.gravouHandoff === true && saude.temBlocoDeCodigo(e.last_assistant_message);
+    // Mesma regra do portao (handoffSemPrompt), sem o projeto: a ordem nao depende do portaoHandoff.
+    const jaColado = s.gravouHandoff === true && !handoffSemPrompt(e, s, null);
     saida.hookSpecificOutput = { hookEventName: 'Stop', additionalContext: saude.instrucaoAoModelo(vs.gatilhos, jaColado) };
   }
   io.permitir(saida);
@@ -69,17 +70,17 @@ function handoffSemPrompt(e, s, projeto) {
   return !saude.temBlocoDeCodigo(e.last_assistant_message);
 }
 
-/** Um bloqueio por turno, com todos os motivos dele: o segundo Stop chega com stop_hook_active
- *  e libera, e um motivo deixado para depois nunca seria cobrado. */
+/** Um bloqueio por turno, com os motivos que o turno juntou - o do subitem aberto OU o da
+ *  evidencia (o subitem sai antes de a evidencia ser olhada), mais o do handoff: o segundo Stop
+ *  chega com stop_hook_active e libera, e um motivo deixado para depois nunca seria cobrado.
+ *  Soma o balde do handoff, marca o bloqueio do turno, grava o estado e barra; nao muda `motivos`. */
 function barrar(e, s, motivos, semPrompt) {
+  const todos = semPrompt ? motivos.concat([saude.MOTIVO_HANDOFF_SEM_PROMPT]) : motivos;
   s.contadores = s.contadores || {};
-  if (semPrompt) {
-    s.contadores.handoff_sem_prompt = (s.contadores.handoff_sem_prompt || 0) + 1;
-    motivos.push(saude.MOTIVO_HANDOFF_SEM_PROMPT);
-  }
+  if (semPrompt) s.contadores.handoff_sem_prompt = (s.contadores.handoff_sem_prompt || 0) + 1;
   s.bloqueouNesteTurno = true;
   estado.gravar(e.session_id, s);
-  io.bloquearFecho(motivos.join('\n\n'));
+  io.bloquearFecho(todos.join('\n\n'));
 }
 
 io.blindar(function () {
@@ -96,7 +97,10 @@ io.blindar(function () {
     // e o UNICO chamador de estado.descarregar (unico escritor de
     // contadores.json) e o unico lugar que zera o estado do TURNO. Um io.permitir()
     // aqui desligaria a medicao do plugin inteiro e congelaria bloqueouNesteTurno.
-    // Custo declarado (P2-38): o Stop passa a ler disco uma vez por turno.
+    // Excecao (D415): `travas.fecho: false` nao desliga o portao do prompt do handoff - so
+    // `"portaoHandoff": false` desliga. Por isso o semPrompt e calculado antes do retorno.
+    // Custo declarado (P2-38): o Stop le o projeto.json aqui e, quando termina em encerrarTurno,
+    // de novo la - duas leituras de disco no mesmo Stop.
     const cwd = config.raizDoProjeto(e.cwd);
     const projeto = config.carregarProjeto(cwd);
     const travas = projetoLib.travasDe(projeto);

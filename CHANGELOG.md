@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.4 — o portao do handoff erra menos
+
+Ajustes que a revisao cega da 0.5.3 deixou registrados. O comportamento novo vem com teste; a suite
+inteira roda com `npm test`.
+
+- **O portao do prompt do handoff segue mais de perto o CommonMark ao procurar o bloco de codigo.**
+  Cerca com 4 colunas de recuo ou mais (contadas a partir do conteudo do item de lista em que esta)
+  nao abre nem fecha bloco: e bloco recuado. O tab conta ate a proxima coluna multipla de 4, tambem
+  logo depois do `>` de uma citacao: `>`, tab e a cerca abrem o bloco. A cerca aberta numa citacao
+  fecha quando a citacao acaba, e o texto depois dela nao conta como corpo. Dentro da cerca, uma
+  linha `>` fora de citacao e corpo, e uma linha so de espaco nao separavel (NBSP) tambem.
+- **Estado corrompido nao dispara o aviso de troca de chat pelos arquivos tocados.** Se o registro
+  dos arquivos tocados nao for uma lista (texto, objeto), ele conta zero, como ja acontecia com as
+  decisoes e os commits.
+- **O motivo do portao do prompt do handoff** pede o prompt "num bloco de codigo (tres crases ou tres
+  tis)", no lugar da cerca crua seguida de virgula.
+- **README:** a mensagem literal do portao do prompt do handoff entra na lista do que cada portao
+  responde quando nega; a tabela de `travas` diz que `fecho: false` nao desliga esse portao; o
+  paragrafo dele vira frases curtas e diz o que acontece com ele desligado; a descricao do
+  `/esquadro:handoff` cita o portao e a excecao do aviso de troca de chat.
+- Comentarios de `portao-fecho.js`, `marcar-trabalho.js`, `abrir-turno.js` e `lib/saude.js`
+  alinhados ao que o codigo faz.
+
 ## 0.5.3 — o prompt do handoff chega ao chat
 
 Gravar o handoff so no arquivo deixava o chat novo sem o texto para colar. O fim de turno passa a

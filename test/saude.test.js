@@ -139,6 +139,53 @@ test('D412: bloco de codigo = cerca em linha propria com corpo nao vazio, de qua
   ]) assert.strictEqual(saude.temBlocoDeCodigo(t), false, JSON.stringify(t));
 });
 
+// D417 (registro da revisao da sessao 41): as bordas do CommonMark que a 0.5.3 nao seguia.
+test('D417: recuo da cerca ate 3 colunas (relativo ao item de lista), fim da citacao, linha so ">", NBSP', () => {
+  for (const t of [
+    '   ```\nRetomando\n   ```',                  // 3 espacos ainda e cerca
+    '1. passo\n    ```\n    Retomando\n    ```',  // 4 espacos sob "1. " = 1 coluna dentro do item
+    '- passo\n\n  ```\n  Retomando\n  ```',
+    '```\n    ```\n',                              // fecho com 4 espacos e corpo, nao fecho
+    '> ```\n> Retomando\n\nfim',                   // o corpo veio antes de a citacao acabar
+    '> > ```\n> > Retomando\n> > ```',
+    '> ```\n> > Retomando\n> ```',                 // `>` a mais dentro da citacao e corpo
+    '```\n>\n```',                                 // linha so `>` fora de citacao e corpo
+    '```\n> ```\n```',                             // `> ```` fora de citacao e corpo, nao fecho
+    '```\n \n```'                             // NBSP e conteudo (CommonMark: branco e so espaco e tab)
+  ]) assert.strictEqual(saude.temBlocoDeCodigo(t), true, JSON.stringify(t));
+  for (const t of [
+    'texto\n    ```\n    Retomando\n    ```',    // 4 espacos fora de lista nao abre cerca
+    '    ```\nRetomando',
+    '\t```\nRetomando',                           // tab = 4 colunas
+    '> ```\n\nTexto qualquer depois',              // a citacao acabou com a cerca vazia
+    '> ```\nTexto sem marca\n```',                 // idem; o ``` da ultima linha abre cerca vazia
+    '> ```\n>\n> ```',                             // linha so `>` DENTRO da citacao e vazia
+    '```\n \t \n```',
+    '- item\n\nfora da lista\n\n    ```\n    Retomando\n    ```', // a lista acabou: 4 espacos e bloco recuado
+    '1. item\n>     ```\n>     Retomando\n>     ```' // a citacao nao herda a coluna da lista de fora
+  ]) assert.strictEqual(saude.temBlocoDeCodigo(t), false, JSON.stringify(t));
+});
+
+// Revisao da sessao 44: o tab depois de `>` conta a partir da coluna real (CommonMark), nao da 0.
+test('D417: tab depois da marca de citacao - a coluna e a real, e o espaco opcional sai do tab', () => {
+  for (const t of [
+    '>\t```\n>\tRetomando\n>\t```',   // `>` na coluna 0, tab ate a 4: 3 colunas, 1 e o espaco opcional = recuo 2
+    '> \t```\n> \tRetomando',          // espaco opcional, tab da coluna 2 ate a 4 = recuo 2
+    '>    ```\n>    Retomando'          // controle: `>` + 4 espacos = espaco opcional + recuo 3 (ja era assim)
+  ]) assert.strictEqual(saude.temBlocoDeCodigo(t), true, JSON.stringify(t));
+  for (const t of [
+    '>\t\t```\n>\t\tRetomando',        // 3 + 4 = 7 colunas, menos o espaco opcional = 6: bloco recuado
+    '>     ```\n>     Retomando'        // controle: `>` + 5 espacos = recuo 4 (ja era assim)
+  ]) assert.strictEqual(saude.temBlocoDeCodigo(t), false, JSON.stringify(t));
+});
+
+test('D417: arquivosTocados que nao e lista nunca dispara (estado corrompido nao vira aviso)', () => {
+  assert.strictEqual(saude.avaliar({ arquivosTocados: 'x'.repeat(30) }).disparou, false);
+  assert.strictEqual(saude.avaliar({ arquivosTocados: { length: 99 } }).disparou, false);
+  const lista = Array.from({ length: 25 }, (_, i) => 'a' + i + '.js');
+  assert.strictEqual(saude.avaliar({ arquivosTocados: lista }).disparou, true, 'controle: 25 arquivos disparam');
+});
+
 test('D412: com o prompt ja colado, a instrucao da saude nao manda colar de novo', () => {
   const g = ['3 decisoes do dono respondidas (limiar 3)'];
   const normal = saude.instrucaoAoModelo(g);

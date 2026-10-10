@@ -18,7 +18,7 @@ const LIMIARES_PADRAO = {
  *
  * Aconteceu de verdade quando as travas 7 e 8 entraram - por isso a lista virou
  * constante exportada, e ha um teste que a confere contra o que os portoes
- * realmente incrementam. Lista escrita a mao envelhece calada.
+ * realmente incrementam (test/baldes.test.js). Lista escrita a mao envelhece calada.
  */
 const BALDES_DE_BLOQUEIO = [
   'fora_do_escopo', 'sem_escopo', 'comando_destrutivo', 'shell_idioma_errado',
@@ -55,7 +55,8 @@ function avaliar(estado, limiares) {
   if (bloqueios >= L.bloqueios) {
     gatilhos.push(bloqueios + ' bloqueios de portao nesta sessao (limiar ' + L.bloqueios + ')');
   }
-  if ((e.arquivosTocados ? e.arquivosTocados.length : 0) >= L.arquivosTocados) {
+  // Array.isArray, como o typeof abaixo: texto ou objeto no estado corrompido nunca vira aviso.
+  if ((Array.isArray(e.arquivosTocados) ? e.arquivosTocados.length : 0) >= L.arquivosTocados) {
     gatilhos.push(e.arquivosTocados.length + ' arquivos tocados (limiar ' + L.arquivosTocados + ')');
   }
   // typeof: estado corrompido (objeto, texto) nunca vira aviso.
@@ -84,6 +85,8 @@ function avaliar(estado, limiares) {
  * D412: com `promptJaColado === true` (o turno gravou o handoff e a resposta final ja tem o bloco)
  * a ordem nao manda rodar nem colar de novo - mandar colar sem olhar a resposta era a duplicacao
  * que a decisao 650 da extensao tentou evitar tirando a ordem de colar.
+ * So o booleano `true` muda a ordem, de proposito: um valor truthy qualquer (estado corrompido) cai
+ * na ordem de colar. Na duvida, colar duas vezes custa menos que o prompt nao chegar ao chat.
  */
 function instrucaoAoModelo(gatilhos, promptJaColado) {
   if (promptJaColado === true) {
@@ -166,27 +169,95 @@ function ehArquivoDeHandoff(caminho) {
  * por linha: sem regex com retrorreferencia, que custava o texto inteiro por cerca aberta.
  * A cerca pode vir dentro de citacao (`> `) ou de item de lista (`- `, `1. `); cerca de crases com
  * crase no resto da linha de abertura nao abre (e codigo inline, CommonMark).
+ * Bordas do CommonMark (D417): a cerca tem no maximo 3 colunas de recuo, contadas a partir do
+ * conteudo do item de lista em que esta (4 ou mais e bloco recuado, nao cerca); a cerca aberta
+ * numa citacao fecha quando a citacao acaba; dentro da cerca, so os `>` da citacao dela saem da
+ * linha (os outros sao corpo); e linha em branco e so espaco e tab (NBSP e conteudo).
  */
 function temBlocoDeCodigo(texto) {
   if (typeof texto !== 'string') return false;
-  let cerca = null;
+  let cerca = null;   // { marca, nivel, base }: a cerca aberta, o nivel de citacao e a coluna da lista dela
   let corpo = false;
+  let lista = 0;      // coluna do conteudo do ultimo item de lista fora de cerca (0 = fora de lista)
+  let nivelDaLista = 0;
   for (const bruta of texto.split(/\r?\n/)) {
-    const linha = bruta.replace(/^(?:[ \t]*>)+/, '');
-    if (cerca === null) {
-      const a = /^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)?(`{3,}|~{3,})(.*)$/.exec(linha);
-      if (a && !(a[1][0] === '`' && a[2].indexOf('`') !== -1)) { cerca = a[1]; corpo = false; }
-      continue;
-    }
-    const f = /^[ \t]*(`{3,}|~{3,})[ \t]*$/.exec(linha);
-    if (f && f[1][0] === cerca[0] && f[1].length >= cerca.length) {
+    if (cerca !== null) {
+      const d = tirarCitacao(bruta, cerca.nivel);
+      if (d.nivel === cerca.nivel) {
+        const f = /^[ \t]*(`{3,}|~{3,})[ \t]*$/.exec(d.resto);
+        if (f && largura(recuoDe(d.resto)) - cerca.base <= 3 &&
+            f[1][0] === cerca.marca[0] && f[1].length >= cerca.marca.length) {
+          if (corpo) return true;
+          cerca = null;
+        } else if (/[^ \t]/.test(d.resto)) {
+          corpo = true;
+        }
+        continue;
+      }
+      // a citacao acabou: a cerca fecha com ela, e a linha segue como texto de fora
       if (corpo) return true;
       cerca = null;
-    } else if (linha.trim() !== '') {
-      corpo = true;
+    }
+    const c = tirarCitacao(bruta, Infinity);
+    if (c.nivel !== nivelDaLista) { lista = 0; nivelDaLista = c.nivel; }
+    if (!/[^ \t]/.test(c.resto)) continue;
+    const recuo = largura(recuoDe(c.resto));
+    if (lista && recuo < lista) lista = 0;
+    let base = lista;
+    let resto = c.resto;
+    const item = /^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+/.exec(resto);
+    if (item && recuo - base <= 3) {
+      lista = largura(item[0]);
+      base = lista;
+      resto = ' '.repeat(base) + resto.slice(item[0].length);
+    }
+    const a = /^[ \t]*(`{3,}|~{3,})(.*)$/.exec(resto);
+    if (a && largura(recuoDe(resto)) - base <= 3 && !(a[1][0] === '`' && a[2].indexOf('`') !== -1)) {
+      cerca = { marca: a[1], nivel: c.nivel, base: base };
+      corpo = false;
     }
   }
   return cerca !== null && corpo;
+}
+
+function recuoDe(linha) { return /^[ \t]*/.exec(linha)[0]; }
+
+/** Colunas que o texto ocupa, com o tab ate a proxima parada de 4 (CommonMark). */
+function largura(texto) {
+  let col = 0;
+  for (const ch of texto) col = ch === '\t' ? col + 4 - (col % 4) : col + 1;
+  return col;
+}
+
+/**
+ * Tira ate `max` marcas de citacao (`>` com ate 3 espacos antes e 1 opcional depois). O tab do
+ * prefixo vira espacos pela coluna real antes (CommonMark): `>\t` deixa 3 colunas, e o espaco
+ * opcional sai de uma delas.
+ */
+function tirarCitacao(linha, max) {
+  let resto = expandirPrefixo(linha);
+  let nivel = 0;
+  while (nivel < max) {
+    const m = /^ {0,3}> ?/.exec(resto);
+    if (!m) break;
+    resto = resto.slice(m[0].length);
+    nivel++;
+  }
+  return { resto: resto, nivel: nivel };
+}
+
+/** Troca cada tab do prefixo de espaco, tab e `>` por espacos ate a proxima parada de 4. */
+function expandirPrefixo(linha) {
+  let saida = '';
+  let col = 0;
+  let i = 0;
+  for (; i < linha.length; i++) {
+    const ch = linha[i];
+    if (ch === '\t') { saida += ' '.repeat(4 - (col % 4)); col += 4 - (col % 4); }
+    else if (ch === ' ' || ch === '>') { saida += ch; col++; }
+    else break;
+  }
+  return saida + linha.slice(i);
 }
 
 // D412/D415. R5: ASCII puro - chega ao Claude como motivo do bloqueio.
@@ -194,9 +265,9 @@ const MOTIVO_HANDOFF_SEM_PROMPT = [
   'esquadro - portao de fecho (prompt do handoff).',
   '',
   'Voce gravou um arquivo de handoff neste turno e a sua resposta final nao tem bloco de codigo.',
-  'O prompt pronto tem de chegar ao chat, nao so ao arquivo: cole-o agora, em bloco ``` ,',
-  'nesta resposta final - uma vez so. O portao le so a resposta final: se o bloco ficou numa',
-  'mensagem anterior deste turno, ele nao a ve.',
+  'O prompt pronto tem de chegar ao chat, nao so ao arquivo: cole-o agora num bloco de codigo',
+  '(tres crases ou tres tis), nesta resposta final - uma vez so. O portao le so a resposta final:',
+  'se o bloco ficou numa mensagem anterior deste turno, ele nao a ve.',
   '',
   'Para desligar este portao no projeto: "portaoHandoff": false em .claude/esquadro/projeto.json.'
 ].join('\n');

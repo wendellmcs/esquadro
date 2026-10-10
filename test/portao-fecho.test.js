@@ -649,3 +649,16 @@ test('D412: saude dispara no turno que gravou o handoff e colou o prompt -> nao 
     assert.ok(/Cole o prompt/.test(r2.json.hookSpecificOutput.additionalContext), r2.stdout);
   });
 });
+
+// D417: o README diz que, com o portao desligado e a resposta sem bloco, o aviso segue mandando colar.
+test('D417: portaoHandoff false, handoff gravado sem bloco e a saude dispara -> nao barra e manda colar', () => {
+  comTmp((tmp) => {
+    const dir = projetoCom(tmp, 'h-desl-saude', { portaoHandoff: false, limiares: { turnosComTrabalho: 1 } });
+    gravar(tmp, 'h-desl-saude', dir, 'Write', HANDOFF);
+    const r = fecho(tmp, 'h-desl-saude', dir, 'Handoff gravado no arquivo.');
+    assert.ok(r.json && r.json.decision !== 'block', 'com o portao desligado nada barra: ' + r.stdout);
+    const t = r.json.hookSpecificOutput && r.json.hookSpecificOutput.additionalContext;
+    assert.ok(t, 'controle: a saude tinha de disparar: ' + r.stdout);
+    assert.ok(/Cole o prompt/.test(t) && !/nao cole/.test(t), 'sem bloco na resposta, o aviso tem de mandar colar: ' + t);
+  });
+});

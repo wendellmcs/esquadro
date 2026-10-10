@@ -303,8 +303,9 @@ Se surgiu a duvida "ja e hora?", ja era.
 O aviso sai **uma vez por sessão**, no fim do turno, e vai para dois lugares: para você (a mensagem
 acima) e para o Claude, que recebe a ordem de rodar `/esquadro:handoff`, dizer com todas as letras
 que é hora de abrir chat novo, citando o gatilho, e colar o prompt pronto em bloco de código, sem
-perguntar "sigo?" antes. Se o turno já gravou o handoff e a resposta final já tem o bloco, a ordem
-muda: apontar para o bloco acima, sem rodar o handoff nem colar de novo. Se o fim de turno já for de um laço de continuação, o aviso não
+perguntar "sigo?" antes. Se o turno já gravou o handoff e a resposta final já tem um bloco de código
+(qualquer um: o plugin não confere que é o prompt), a ordem muda: apontar para o bloco acima, sem
+rodar o handoff nem colar de novo. Se o fim de turno já for de um laço de continuação, o aviso não
 se soma ao laço: espera o próximo fim de turno com trabalho.
 
 | O que conta | Chave em `limiares` | Padrão |
@@ -478,6 +479,20 @@ Arquivo: test/cobertura.json
 A falha de origem: quando o teste atrapalha, a vontade e mexer no medidor.
 Remover a causa e a saida. Se a regua estiver mesmo errada, quem decide e o dono,
 e a decisao fica registrada - nao sai no meio de uma correcao.
+~~~
+
+**Portão do prompt do handoff** (o turno gravou `.claude/esquadro/handoff/2026-10-10-frete.md` e a
+resposta final não tem bloco de código):
+
+~~~text
+esquadro - portao de fecho (prompt do handoff).
+
+Voce gravou um arquivo de handoff neste turno e a sua resposta final nao tem bloco de codigo.
+O prompt pronto tem de chegar ao chat, nao so ao arquivo: cole-o agora num bloco de codigo
+(tres crases ou tres tis), nesta resposta final - uma vez so. O portao le so a resposta final:
+se o bloco ficou numa mensagem anterior deste turno, ele nao a ve.
+
+Para desligar este portao no projeto: "portaoHandoff": false em .claude/esquadro/projeto.json.
 ~~~
 
 </details>
@@ -654,7 +669,10 @@ demais dilui a atenção que ela devia concentrar.
 Lê do disco o que vai no texto — `HEAD`, branch, `git status`, disparos das travas — e nunca do
 handoff anterior. O arquivo sai com oito seções fixas, da ordem de leitura aos erros de método que
 custaram tempo, e termina num prompt pronto para colar. Na mesma resposta, ele diz que é hora de
-trocar de chat e por quê, antes de perguntar se pode seguir.
+trocar de chat e por quê, antes de perguntar se pode seguir. O prompt vai ao chat em bloco de
+código: o turno que grava um handoff sem isso é barrado no fim (o portão do prompt do handoff, em
+"Como desligar uma trava"). E se o turno já gravou o handoff e colou o bloco, o aviso de troca de
+chat não manda rodar nem colar de novo: só apontar para o bloco acima.
 
 ### `/esquadro:auditar` — o que cortar
 
@@ -885,7 +903,7 @@ As quatro chaves são obrigatórias e booleanas. **Três desligam de verdade:**
 
 | Chave | `false` desliga |
 |---|---|
-| `fecho` | a cobrança de evidência no fim do turno (trava 3). O ledger de contadores continua sendo escrito. |
+| `fecho` | a cobrança de evidência no fim do turno (trava 3). O ledger de contadores continua sendo escrito. O portão do prompt do handoff **não** desliga com ela (abaixo). |
 | `destrutivo` | o bloqueio de comando destrutivo **e** o do `cd` solto, juntos (trava 5). |
 | `outraFrente` | o bloqueio por arquivo de outra frente (trava 5). |
 
@@ -912,12 +930,15 @@ As travas 1 e 2 são comandos: desliga-se não invocando.
 **O portão de decisão** (barra pergunta ao dono sem exatamente 3 opções ou sem a recomendada em
 primeiro) também não lê a chave `travas`: desliga com `"portaoDecisao": false` no `projeto.json`.
 
-**O portão do prompt do handoff** (barra o fim do turno que gravou um arquivo de handoff — `.md` com
-data `AAAA-MM-DD-` na frente e "handoff" no nome ou na pasta — quando a resposta final não tem bloco
-de código) também não: desliga com `"portaoHandoff": false` no `projeto.json`, e `travas.fecho: false`
-não o desliga. Ele lê só a resposta final do turno, e só confere que há um bloco, não que o bloco é o
-prompt. No turno que gravou o handoff e já tem o bloco na resposta final, o aviso de troca de chat
-não manda colar o prompt de novo.
+**O portão do prompt do handoff** também não lê a chave `travas`. Ele barra o fim do turno que
+gravou um arquivo de handoff quando a resposta final não tem bloco de código. Arquivo de handoff é
+um `.md` com data `AAAA-MM-DD-` na frente e "handoff" no nome ou na pasta. Desliga com
+`"portaoHandoff": false` no `projeto.json`; `travas.fecho: false` não o desliga.
+
+Ele lê só a resposta final do turno, e só confere que há um bloco de código, não que o bloco é o
+prompt. No turno que gravou o handoff e já tem um bloco na resposta final, o aviso de troca de chat
+não manda colar o prompt de novo. Com o portão desligado e a resposta sem bloco, nada barra, e o
+aviso de troca de chat, se disparar, continua mandando colar.
 
 ---
 
