@@ -28,7 +28,9 @@ const BALDES_DE_BLOQUEIO = [
   // T11-1: estilo escrito por comando de shell (modulo de design, como o token_fora_do_sistema).
   'estilo_por_shell',
   // F6-04: nome de frente invalido e "Fora" declarado tinham o balde fora_do_escopo; agora cada um tem o seu.
-  'frente_invalida', 'fora_declarado'
+  'frente_invalida', 'fora_declarado',
+  // D412: handoff gravado no turno sem o prompt no chat.
+  'handoff_sem_prompt'
 ];
 
 function soma(contadores, chaves) {
@@ -79,8 +81,21 @@ function avaliar(estado, limiares) {
 /**
  * T10-1 (D357): o texto que vai ao MODELO quando a saude dispara (additionalContext do Stop).
  * O aviso de `avaliar` e para o usuario; este e a ordem para o Claude agir na mesma resposta.
+ * D412: com `promptJaColado === true` (o turno gravou o handoff e a resposta final ja tem o bloco)
+ * a ordem nao manda rodar nem colar de novo - mandar colar sem olhar a resposta era a duplicacao
+ * que a decisao 650 da extensao tentou evitar tirando a ordem de colar.
  */
-function instrucaoAoModelo(gatilhos) {
+function instrucaoAoModelo(gatilhos, promptJaColado) {
+  if (promptJaColado === true) {
+    return [
+      'esquadro: gatilho contavel de saude do contexto disparou. E hora de abrir chat novo.',
+      (gatilhos || []).map(function (g) { return '  - ' + g; }).join('\n'),
+      'O prompt do handoff ja esta no bloco de codigo da sua resposta acima: nao rode o handoff de novo e',
+      'nao cole o bloco outra vez. Nesta mesma resposta, diga ao usuario, com todas as letras, que e hora',
+      'de abrir chat novo, cite o gatilho acima que disparou e aponte para o bloco acima.',
+      'Nao pergunte "sigo?" antes de oferecer a troca: a troca vem primeiro.'
+    ].join('\n');
+  }
   return [
     'esquadro: gatilho contavel de saude do contexto disparou. E hora de abrir chat novo.',
     (gatilhos || []).map(function (g) { return '  - ' + g; }).join('\n'),
@@ -128,5 +143,63 @@ const INSTRUCAO_DA_PERGUNTA = [
   'Nao responda "esta tudo bem" nem pergunte "sigo?" antes de oferecer a troca.'
 ].join('\n');
 
+/**
+ * D412: arquivo de handoff = `.md` com data AAAA-MM-DD- na frente do nome e "handoff" no nome
+ * (`<data>-<slug>-handoff.md`, o padrao dos planos) ou na pasta (`handoff/<data>-<slug>.md`, onde
+ * a skill grava, skills/handoff/SKILL.md:25). A data exclui a propria skill (`handoff/SKILL.md`).
+ */
+function ehArquivoDeHandoff(caminho) {
+  if (typeof caminho !== 'string' || !caminho) return false;
+  const partes = caminho.replace(/\\/g, '/').split('/');
+  const nome = partes[partes.length - 1];
+  const pasta = partes.length > 1 ? partes[partes.length - 2] : '';
+  if (!/^\d{4}-\d{2}-\d{2}-.*\.md$/i.test(nome)) return false;
+  return /handoff/i.test(nome) || /^handoff$/i.test(pasta);
+}
+
+/**
+ * D412: a resposta tem bloco de codigo? Cerca de ``` ou ~~~ em linha propria, de qualquer
+ * linguagem, com corpo nao vazio. Nao confere que o bloco e o prompt: o portao le texto, nao
+ * intencao (a D412 fala em "nao tem bloco de codigo").
+ * Fecho como no CommonMark: mesmo caractere, comprimento >= o da abertura, so espaco depois; sem
+ * fecho, o bloco vai ate o fim do texto (o prompt aparece em bloco do mesmo jeito). Uma passada
+ * por linha: sem regex com retrorreferencia, que custava o texto inteiro por cerca aberta.
+ * A cerca pode vir dentro de citacao (`> `) ou de item de lista (`- `, `1. `); cerca de crases com
+ * crase no resto da linha de abertura nao abre (e codigo inline, CommonMark).
+ */
+function temBlocoDeCodigo(texto) {
+  if (typeof texto !== 'string') return false;
+  let cerca = null;
+  let corpo = false;
+  for (const bruta of texto.split(/\r?\n/)) {
+    const linha = bruta.replace(/^(?:[ \t]*>)+/, '');
+    if (cerca === null) {
+      const a = /^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)?(`{3,}|~{3,})(.*)$/.exec(linha);
+      if (a && !(a[1][0] === '`' && a[2].indexOf('`') !== -1)) { cerca = a[1]; corpo = false; }
+      continue;
+    }
+    const f = /^[ \t]*(`{3,}|~{3,})[ \t]*$/.exec(linha);
+    if (f && f[1][0] === cerca[0] && f[1].length >= cerca.length) {
+      if (corpo) return true;
+      cerca = null;
+    } else if (linha.trim() !== '') {
+      corpo = true;
+    }
+  }
+  return cerca !== null && corpo;
+}
+
+// D412/D415. R5: ASCII puro - chega ao Claude como motivo do bloqueio.
+const MOTIVO_HANDOFF_SEM_PROMPT = [
+  'esquadro - portao de fecho (prompt do handoff).',
+  '',
+  'Voce gravou um arquivo de handoff neste turno e a sua resposta final nao tem bloco de codigo.',
+  'O prompt pronto tem de chegar ao chat, nao so ao arquivo: cole-o agora, em bloco ``` ,',
+  'nesta resposta final - uma vez so. O portao le so a resposta final: se o bloco ficou numa',
+  'mensagem anterior deste turno, ele nao a ve.',
+  '',
+  'Para desligar este portao no projeto: "portaoHandoff": false em .claude/esquadro/projeto.json.'
+].join('\n');
+
 module.exports = { LIMIARES_PADRAO, BALDES_DE_BLOQUEIO, avaliar, instrucaoAoModelo, perguntaSobreSaude,
-  INSTRUCAO_DA_PERGUNTA };
+  INSTRUCAO_DA_PERGUNTA, ehArquivoDeHandoff, temBlocoDeCodigo, MOTIVO_HANDOFF_SEM_PROMPT };

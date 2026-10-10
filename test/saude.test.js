@@ -87,3 +87,79 @@ test('T10-2/3: o projeto sobrescreve os dois limiares, e o aviso segue ASCII', (
 test('T10-2/3: valor que nao e numero no estado nunca dispara (estado corrompido nao vira aviso)', () => {
   assert.strictEqual(saude.avaliar({ decisoesDoDono: { campo: 'x' }, commitsFeitos: 'muitos' }).disparou, false);
 });
+
+// ------------------------------- D412: o prompt do handoff vai ao chat
+
+test('D412: arquivo de handoff = .md com data na frente e "handoff" no nome ou na pasta', () => {
+  for (const p of [
+    '.claude/esquadro/handoff/2026-10-10-esquadro-decisor-local-bateria-s35.md',
+    'C:\\obra\\app\\.context\\plans\\2026-10-10-item4-fechado-handoff.md',
+    '/c/proj/esquadro/.context/plans/2026-10-08-esquadro-pendencias-sequencia-unica-handoff.md',
+    'plans/2026-10-10-HANDOFF-x.MD'
+  ]) assert.strictEqual(saude.ehArquivoDeHandoff(p), true, p);
+  for (const p of [
+    'skills/handoff/SKILL.md',              // a skill, nao um handoff
+    '.claude/esquadro/handoff/notas.md',     // sem data na frente
+    'docs/handoff.md',
+    '.context/plans/2026-10-10-plano.md',    // data sem "handoff"
+    '.context/plans/2026-10-10-x-handoff.txt',
+    'handoff/2026-10-10-x.md.bak',
+    '', null, undefined, 42, { file_path: 'x' }
+  ]) assert.strictEqual(saude.ehArquivoDeHandoff(p), false, String(p));
+});
+
+test('D412: bloco de codigo = cerca em linha propria com corpo nao vazio, de qualquer linguagem', () => {
+  for (const t of [
+    'Prompt:\n```\nRetomando o esquadro\n```',
+    'Prompt:\n```text\nRetomando\nlinha 2\n```\nfim',
+    '  ```md\n# titulo\n  ```',
+    '~~~\nRetomando\n~~~',
+    // revisao da sessao 41: a cerca sem fecho vai ate o fim do texto (CommonMark) - o prompt esta
+    // visivel em bloco; fecho mais longo que a abertura fecha; fecho mais curto nao fecha; CRLF.
+    '```\nabre e nunca fecha',
+    '````\nRetomando\n`````',
+    '```\nRetomando\n``\n',
+    '```\r\nRetomando\r\n```\r\n',
+    '```\n~~~\n',                     // cerca de outro caractere e corpo, nao fecho
+    // ronda 2: cerca dentro de citacao e de item de lista (CommonMark mostra o bloco)
+    '> ```\n> Retomando\n> ```',
+    '- ```\n  Retomando\n  ```',
+    '1. ```\n   Retomando\n   ```'
+  ]) assert.strictEqual(saude.temBlocoDeCodigo(t), true, JSON.stringify(t));
+  for (const t of [
+    'sem bloco nenhum',
+    'so `codigo` inline',
+    '```\n   \n```',                 // corpo vazio
+    'texto ```inline``` no meio',
+    '```x``` e inline\nmais uma linha', // crase na info string: nao abre cerca (CommonMark)
+    '```\n  \n',                     // sem fecho e corpo vazio
+    '````\n\n`````',                 // fecho mais longo fecha: corpo vazio
+    '```\r\n\r\n```\r\n',            // CRLF: o fecho fecha, corpo vazio
+    '', null, undefined, 7
+  ]) assert.strictEqual(saude.temBlocoDeCodigo(t), false, JSON.stringify(t));
+});
+
+test('D412: com o prompt ja colado, a instrucao da saude nao manda colar de novo', () => {
+  const g = ['3 decisoes do dono respondidas (limiar 3)'];
+  const normal = saude.instrucaoAoModelo(g);
+  assert.ok(normal.indexOf('/esquadro:handoff') !== -1 && /Cole o prompt/.test(normal), 'controle: ' + normal);
+  for (const t of [saude.instrucaoAoModelo(g, true)]) {
+    assert.ok(t.indexOf(g[0]) !== -1, 'tem de citar o gatilho: ' + t);
+    assert.ok(/chat novo/.test(t), 'tem de mandar dizer que e hora de abrir chat novo: ' + t);
+    assert.ok(!/Cole o prompt/.test(t), 'mandou colar de novo: ' + t);
+    assert.ok(!/Rode \/esquadro:handoff/.test(t), 'mandou rodar o handoff de novo: ' + t);
+    assert.ok(/nao cole/.test(t) && /acima/.test(t), 'tem de mandar apontar para o bloco acima: ' + t);
+    assert.ok(/sigo/.test(t), 'tem de proibir o "sigo?": ' + t);
+    assert.ok(/^[\x20-\x7E\n]+$/.test(t), 'tem de ser ASCII (R5): ' + JSON.stringify(t));
+  }
+  // so `true` muda: valor truthy de estado corrompido nao tira a ordem de colar
+  assert.strictEqual(saude.instrucaoAoModelo(g, 'sim'), normal);
+});
+
+test('D412: o motivo do bloqueio diz o que fazer, como desligar, e e ASCII', () => {
+  const m = saude.MOTIVO_HANDOFF_SEM_PROMPT;
+  assert.ok(/handoff/.test(m) && /bloco/.test(m), m);
+  assert.ok(m.indexOf('"portaoHandoff": false') !== -1, 'tem de dizer como desligar (D415): ' + m);
+  assert.ok(/^[\x20-\x7E\n]+$/.test(m), 'tem de ser ASCII (R5): ' + JSON.stringify(m));
+  assert.ok(saude.BALDES_DE_BLOQUEIO.indexOf('handoff_sem_prompt') !== -1, 'o balde novo nega: entra na soma');
+});

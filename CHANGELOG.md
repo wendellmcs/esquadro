@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.3 — o prompt do handoff chega ao chat
+
+Gravar o handoff so no arquivo deixava o chat novo sem o texto para colar. O fim de turno passa a
+cobrar o prompt na resposta. O comportamento novo vem com teste; a suite inteira roda com `npm test`.
+
+- **O turno que gravou um handoff sem o prompt em bloco e barrado.** Arquivo de handoff e um `.md`
+  com data `AAAA-MM-DD-` na frente do nome e "handoff" no nome (`<data>-<assunto>-handoff.md`) ou
+  dentro de uma pasta `handoff/`. Se o turno gravou um desses e a resposta final nao tem bloco de
+  codigo (cerca de tres crases ou de tres tis, com corpo nao vazio; cerca sem fecho, dentro de
+  citacao ou de item de lista tambem conta), o fim do turno e barrado, uma vez, com o motivo dizendo o que fazer: colar
+  o prompt agora, em bloco, nesta resposta final.
+- **Um bloqueio so, com todos os motivos.** Se o mesmo turno tambem tem subitem aberto ou ficou sem
+  evidencia, os motivos saem juntos no mesmo bloqueio.
+- **O aviso de troca de chat nao manda colar de novo.** No turno que gravou o handoff e ja tem o bloco
+  na resposta final, a ordem ao Claude passa a ser apontar para o bloco acima, sem rodar o handoff nem
+  colar outra vez.
+- **Como desligar:** `"portaoHandoff": false` no `projeto.json`. O `travas.fecho: false` nao o
+  desliga.
+- **Limites:** o portao le so a resposta final (bloco colado numa mensagem anterior do mesmo turno
+  nao conta) e confere que ha um bloco, nao que o bloco e o prompt. So o arquivo gravado por
+  ferramenta de arquivo marca o turno; o gravado por comando de shell, nao.
+- Sao **22 baldes** de contador: 17 que negam, 5 que so contam.
+
 ## 0.5.2 — o auditar so acusa sobreposicao de verdade, e os portoes dizem por que barram
 
 A sobreposicao de skills do `/esquadro:auditar` passa a pedir mais que uma palavra em comum, e uma

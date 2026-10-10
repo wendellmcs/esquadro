@@ -14,6 +14,8 @@ io.blindar(function () {
       delete s.trabalhoReal;
       delete s.bloqueouNesteTurno;
       delete s.buscouNesteTurno;
+      // D412: o turno interrompido antes do Stop nao deixa a marca do handoff para o seguinte.
+      delete s.gravouHandoff;
       return s;
     });
     // T10-4 (D357): quem pergunta se o contexto/memoria esta bom ja tem a resposta - dispara toda

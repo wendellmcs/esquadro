@@ -285,7 +285,9 @@ const TRAVA_DO_BALDE = {
   // o modulo de design nega, mas e opcional e nao e trava: so existe com design.json
   token_fora_do_sistema: null,
   // T11-1: o mesmo modulo de design, quando o estilo e escrito por comando de shell
-  estilo_por_shell: null
+  estilo_por_shell: null,
+  // D412/D415: portao proprio do prompt do handoff, com chave propria como o de decisao: fora da conta das travas
+  handoff_sem_prompt: null
 };
 const TRAVA_DO_COMANDO = { init: 1, revisar: 2 };
 

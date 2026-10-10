@@ -161,7 +161,7 @@ const PONTOS = [
     arquivos: [
       'scripts/apurar-ronda.js', 'scripts/lib/busca.js', 'scripts/lib/git.js', 'scripts/lib/glob.js',
       'scripts/lib/instrucoes.js', 'scripts/lib/plano.js', 'scripts/lib/plataforma.js',
-      'scripts/lib/sanitacao.js', 'scripts/preparar-revisao.js'
+      'scripts/lib/sanitacao.js', 'scripts/lib/saude.js', 'scripts/preparar-revisao.js'
     ],
     comoSeProva: 'e trabalho de string puro: a entrada com barra invertida se passa de qualquer maquina',
     ressalva: 'no Linux e no macOS a barra invertida e caractere LEGAL em nome de arquivo, ' +

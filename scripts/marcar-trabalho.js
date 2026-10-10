@@ -3,6 +3,7 @@
 const io = require('./lib/io.js');
 const estado = require('./lib/estado.js');
 const busca = require('./lib/busca.js');
+const saude = require('./lib/saude.js');
 
 /**
  * T10-2: quantas respostas nao vazias o AskUserQuestion devolveu. Fica fora do `alterar` porque
@@ -82,6 +83,9 @@ io.blindar(function () {
         if (arquivo) {
           s.arquivosTocados = s.arquivosTocados || [];
           if (s.arquivosTocados.indexOf(arquivo) === -1) s.arquivosTocados.push(arquivo);
+          // D412: marca do TURNO (arquivosTocados e da sessao): o fecho cobra o prompt no chat.
+          // So Write e Edit chegam aqui com file_path: o Read saiu acima, como so leitura.
+          if (saude.ehArquivoDeHandoff(arquivo)) s.gravouHandoff = true;
         }
       }
       return s;

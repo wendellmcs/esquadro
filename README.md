@@ -270,7 +270,7 @@ O plugin se pendura em dez pontos do ciclo de uma sessão:
 | antes de `AskUserQuestion` | `scripts/portao-decisao.js` | barra pergunta ao dono sem exatamente 3 opções ou sem a recomendada em primeiro; desliga com `"portaoDecisao": false` no `projeto.json` |
 | depois de cada ferramenta | `scripts/marcar-trabalho.js` | marca trabalho real, busca feita e arquivos tocados; conta as decisões suas respondidas e os commits que passaram |
 | um inspetor da revisão cega termina | `scripts/gravar-veredito.js` | grava o veredito dele em `vereditos/<lente>.json` da ronda; não barra nada, não sobrescreve, e avisa o que não gravou (essa lente volta a ser gravada à mão) |
-| o turno termina | `scripts/portao-fecho.js` | cobra evidência, barra etapa com subitem aberto, grava os contadores, avisa quando é hora de trocar de chat |
+| o turno termina | `scripts/portao-fecho.js` | cobra evidência, barra etapa com subitem aberto, barra o turno que gravou um handoff sem colar o prompt em bloco de código na resposta final, grava os contadores, avisa quando é hora de trocar de chat |
 | a sessão fecha | `scripts/fim-sessao.js` | apaga os arquivos de sessão parados há mais de 7 dias, nunca o da sessão que está fechando; o orçamento é de 1,5 s (o `timeout` do `hooks.json` não o aumenta), e a limpeza para antes disso: o que sobrar sai na próxima |
 
 Três coisas acontecem sem você pedir:
@@ -303,7 +303,8 @@ Se surgiu a duvida "ja e hora?", ja era.
 O aviso sai **uma vez por sessão**, no fim do turno, e vai para dois lugares: para você (a mensagem
 acima) e para o Claude, que recebe a ordem de rodar `/esquadro:handoff`, dizer com todas as letras
 que é hora de abrir chat novo, citando o gatilho, e colar o prompt pronto em bloco de código, sem
-perguntar "sigo?" antes. Se o fim de turno já for de um laço de continuação, o aviso não
+perguntar "sigo?" antes. Se o turno já gravou o handoff e a resposta final já tem o bloco, a ordem
+muda: apontar para o bloco acima, sem rodar o handoff nem colar de novo. Se o fim de turno já for de um laço de continuação, o aviso não
 se soma ao laço: espera o próximo fim de turno com trabalho.
 
 | O que conta | Chave em `limiares` | Padrão |
@@ -910,6 +911,13 @@ As travas 1 e 2 são comandos: desliga-se não invocando.
 
 **O portão de decisão** (barra pergunta ao dono sem exatamente 3 opções ou sem a recomendada em
 primeiro) também não lê a chave `travas`: desliga com `"portaoDecisao": false` no `projeto.json`.
+
+**O portão do prompt do handoff** (barra o fim do turno que gravou um arquivo de handoff — `.md` com
+data `AAAA-MM-DD-` na frente e "handoff" no nome ou na pasta — quando a resposta final não tem bloco
+de código) também não: desliga com `"portaoHandoff": false` no `projeto.json`, e `travas.fecho: false`
+não o desliga. Ele lê só a resposta final do turno, e só confere que há um bloco, não que o bloco é o
+prompt. No turno que gravou o handoff e já tem o bloco na resposta final, o aviso de troca de chat
+não manda colar o prompt de novo.
 
 ---
 

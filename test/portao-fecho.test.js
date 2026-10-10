@@ -506,3 +506,146 @@ test('T10-1: com stop_hook_active nao continua e nao marca avisouSaude - o aviso
     assert.strictEqual(sessaoDe(tmp, 't101c').avisouSaude, true);
   });
 });
+
+// ------------------------------- D412/D415: handoff gravado no turno sem o prompt no chat
+
+const HANDOFF = path.join('.claude', 'esquadro', 'handoff', '2026-10-10-frente-x.md');
+const PROMPT = 'Handoff gravado. Prompt da proxima sessao:\n```text\nRetomando a frente x\nPASSO 1\n```';
+
+function projetoCom(tmp, nome, conteudo) {
+  const dir = fs.mkdtempSync(path.join(tmp, nome + '-'));
+  fs.mkdirSync(path.join(dir, '.claude', 'esquadro'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'projeto.json'),
+    JSON.stringify(Object.assign({ versaoConfig: 1, marchaPadrao: 'padrao' }, conteudo || {})), 'utf8');
+  return dir;
+}
+
+function gravar(tmp, id, cwd, ferramenta, arquivo) {
+  return rodar('marcar-trabalho.js', { session_id: id, cwd: cwd, tool_name: ferramenta,
+    tool_input: { file_path: path.join(cwd, arquivo) } }, tmp);
+}
+
+function fecho(tmp, id, cwd, mensagem, extra) {
+  return rodar('portao-fecho.js', Object.assign({ session_id: id, cwd: cwd, hook_event_name: 'Stop',
+    last_assistant_message: mensagem }, extra || {}), tmp);
+}
+
+test('D412: handoff gravado (Write ou Edit) e resposta final sem bloco de codigo -> barra, e conta o balde', () => {
+  comTmp((tmp) => {
+    for (const ferramenta of ['Write', 'Edit']) {
+      const id = 'h-' + ferramenta;
+      const dir = projetoCom(tmp, id);
+      gravar(tmp, id, dir, ferramenta, HANDOFF);
+      const r = fecho(tmp, id, dir, 'Handoff gravado no arquivo.');
+      assert.strictEqual(r.status, 0, r.stderr);
+      assert.ok(r.json && r.json.decision === 'block', ferramenta + ': tinha de barrar: ' + r.stdout);
+      assert.ok(/handoff/.test(r.json.reason) && /bloco/.test(r.json.reason), r.json.reason);
+      assert.ok(r.json.reason.indexOf('trava 3') === -1, 'sem alegacao, o motivo da evidencia nao entra: ' + r.json.reason);
+      assert.strictEqual(sessaoDe(tmp, id).contadores.handoff_sem_prompt, 1);
+      // uma vez por turno: a segunda passada (o modelo respondeu de novo) libera
+      assert.strictEqual(fecho(tmp, id, dir, 'Handoff gravado no arquivo.').json, null);
+    }
+  });
+});
+
+test('D412: handoff gravado e o prompt colado em bloco -> libera', () => {
+  comTmp((tmp) => {
+    const dir = projetoCom(tmp, 'h-ok');
+    gravar(tmp, 'h-ok', dir, 'Write', HANDOFF);
+    assert.strictEqual(fecho(tmp, 'h-ok', dir, PROMPT).json, null);
+  });
+});
+
+test('D412: controles - arquivo que nao e handoff, ou Read do handoff, nao barram', () => {
+  comTmp((tmp) => {
+    const dir = projetoCom(tmp, 'h-nao');
+    gravar(tmp, 'h-nao', dir, 'Write', path.join('skills', 'handoff', 'SKILL.md'));
+    assert.strictEqual(fecho(tmp, 'h-nao', dir, 'Anotado.').json, null, 'a skill nao e um handoff');
+    const dir2 = projetoCom(tmp, 'h-read');
+    gravar(tmp, 'h-read', dir2, 'Edit', 'notas.md');
+    gravar(tmp, 'h-read', dir2, 'Read', HANDOFF);
+    assert.strictEqual(fecho(tmp, 'h-read', dir2, 'Anotado.').json, null, 'ler o handoff nao e grava-lo');
+  });
+});
+
+test('D412: a marca e do turno - o turno seguinte sem handoff nao herda a trava', () => {
+  comTmp((tmp) => {
+    const dir = projetoCom(tmp, 'h-turno');
+    gravar(tmp, 'h-turno', dir, 'Write', HANDOFF);
+    assert.strictEqual(fecho(tmp, 'h-turno', dir, PROMPT).json, null, 'controle: o turno 1 colou o prompt');
+    rodar('abrir-turno.js', { session_id: 'h-turno', cwd: dir, prompt: 'segue' }, tmp);
+    gravar(tmp, 'h-turno', dir, 'Edit', 'notas.md');
+    assert.strictEqual(fecho(tmp, 'h-turno', dir, 'Anotado.').json, null, 'o turno 2 herdou a marca do 1');
+    // e a marca que ficou de um turno sem Stop (interrompido) morre na abertura do seguinte
+    gravar(tmp, 'h-turno', dir, 'Write', HANDOFF);
+    assert.strictEqual(sessaoDe(tmp, 'h-turno').gravouHandoff, true, 'controle: a marca foi gravada');
+    rodar('abrir-turno.js', { session_id: 'h-turno', cwd: dir, prompt: 'outro' }, tmp);
+    assert.strictEqual(sessaoDe(tmp, 'h-turno').gravouHandoff, undefined, 'abrir-turno nao zerou a marca');
+  });
+});
+
+test('D415: "portaoHandoff": false desliga; travas.fecho false NAO desliga', () => {
+  comTmp((tmp) => {
+    const desl = projetoCom(tmp, 'h-desl', { portaoHandoff: false });
+    gravar(tmp, 'h-desl', desl, 'Write', HANDOFF);
+    assert.strictEqual(fecho(tmp, 'h-desl', desl, 'Handoff gravado.').json, null, 'portaoHandoff false nao desligou');
+    // so `false` desliga
+    const texto = projetoCom(tmp, 'h-texto', { portaoHandoff: 'false' });
+    gravar(tmp, 'h-texto', texto, 'Write', HANDOFF);
+    const t = fecho(tmp, 'h-texto', texto, 'Handoff gravado.');
+    assert.ok(t.json && t.json.decision === 'block', 'texto "false" desligou: ' + t.stdout);
+    const semFecho = projetoCom(tmp, 'h-fecho', {
+      travas: { fecho: false, destrutivo: true, outraFrente: true, escopo: true } });
+    gravar(tmp, 'h-fecho', semFecho, 'Write', HANDOFF);
+    const f = fecho(tmp, 'h-fecho', semFecho, 'Pronto, os testes passaram.');
+    assert.ok(f.json && f.json.decision === 'block', 'travas.fecho false desligou a trava do handoff: ' + f.stdout);
+    assert.ok(f.json.reason.indexOf('trava 3') === -1, 'com fecho false a evidencia nao e cobrada: ' + f.json.reason);
+  });
+});
+
+test('D412: alegacao sem evidencia e handoff sem prompt -> um bloqueio so, com os dois motivos e os dois baldes', () => {
+  comTmp((tmp) => {
+    const dir = projetoCom(tmp, 'h-dois');
+    gravar(tmp, 'h-dois', dir, 'Write', HANDOFF);
+    const r = fecho(tmp, 'h-dois', dir, 'Pronto, os testes passaram.');
+    assert.ok(r.json && r.json.decision === 'block', r.stdout);
+    assert.ok(r.json.reason.indexOf('trava 3') !== -1, 'faltou o motivo da evidencia: ' + r.json.reason);
+    assert.ok(r.json.reason.indexOf('portaoHandoff') !== -1, 'faltou o motivo do handoff: ' + r.json.reason);
+    const c = sessaoDe(tmp, 'h-dois').contadores;
+    assert.strictEqual(c.fecho_sem_evidencia, 1);
+    assert.strictEqual(c.handoff_sem_prompt, 1);
+  });
+});
+
+test('D412: subitem aberto e handoff sem prompt -> os dois motivos no mesmo bloqueio', () => {
+  comTmp((tmp) => {
+    const dir = projetoCom(tmp, 'h-sub');
+    fs.writeFileSync(path.join(dir, 'plano.md'), '## Tarefa 1: fazer\n- [x] a\n- [ ] b\n', 'utf8');
+    fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'plano-ativo.json'),
+      JSON.stringify({ arquivo: 'plano.md', sessionId: 'h-sub', tarefa: null }), 'utf8');
+    gravar(tmp, 'h-sub', dir, 'Write', HANDOFF);
+    const r = fecho(tmp, 'h-sub', dir, 'A etapa esta concluida.');
+    assert.ok(r.json && r.json.decision === 'block', r.stdout);
+    assert.ok(/subitem pendente/.test(r.json.reason), 'faltou o motivo do subitem: ' + r.json.reason);
+    assert.ok(r.json.reason.indexOf('portaoHandoff') !== -1, 'faltou o motivo do handoff: ' + r.json.reason);
+    const c = sessaoDe(tmp, 'h-sub').contadores;
+    assert.strictEqual(c.subitem_pendente, 1);
+    assert.strictEqual(c.handoff_sem_prompt, 1);
+  });
+});
+
+test('D412: saude dispara no turno que gravou o handoff e colou o prompt -> nao manda colar de novo', () => {
+  comTmp((tmp) => {
+    const dir = projetoQueDispara(tmp, 'h-saude');
+    gravar(tmp, 'h-saude', dir, 'Write', HANDOFF);
+    const r = fecho(tmp, 'h-saude', dir, PROMPT);
+    const t = r.json && r.json.hookSpecificOutput && r.json.hookSpecificOutput.additionalContext;
+    assert.ok(t, 'controle: a saude tinha de disparar: ' + r.stdout);
+    assert.ok(!/Cole o prompt/.test(t) && /nao cole/.test(t), 'mandou colar de novo: ' + t);
+    // controle: sem handoff no turno, a ordem de rodar e colar segue
+    const dir2 = projetoQueDispara(tmp, 'h-saude2');
+    gravar(tmp, 'h-saude2', dir2, 'Edit', 'notas.md');
+    const r2 = fecho(tmp, 'h-saude2', dir2, PROMPT);
+    assert.ok(/Cole o prompt/.test(r2.json.hookSpecificOutput.additionalContext), r2.stdout);
+  });
+});

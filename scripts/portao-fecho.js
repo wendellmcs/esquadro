@@ -54,9 +54,32 @@ function encerrarTurno(e, s) {
   // T10-1: o systemMessage so o usuario ve. O additionalContext do Stop e o que chega ao modelo
   // e o faz agir (rodar o handoff e colar o prompt na mesma resposta).
   if (avisa) {
-    saida.hookSpecificOutput = { hookEventName: 'Stop', additionalContext: saude.instrucaoAoModelo(vs.gatilhos) };
+    // D412: o turno que gravou o handoff e ja colou o bloco nao recebe a ordem de colar de novo.
+    const jaColado = s.gravouHandoff === true && saude.temBlocoDeCodigo(e.last_assistant_message);
+    saida.hookSpecificOutput = { hookEventName: 'Stop', additionalContext: saude.instrucaoAoModelo(vs.gatilhos, jaColado) };
   }
   io.permitir(saida);
+}
+
+/** D412: handoff gravado neste turno e a resposta final sem bloco de codigo. D415: so
+ *  `"portaoHandoff": false` no projeto.json desliga - independente de `travas.fecho`. */
+function handoffSemPrompt(e, s, projeto) {
+  if (s.gravouHandoff !== true) return false;
+  if (projeto && projeto.portaoHandoff === false) return false;
+  return !saude.temBlocoDeCodigo(e.last_assistant_message);
+}
+
+/** Um bloqueio por turno, com todos os motivos dele: o segundo Stop chega com stop_hook_active
+ *  e libera, e um motivo deixado para depois nunca seria cobrado. */
+function barrar(e, s, motivos, semPrompt) {
+  s.contadores = s.contadores || {};
+  if (semPrompt) {
+    s.contadores.handoff_sem_prompt = (s.contadores.handoff_sem_prompt || 0) + 1;
+    motivos.push(saude.MOTIVO_HANDOFF_SEM_PROMPT);
+  }
+  s.bloqueouNesteTurno = true;
+  estado.gravar(e.session_id, s);
+  io.bloquearFecho(motivos.join('\n\n'));
 }
 
 io.blindar(function () {
@@ -75,8 +98,10 @@ io.blindar(function () {
     // aqui desligaria a medicao do plugin inteiro e congelaria bloqueouNesteTurno.
     // Custo declarado (P2-38): o Stop passa a ler disco uma vez por turno.
     const cwd = config.raizDoProjeto(e.cwd);
-    const travas = projetoLib.travasDe(config.carregarProjeto(cwd));
-    if (travas.fecho === false) return encerrarTurno(e, s);
+    const projeto = config.carregarProjeto(cwd);
+    const travas = projetoLib.travasDe(projeto);
+    const semPrompt = handoffSemPrompt(e, s, projeto);
+    if (travas.fecho === false) return semPrompt ? barrar(e, s, [], true) : encerrarTurno(e, s);
 
     const planoLib = require('./lib/plano.js');
     const ativo = planoLib.lerAtivo(cwd);
@@ -86,20 +111,21 @@ io.blindar(function () {
       catch (err) { tarefas = []; }
       const aberta = tarefas.filter(function (t) { return t.abertos > 0; })[0];
       if (aberta) {
-        s.bloqueouNesteTurno = true;
         s.contadores = s.contadores || {};
         s.contadores.subitem_pendente = (s.contadores.subitem_pendente || 0) + 1;
-        estado.gravar(e.session_id, s);
-        return io.bloquearFecho(planoLib.motivoSubitemAberto(aberta));
+        return barrar(e, s, [planoLib.motivoSubitemAberto(aberta)], semPrompt);
       }
     }
 
-    if (!evidencia.deveBloquear(e.last_assistant_message)) return encerrarTurno(e, s);
+    const semEvidencia = evidencia.deveBloquear(e.last_assistant_message);
+    if (!semEvidencia && !semPrompt) return encerrarTurno(e, s);
 
-    s.bloqueouNesteTurno = true;
-    s.contadores = s.contadores || {};
-    s.contadores.fecho_sem_evidencia = (s.contadores.fecho_sem_evidencia || 0) + 1;
-    estado.gravar(e.session_id, s);
-    io.bloquearFecho(evidencia.MOTIVO);
+    const motivos = [];
+    if (semEvidencia) {
+      s.contadores = s.contadores || {};
+      s.contadores.fecho_sem_evidencia = (s.contadores.fecho_sem_evidencia || 0) + 1;
+      motivos.push(evidencia.MOTIVO);
+    }
+    barrar(e, s, motivos, semPrompt);
   });
 });
