@@ -104,7 +104,42 @@ test('D391/portao-decisao: a marca tambem fora da 1a opcao barra, citando a opca
     assert.match(motivo(terceira), /a pergunta 1 marca como recomendada tambem a opcao 3/);
     const todas = hook(dir, entrada(pergunta(['A (Recomendado)', 'B (Recommended)', 'C (Recomendada)'])));
     assert.ok(negou(todas), todas.stdout);
-    assert.match(motivo(todas), /tambem a opcao 2, 3/);
+    // D396 n. 39: o plural com "e"
+    assert.match(motivo(todas), /tambem as opcoes 2 e 3/);
+  });
+});
+
+// D396 n. 30/40: cada causa diz o que fazer; a instrucao geral diz que a marca vai numa opcao so.
+test('D396/portao-decisao: cada causa traz o proprio remedio, e a marca vai so na 1a', () => {
+  comProjeto({ versaoConfig: 1 }, (dir) => {
+    const conta = motivo(hook(dir, entrada(pergunta(['A (Recomendado)', 'B']))));
+    assert.match(conta, /pergunta 1 tem 2 opcoes - deixe exatamente 3/);
+    const primeira = motivo(hook(dir, entrada(pergunta(['A', 'B', 'C']))));
+    assert.match(primeira, /nao e a recomendada - ponha \(Recomendado\) no rotulo dela/);
+    const duas = motivo(hook(dir, entrada(pergunta(['A (Recomendado)', 'B (Recomendado)', 'C']))));
+    assert.match(duas, /tambem a opcao 2 - a marca vai so na 1a opcao/);
+    for (const m of [conta, primeira, duas]) {
+      assert.match(m, /\(Recomendado\) no rotulo, so nela,/);
+      assert.ok(/^[\x20-\x7e\n]*$/.test(m), 'o motivo sai em ASCII: ' + m);
+    }
+  });
+});
+
+// D396 n. 35: opcao nula, texto solto, sem label ou com label vazio nao e opcao.
+test('D396/portao-decisao: opcao sem rotulo em texto (nula, texto solto, sem label, label vazio) barra, citando qual', () => {
+  comProjeto({ versaoConfig: 1 }, (dir) => {
+    const casos = [
+      [[{ label: 'A (Recomendado)' }, null, { label: 'C' }], 2],
+      [[{ label: 'A (Recomendado)' }, { label: 'B' }, 'C'], 3],
+      [[{ label: 'A (Recomendado)' }, { description: 'x' }, { label: 'C' }], 2],
+      [[{ label: 'A (Recomendado)' }, { label: '  ' }, { label: 'C' }], 2],
+      [['A (Recomendado)', 'B', 'C'], 1]
+    ];
+    for (const [opcoes, qual] of casos) {
+      const r = hook(dir, entrada({ question: 'Qual?', options: opcoes }));
+      assert.ok(negou(r), JSON.stringify(opcoes) + ': ' + r.stdout);
+      assert.match(motivo(r), new RegExp('a opcao ' + qual + ' da pergunta 1 nao tem rotulo em texto'));
+    }
   });
 });
 
@@ -196,7 +231,9 @@ test('D387/portao-decisao: entrada quebrada libera (R6), sem estourar', () => {
     const r = hook(dir, entrada(null));
     assert.strictEqual(r.status, 0, r.stderr);
     assert.ok(!/portao falhou/.test(r.stderr || ''), r.stderr);
+    // D396 n. 35: opcao em texto solto ja nao passa (antes liberava); decide sem estourar
     const strings = hook(dir, entrada({ options: ['A (Recomendado)', 'B', 'C'] }));
-    liberou(strings);
+    assert.strictEqual(strings.status, 0, strings.stderr);
+    assert.ok(negou(strings), strings.stdout);
   });
 });

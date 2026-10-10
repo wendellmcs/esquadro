@@ -56,7 +56,9 @@ Detalhe de cada marcha, com portões e evidência mínima: [01-marchas-e-gates.m
 **Antes de aplicar qualquer portão**, descobrir com o que preencher as fatias.
 
 1. **Procurar**, nesta ordem: `.claude/*/projeto.json` · `.claude/*/adaptador.md` ·
-   a skill de execução do próprio projeto.
+   a skill de execução do próprio projeto (em `.claude/skills/`, a que diz "Gerado por
+   `/esquadro:init`"; com mais de uma assim, perguntar ao dono qual vale; sem nenhuma assim, a escrita à
+   mão que o projeto usa como manual de execução, se houver — a §1 vale para ela do mesmo jeito).
 2. **Achou** → usar os valores dele. Se o projeto reinjeta um arquivo de regras curto em toda sessão,
    **não repetir aqui o que ele já diz** — contexto repetido é contexto pago duas vezes.
 3. **Não achou** → oferecer criar, com as cinco perguntas que varredura nenhuma responde. Varrer

@@ -127,11 +127,13 @@ test('limparVelhos: sem session_id a sessao atual e "sem-sessao", como no caminh
   });
 });
 
-test('limparVelhos: so apaga os tres nomes que o estado cria - .marca, nome estranho e pasta ficam', () => {
+test('limparVelhos: so apaga os nomes que o estado e o gravar-veredito criam - nome estranho e pasta ficam', () => {
   comTmp((estado, pasta) => {
     const agora = Date.now();
     const intactos = [
-      criar(pasta, 'x.veredito-lente.marca', 30, agora),          // D366: fora da T11-2
+      criar(pasta, 'x.veredito-.marca', 30, agora),                // marca sem agente
+      criar(pasta, 'x.veredito-a.b.marca', 30, agora),             // ponto no agente
+      criar(pasta, 'x.marca', 30, agora),
       criar(pasta, 'notas.txt', 30, agora),
       criar(pasta, 'sessao.json.bak', 30, agora),
       criar(pasta, 'sessao.jsonx', 30, agora),
@@ -153,6 +155,71 @@ test('limparVelhos: so apaga os tres nomes que o estado cria - .marca, nome estr
     for (const i of intactos) assert.ok(fs.existsSync(i), 'apagou o que nao era dele: ' + path.basename(i));
     assert.ok(fs.existsSync(path.join(dir, 'dentro.json')), 'entrou em pasta');
     assert.ok(fs.existsSync(pasta), 'a pasta raiz() tem de ficar');
+  });
+});
+
+// D396 n. 1: as marcas `<sessao>.veredito-<agente>.marca` do gravar-veredito.js acumulavam para sempre.
+test('limparVelhos: D396 n. 1 - marca de veredito de outra sessao com mais de 7 dias sai; a da sessao atual e a nova ficam', () => {
+  comTmp((estado, pasta) => {
+    const agora = Date.now();
+    const velha = criar(pasta, 'outra.veredito-agente_1.marca', 30, agora);
+    const minha = criar(pasta, 'atual.veredito-agente_2.marca', 30, agora);
+    const nova = criar(pasta, 'outra.veredito-agente_3.marca', 1, agora);
+    assert.strictEqual(estado.limparVelhos('atual', agora), 1);
+    assert.ok(!fs.existsSync(velha), 'a marca velha de outra sessao ficou');
+    assert.ok(fs.existsSync(minha), 'apagou a marca da sessao atual');
+    assert.ok(fs.existsSync(nova), 'apagou a marca nova');
+  });
+});
+
+// D396 n. 9: typeof NaN === 'number' - NaN na idade apagava o arquivo novo, e no prazo tirava o teto.
+test('limparVelhos: D396 n. 9 - NaN ou Infinity em idadeMs, limiteMs ou agoraMs cai no padrao', () => {
+  comTmp((estado, pasta) => {
+    const agora = Date.now();
+    const novo = criar(pasta, 'outra.json', 1, agora);
+    assert.strictEqual(estado.limparVelhos('atual', agora, { idadeMs: NaN }), 0, 'idadeMs NaN apagou o novo');
+    assert.strictEqual(estado.limparVelhos('atual', NaN), 0, 'agoraMs NaN apagou o novo');
+    assert.strictEqual(estado.limparVelhos('atual', agora, { idadeMs: Infinity }), 0);
+    assert.ok(fs.existsSync(novo));
+    // prazo: o relogio salta 10 s depois da 1a leitura; com o teto padrao (800 ms) nada sai, com NaN saia tudo
+    ['a', 'b', 'c'].forEach((n) => criar(pasta, n + '.json', 9, agora));
+    const real = Date.now;
+    for (const ruim of [NaN, Infinity]) {
+      let chamadas = 0;
+      Date.now = function () { return real() + (chamadas++ === 0 ? 0 : 10000); };
+      try {
+        assert.strictEqual(estado.limparVelhos('atual', agora, { limiteMs: ruim }), 0, 'limiteMs ' + ruim + ' tirou o teto');
+      } finally { Date.now = real; }
+    }
+  });
+});
+
+// D396 n. 8: o readdirSync lia a pasta inteira antes do primeiro olhar no prazo.
+test('limparVelhos: D396 n. 8 - le a pasta entrada a entrada, com o prazo conferido antes de cada uma', () => {
+  comTmp((estado, pasta) => {
+    const agora = Date.now();
+    ['a', 'b', 'c'].forEach((n) => criar(pasta, n + '.json', 9, agora));
+    const original = fs.readdirSync;
+    const abrirOriginal = fs.opendirSync;
+    let leuInteira = 0;
+    let leituras = 0;
+    fs.readdirSync = function (alvo) {
+      if (path.resolve(String(alvo)) === path.resolve(pasta)) leuInteira++;
+      return original.apply(fs, arguments);
+    };
+    // sessao 27: o prazo vem ANTES de cada leitura - com ele ja estourado, nenhuma entrada se le
+    fs.opendirSync = function () {
+      const dir = abrirOriginal.apply(fs, arguments);
+      const ler = dir.readSync.bind(dir);
+      dir.readSync = function () { leituras++; return ler(); };
+      return dir;
+    };
+    try {
+      assert.strictEqual(estado.limparVelhos('atual', agora, { limiteMs: -1 }), 0);
+      assert.strictEqual(leituras, 0, 'leu entrada com o prazo ja estourado');
+      assert.strictEqual(estado.limparVelhos('atual', agora), 3);
+    } finally { fs.readdirSync = original; fs.opendirSync = abrirOriginal; }
+    assert.strictEqual(leuInteira, 0, 'a pasta foi lida inteira de uma vez');
   });
 });
 

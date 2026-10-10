@@ -289,6 +289,92 @@ test('T11-1 nega: caminho absoluto dentro do projeto, com barra normal ou invert
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// ------------------------------------------------- 0.5.2 (D396): P2 n. 2-7 e 14 do plano secao 2.1
+
+test('D396 n. 2: variavel definida no proprio comando vira o valor dela; fora do projeto passa, dentro nega', () => {
+  const dir = montar();
+  try {
+    const fora = path.join(os.tmpdir(), 'esquadro-estilo-fora-do-projeto');
+    const foraBarra = fora.replace(/\\/g, '/');
+    todosPermitidos(dir, [
+      ['Bash', 'OUT="' + foraBarra + '"; echo x > "$OUT/styles.scss"'],
+      ['Bash', 'export OUT=' + foraBarra + '\ncat > "${OUT}/a.css" <<EOF\nx\nEOF'],
+      ['PowerShell', "$out = '" + fora + "'; Set-Content -Path \"$out\\a.css\" -Value x"],
+      ['PowerShell', "$env:OUT = '" + fora + "'; Set-Content -Path \"$env:OUT\\a.css\" -Value x"]
+    ]);
+    todosNegados(dir, [
+      ['Bash', 'OUT=src; echo x > "$OUT/a.css"'],
+      ['PowerShell', "$Out = 'src'; Set-Content -Path \"$out\\a.css\" -Value x"],
+      // a variavel que o comando nao define continua sem pasta conhecida: a extensao basta para negar
+      ['Bash', 'OUT=src; echo x > "$OUTRA/a.css"']
+    ]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D396 n. 3: (Join-Path ...) como argumento do PowerShell e o caminho, nao o fim do comando', () => {
+  const dir = montar();
+  try {
+    todosNegados(dir, [
+      ['PowerShell', "Set-Content -Path (Join-Path src 'a.css') -Value x"],
+      ['PowerShell', 'Set-Content (Join-Path -Path src -ChildPath a.css) x'],
+      ['PowerShell', "'x' | Out-File (Join-Path $dir 'a.css')"]
+    ]);
+    todosPermitidos(dir, [['PowerShell', "Set-Content -Path (Join-Path src 'notas.txt') -Value x"]]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  // o `)` so se procura numa janela: muitos `(Join-Path` sem fechar nao viram conta quadratica
+  const t0 = Date.now();
+  assert.ok(Array.isArray(design.alvosDeEstiloNoShell('x (Join-Path '.repeat(20000), null, { ferramenta: 'PowerShell' })));
+  assert.ok(Date.now() - t0 < 2000, 'demorou ' + (Date.now() - t0) + ' ms');
+});
+
+test('D396 n. 4: -InputObject leva valor e nao e o alvo', () => {
+  const dir = montar();
+  try {
+    todosNegados(dir, [['PowerShell', 'Out-File -InputObject $css src\\a.css']]);
+    todosPermitidos(dir, [['PowerShell', "Out-File -InputObject 'tema.css' notas.txt"]]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D396 n. 5: New-Item -Name se junta ao -Path (ou a pasta solta)', () => {
+  assert.deepStrictEqual(design.alvosDeEstiloNoShell('New-Item -ItemType File -Path src -Name a.css -Value x', null, { ferramenta: 'PowerShell' }),
+    ['src/a.css']);
+  assert.deepStrictEqual(design.alvosDeEstiloNoShell('New-Item src -Name a.css', null, { ferramenta: 'PowerShell' }), ['src/a.css']);
+  assert.deepStrictEqual(design.alvosDeEstiloNoShell('New-Item -Name a.css -ItemType File', null, { ferramenta: 'PowerShell' }), ['a.css']);
+  const dir = montar({ extra: { design: { caminhosDeEstilo: ['tokens/*.ts'] } } });
+  try {
+    todosNegados(dir, [['PowerShell', 'New-Item -Path tokens -Name cores.ts -ItemType File']]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D396 n. 6: cp/Copy-Item para pasta sem barra no fim (destino sem extensao) e escrita dentro da pasta', () => {
+  assert.deepStrictEqual(design.alvosDeEstiloNoShell('cp novo.css src', null, { ferramenta: 'Bash' }), ['src/novo.css']);
+  assert.deepStrictEqual(design.alvosDeEstiloNoShell('cp a.css b.scss estilos', null, { ferramenta: 'Bash' }), ['estilos/a.css', 'estilos/b.scss']);
+  assert.deepStrictEqual(design.alvosDeEstiloNoShell('Copy-Item x.css src', null, { ferramenta: 'PowerShell' }), ['src/x.css']);
+  const dir = montar();
+  try {
+    todosNegados(dir, [['Bash', 'cp novo.css src'], ['Bash', 'mv x.css .'], ['PowerShell', 'Copy-Item x.css src']]);
+    // controle: destino com extensao e arquivo; ~ e $ seguem como antes (pasta que nao se sabe)
+    todosPermitidos(dir, [['Bash', 'cp notas.txt docs'], ['Bash', 'cp a.css ~'], ['Bash', 'cp a.css $DEST'], ['Bash', 'cp a.css b.txt']]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D396 n. 7: bash/sh sem -c le o heredoc como o roteiro', () => {
+  const dir = montar();
+  try {
+    todosNegados(dir, [
+      ['Bash', "bash <<'EOF'\necho x > src/a.css\nEOF"],
+      ['Bash', 'sh -s <<EOF\ncat > src/a.css\nEOF']
+    ]);
+    // controle: com arquivo de roteiro, o heredoc e a entrada dele, nao comandos
+    todosPermitidos(dir, [['Bash', "bash <<'EOF'\necho x > notas.txt\nEOF"], ['Bash', "bash gerar.sh <<'EOF'\necho x > src/a.css\nEOF"]]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D396 n. 14: a mensagem do shell diz por que nega (o conteudo do comando nao se le antes de rodar)', () => {
+  const m = design.motivoShell(['src/a.css']);
+  assert.ok(/Por que:/.test(m) && /conteudo/.test(m), m);
+});
+
 // -------------------------------------------------------------- coluna "deve PERMITIR"
 
 test('T11-1 permite: ler arquivo de estilo (cat, grep, git diff, sed -n, head, Get-Content)', () => {

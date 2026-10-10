@@ -22,6 +22,8 @@ function contarRespostas(resp) {
 // T11-7 (D365 secao 3): o resumo que o `git commit` imprime, `[<branch> <sha>] <mensagem>`. A branch
 // pode ter espaco e parenteses (`master (root-commit)`, `detached HEAD`); o sha tem de 7 a 40 digitos
 // hexadecimais. Tem de ser a linha inteira de saida: texto citado no meio de outra linha nao conta.
+// Aceito pela D365 secao 3 (D396 n. 15): um `cat`/`echo` que imprime uma linha nesse formato tambem
+// conta como commit; e o preco de nao adivinhar pelo texto do comando.
 const LINHA_DO_COMMIT = /^\[[^\]\r\n]+ [0-9a-f]{7,40}\] \S/;
 
 /**

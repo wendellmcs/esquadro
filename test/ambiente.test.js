@@ -175,3 +175,45 @@ test('instrucoes: com 2 argumentos segue como antes e diz nenhuma/declaradas; ca
     }
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// D396 n. 11: arquivo citado duas vezes contava em dobro.
+test('instrucoes: o mesmo arquivo citado duas vezes conta uma vez so', () => {
+  const dir = montar({
+    'CLAUDE.md': '- a\n- b\n',
+    '.claude/esquadro/regras.md': '- c\n',
+    '.claude/skills/x/SKILL.md': '- d\n'
+  });
+  try {
+    const r = instrucoes.contar(dir, { fontesCanonicas: ['CLAUDE.md', './CLAUDE.md', '.claude/esquadro/regras.md',
+      '.claude/skills/x/SKILL.md'] });
+    assert.strictEqual(r.total, 4, 'contou em dobro: ' + JSON.stringify(r.porArquivo));
+    assert.deepStrictEqual(r.porArquivo.map((p) => p.arquivo).sort(),
+      ['.claude/esquadro/regras.md', '.claude/skills/x/SKILL.md', 'CLAUDE.md']);
+    // onde o disco ignora caixa `claude.md` e o mesmo arquivo; onde nao ignora, ele nao existe e conta 0
+    assert.strictEqual(instrucoes.contar(dir, { fontesCanonicas: ['CLAUDE.md', 'claude.md'] }).total, 4);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// sessao 27: a chave saia do path.resolve e a leitura do path.join - fonte em caminho absoluto contava 0
+// e ainda apagava a 2a citacao do mesmo arquivo.
+test('instrucoes: fonte em caminho absoluto conta, e uma vez so ao lado da relativa', () => {
+  const dir = montar({ 'CLAUDE.md': '- a\n- b\n' });
+  try {
+    const abs = path.join(dir, 'CLAUDE.md');
+    assert.strictEqual(instrucoes.contar(dir, { fontesCanonicas: [abs] }).total, 2);
+    assert.strictEqual(instrucoes.contar(dir, { fontesCanonicas: [abs, 'CLAUDE.md'] }).total, 2);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// D396 n. 16: candidata nao se passa por canonica no metodo.
+test('instrucoes: o metodo diz se as fontes sao canonicas, candidatas ou nenhuma', () => {
+  const dir = montar({ 'CLAUDE.md': '- a\n' });
+  try {
+    const declaradas = instrucoes.contar(dir, { fontesCanonicas: ['CLAUDE.md'] }).metodo;
+    const candidatas = instrucoes.contar(dir, {}, ['CLAUDE.md']).metodo;
+    const nenhuma = instrucoes.contar(dir, {}).metodo;
+    assert.ok(/fontes canonicas/.test(declaradas), declaradas);
+    assert.ok(/fontes candidatas/.test(candidatas) && !/fontes canonicas,/.test(candidatas), candidatas);
+    assert.ok(/nenhuma fonte/.test(nenhuma) && !/nas fontes/.test(nenhuma), nenhuma);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

@@ -111,7 +111,9 @@ function motivo(alvo, fora, sistema) {
 //
 // E heuristica sobre o texto do comando, nao um interpretador de shell: le palavras, aspas, redirecao,
 // heredoc e separadores, e reconhece os escritores comuns pelo nome. Nao ve o que o comando faz por
-// dentro (script chamado por arquivo, caminho em variavel, `xargs`, `find -exec`, outro programa).
+// dentro (script chamado por arquivo, `xargs`, `find -exec`, outro programa). Caminho em variavel so se
+// resolve quando o proprio comando a define antes, no primeiro nivel (D396 n. 2, `alvosDeEstiloNoShell`);
+// a que vem de fora, ou e definida dentro de `bash -c`/`eval`, fica sem valor e so conta pela extensao.
 // ---------------------------------------------------------------------------
 
 const ESPACO = /[ \t\r]/;
@@ -120,7 +122,12 @@ const FIM_DE_PALAVRA = ' \t\r\n;|&()<>';
 // palavras que vem antes do comando de verdade
 const PREFIXOS = new Set(['{', '}', '!', 'then', 'do', 'else', 'elif', 'if', 'while', 'until', 'time', 'sudo',
   'command', 'exec', 'nohup', 'builtin', 'nice']);
+// D396 n. 13: comando dentro de comando (bash -c, eval, powershell -Command, bash <<EOF) e lido ate 3
+// niveis. Do 4o em diante nao se le e nada se diz: o que esta la dentro segue sem conferencia. E limite
+// da heuristica, declarado aqui; nao e aviso ao usuario.
 const PROFUNDIDADE_MAXIMA = 3;
+// D396 n. 3: ate onde se procura o `)` de um `(Join-Path ...)`; sem teto, texto com muitos `(` seria quadratico.
+const JANELA_JOIN_PATH = 2000;
 
 /**
  * Le o comando em comandos simples: { palavras: [{t, q}], redir: [alvos de >], docs: [corpos de heredoc] }.
@@ -229,6 +236,11 @@ function lerShell(comando, ps) {
     if (c === '\n') { fecharComando(); i = corpos(i + 1); continue; }
     if (ESPACO.test(c)) { i++; continue; }
     if (c === '#') { while (i < n && s[i] !== '\n') i++; continue; } // comentario: so aparece entre palavras
+    if (ps && c === '(' && atual.palavras.length) {
+      // D396 n. 3: no PowerShell, `(Join-Path a b)` como argumento e o caminho a/b, nao o fim do comando
+      const jp = joinPathEm(s, i);
+      if (jp) { atual.palavras.push({ t: jp.t, q: false }); i = jp.fim; continue; }
+    }
     if (c === ';' || c === '(' || c === ')' || c === '|') { fecharComando(); i++; continue; }
     if (c === '&' && s[i + 1] !== '>') { fecharComando(); i++; continue; }
 
@@ -284,14 +296,51 @@ function lerShell(comando, ps) {
   return comandos;
 }
 
+/**
+ * D396 n. 3: `(Join-Path a b)` a partir do `(` em `i`, no PowerShell: { t: 'a/b', fim } ou null. As
+ * palavras soltas sao as partes (o nome do parametro, -Path ou -ChildPath, sai). O `)` so se procura
+ * ate JANELA_JOIN_PATH caracteres; sem ele, null, e o `(` volta a fechar o comando, como antes.
+ */
+function joinPathEm(s, i) {
+  if (!/^\([ \t]*join-path[ \t]/i.test(s.slice(i, i + 40))) return null;
+  const limite = Math.min(s.length, i + JANELA_JOIN_PATH);
+  let fundo = 0;
+  let j = i;
+  for (; j < limite; j++) {
+    const c = s[j];
+    if (c === "'" || c === '"') {
+      const k = s.indexOf(c, j + 1);
+      if (k < 0 || k >= limite) return null;
+      j = k;
+    } else if (c === '(') {
+      fundo++;
+    } else if (c === ')' && --fundo === 0) {
+      break;
+    }
+  }
+  if (j >= limite) return null;
+  const cmds = lerShell(s.slice(i + 1, j), true);
+  if (cmds.length !== 1) return null;
+  const partes = cmds[0].palavras.slice(1)
+    .filter(function (p) { return p.q || !/^-[A-Za-z]/.test(p.t); })
+    .map(function (p) { return p.t; });
+  if (!partes.length) return null;
+  const t = partes.map(function (p, k) {
+    const sem = k < partes.length - 1 ? p.replace(/[\\/]+$/, '') : p;
+    return k > 0 ? sem.replace(/^[\\/]+/, '') : sem;
+  }).join('/');
+  return { t: t, fim: j + 1 };
+}
+
 /** Nome do programa sem pasta nem extensao de executavel, em minusculas. */
 function nomeDoPrograma(t) {
   return String(t).replace(/^.*[\\/]/, '').replace(/\.(exe|cmd|bat|ps1)$/i, '').toLowerCase();
 }
 
 // Parametros de cmdlet do PowerShell que levam valor; os demais (-Force, -Append...) sao chaves sem valor.
+// D396 n. 4: `inputobject` leva o conteudo (Out-File, Tee-Object); sem ele na lista o valor virava o alvo.
 const PARAMETROS_PS = ['path', 'literalpath', 'filepath', 'value', 'encoding', 'destination', 'name', 'itemtype',
-  'stream', 'width', 'include', 'exclude', 'filter', 'credential', 'delimiter', 'newline'];
+  'stream', 'width', 'include', 'exclude', 'filter', 'credential', 'delimiter', 'newline', 'inputobject'];
 
 /** O PowerShell aceita abreviar o parametro (-Pa, -Dest) quando so um comeca assim. */
 function resolverParametroPs(nome) {
@@ -397,6 +446,18 @@ function destinoEmPasta(destino, origens) {
   return origens.map(function (o) { return destino.replace(/[\\/]+$/, '') + '/' + o.replace(/^.*[\\/]/, ''); });
 }
 
+/**
+ * D396 n. 6: destino de copia que e pasta - barra no fim, `.`/`..`, ou ultimo nome sem extensao (`cp a.css
+ * src`). `~` e variavel ficam como estavam (a pasta deles nao se sabe). Nome de arquivo sem extensao
+ * (`cp a.css Makefile`) vira pasta: e o limite da heuristica.
+ */
+function ehPasta(destino) {
+  if (/[\\/]$/.test(destino)) return true;
+  if (destino.indexOf('$') !== -1 || /^~/.test(destino)) return false;
+  const ultimo = destino.replace(/^.*[\\/]/, '');
+  return ultimo === '.' || ultimo === '..' || ultimo.indexOf('.') === -1;
+}
+
 /** Os caminhos (como escritos no comando) que um texto de comando manda escrever. */
 function escritosPorTexto(texto, ps, profundidade) {
   const alvos = [];
@@ -446,7 +507,7 @@ function escritosPorComando(cmd, ps, profundidade) {
       else if (fontes.length) destino = a.pos.length ? a.pos[0] : null;
       else if (a.pos.length >= 2) destino = a.pos[a.pos.length - 1];
       if (destino !== null) {
-        if (/[\\/]$/.test(destino)) {
+        if (ehPasta(destino)) {
           destinoEmPasta(destino, fontes.concat(a.pos.filter(function (p) { return p !== destino; }))).forEach(function (p) { alvos.push(p); });
         } else {
           alvos.push(destino);
@@ -459,16 +520,21 @@ function escritosPorComando(cmd, ps, profundidade) {
         destinoEmPasta(pasta, a.pos).forEach(function (p) { alvos.push(p); });
       } else if (a.pos.length >= 2) {
         const destino = a.pos[a.pos.length - 1];
-        if (/[\\/]$/.test(destino)) destinoEmPasta(destino, a.pos.slice(0, -1)).forEach(function (p) { alvos.push(p); });
+        if (ehPasta(destino)) destinoEmPasta(destino, a.pos.slice(0, -1)).forEach(function (p) { alvos.push(p); });
         else alvos.push(destino);
       }
     }
   } else if (ESCREVE_CMDLET.has(nome)) {
     const a = lerArgumentosPs(args);
     const caminhos = [].concat(a.nomeados.get('path') || [], a.nomeados.get('literalpath') || [], a.nomeados.get('filepath') || []);
-    (a.nomeados.get('name') || []).forEach(function (p) { alvos.push(p); });
-    if (caminhos.length) caminhos.forEach(function (p) { alvos.push(p); });
-    else if (a.pos.length) alvos.push(a.pos[0]);
+    const base = caminhos.length ? caminhos : a.pos.slice(0, 1);
+    const nomes = a.nomeados.get('name') || [];
+    // D396 n. 5: New-Item -Path pasta -Name arquivo escreve pasta/arquivo, nao os dois soltos
+    if (nomes.length && base.length) {
+      base.forEach(function (b) { nomes.forEach(function (nm) { alvos.push(b.replace(/[\\/]+$/, '') + '/' + nm); }); });
+    } else {
+      nomes.concat(base).forEach(function (p) { alvos.push(p); });
+    }
   } else if (nome === 'dd') {
     textos.forEach(function (t) { if (/^of=/.test(t)) alvos.push(t.slice(3)); });
   } else if (nome === 'node' || nome === 'nodejs') {
@@ -484,6 +550,11 @@ function escritosPorComando(cmd, ps, profundidade) {
     if (INTERPRETADOR_DE_SHELL.has(nome)) {
       const ic = args.findIndex(function (a) { return !a.q && /^-[A-Za-z]*c$/.test(a.t); });
       if (ic !== -1 && ic + 1 < args.length) { interno = args[ic + 1].t; internoPs = false; }
+      // D396 n. 7: sem -c e sem arquivo de roteiro, o roteiro e o heredoc (`bash <<EOF`, `sh -s <<EOF`)
+      else if (ic === -1 && cmd.docs.length && !args.some(function (a) { return a.q || !/^-/.test(a.t); })) {
+        interno = cmd.docs.join('\n');
+        internoPs = false;
+      }
     } else if (nome === 'eval') {
       interno = textos.join(' ');
     } else if (nome === 'cmd') {
@@ -509,6 +580,35 @@ function caminhoDoShell(p, cwd) {
 }
 
 /**
+ * D396 n. 2: guarda em `variaveis` o que um comando de atribuicao define: `NOME=valor` (so atribuicoes,
+ * com ou sem `export`) no bash; `$nome = valor` ou `$env:NOME = valor` no PowerShell (nome sem caixa).
+ */
+function lerAtribuicao(cmd, ps, variaveis) {
+  const w = cmd.palavras;
+  let m;
+  if (ps) {
+    const RE = /^\$([A-Za-z_]\w*(?::[A-Za-z_]\w*)?)$/;
+    if (w.length === 3 && !w[0].q && w[1].t === '=' && !w[1].q && (m = RE.exec(w[0].t))) variaveis.set(m[1].toLowerCase(), w[2].t);
+    else if (w.length === 1 && !w[0].q && (m = /^\$([A-Za-z_]\w*(?::[A-Za-z_]\w*)?)=([\s\S]*)$/.exec(w[0].t))) variaveis.set(m[1].toLowerCase(), m[2]);
+    return;
+  }
+  const lista = w.length > 1 && w[0].t === 'export' && !w[0].q ? w.slice(1) : w;
+  const pares = lista.map(function (p) { return /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/.exec(p.t); });
+  if (lista.length && pares.every(Boolean)) pares.forEach(function (x) { variaveis.set(x[1], x[2]); });
+}
+
+/** Troca `$NOME`, `${NOME}` (e `$env:NOME` no PowerShell) pelo valor conhecido; a desconhecida fica. */
+function trocarVariaveis(p, variaveis, ps) {
+  if (!p || !variaveis.size || p.indexOf('$') === -1) return p;
+  const re = ps ? /\$\{([A-Za-z_]\w*(?::[A-Za-z_]\w*)?)\}|\$([A-Za-z_]\w*(?::[A-Za-z_]\w*)?)/g
+    : /\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g;
+  return p.replace(re, function (todo, a, b) {
+    const nome = ps ? (a || b).toLowerCase() : (a || b);
+    return variaveis.has(nome) ? variaveis.get(nome) : todo;
+  });
+}
+
+/**
  * Os arquivos de estilo que o `comando` de shell escreve, como caminhos relativos ao projeto, sem repetir.
  * `opcoes.ferramenta` ('PowerShell' escolhe o idioma de aspas e de escape) e `opcoes.cwd` (a raiz do
  * projeto: caminho fora dela nao conta, como no portao do Write/Edit). Lista vazia = nada a conferir.
@@ -516,7 +616,16 @@ function caminhoDoShell(p, cwd) {
 function alvosDeEstiloNoShell(comando, projeto, opcoes) {
   if (typeof comando !== 'string' || comando === '') return [];
   const o = opcoes || {};
-  const brutos = new Set(escritosPorTexto(comando, o.ferramenta === 'PowerShell', 0));
+  const ps = o.ferramenta === 'PowerShell';
+  // D396 n. 2: a variavel que o proprio comando define antes (`OUT=x;`, `$out = 'x'`) vira o valor dela,
+  // e o caminho passa pela conferencia normal (fora do projeto nao conta). Na ordem dos comandos.
+  const variaveis = new Map();
+  const brutos = [];
+  lerShell(comando, ps).forEach(function (cmd) {
+    escritosPorComando(cmd, ps, 0).forEach(function (p) { brutos.push(trocarVariaveis(p, variaveis, ps)); });
+    lerAtribuicao(cmd, ps, variaveis);
+  });
+  if (ps) alvosDoArquivoNet(comando).forEach(function (p) { brutos.push(trocarVariaveis(p, variaveis, ps)); });
   const saida = [];
   brutos.forEach(function (p) {
     if (!p) return;
@@ -548,6 +657,9 @@ function motivoShell(alvos) {
   for (const a of alvos.slice(0, 12)) linhas.push('  ' + a);
   if (alvos.length > 12) linhas.push('  ... e mais ' + (alvos.length - 12));
   linhas.push('');
+  // D396 n. 14: o porque da negacao, sem ensinar desvio
+  linhas.push('Por que: o esquadro nao le o conteudo que um comando de shell vai gravar,');
+  linhas.push('entao nao tem como conferir os valores dele antes de rodar.');
   linhas.push('O esquadro confere os tokens do design.json quando o arquivo de estilo e escrito');
   linhas.push('pela ferramenta Write ou Edit. Escreva este arquivo com Write ou Edit.');
   return linhas.join('\n');

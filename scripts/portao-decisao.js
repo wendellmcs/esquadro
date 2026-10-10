@@ -13,20 +13,35 @@ const config = require('./lib/config.js');
 // heuristica de linguagem natural virou corrida de bordas na revisao da 0.5.0.
 const MARCA_RECOMENDADA = /\((?:recomendad[oa]|recommended|recom\.)\)/i;
 
-/** O que ha de errado na pergunta (1-based em `n`), ou null quando ela segue o padrao. */
+/**
+ * O que ha de errado na pergunta (1-based em `n`) e o que fazer, ou null quando ela segue o padrao.
+ * D396 n. 30: cada causa leva o proprio remedio, depois de " - " (antes uma instrucao so servia as tres).
+ */
 function defeitoDaPergunta(q, n) {
   const opcoes = q && typeof q === 'object' ? q.options : null;
-  if (!Array.isArray(opcoes)) return 'pergunta ' + n + ' sem a lista de opcoes';
+  if (!Array.isArray(opcoes)) return 'pergunta ' + n + ' sem a lista de opcoes - mande exatamente 3';
   if (opcoes.length !== 3) {
-    return 'pergunta ' + n + ' tem ' + opcoes.length + (opcoes.length === 1 ? ' opcao' : ' opcoes');
+    return 'pergunta ' + n + ' tem ' + opcoes.length + (opcoes.length === 1 ? ' opcao' : ' opcoes') + ' - deixe exatamente 3';
   }
-  const rotulos = opcoes.map(function (o) { return o && typeof o === 'object' ? o.label : o; });
-  const marcada = function (r) { return typeof r === 'string' && MARCA_RECOMENDADA.test(r); };
-  if (!marcada(rotulos[0])) return 'a 1a opcao da pergunta ' + n + ' nao e a recomendada';
+  // D396 n. 35: toda opcao e um objeto com o rotulo (label) em texto; nula, texto solto ou sem label nao e opcao.
+  for (let i = 0; i < opcoes.length; i++) {
+    const o = opcoes[i];
+    if (!o || typeof o !== 'object' || typeof o.label !== 'string' || o.label.trim() === '') {
+      return 'a opcao ' + (i + 1) + ' da pergunta ' + n + ' nao tem rotulo em texto - cada opcao e { label, description }';
+    }
+  }
+  const rotulos = opcoes.map(function (o) { return o.label; });
+  const marcada = function (r) { return MARCA_RECOMENDADA.test(r); };
+  if (!marcada(rotulos[0])) return 'a 1a opcao da pergunta ' + n + ' nao e a recomendada - ponha (Recomendado) no rotulo dela';
   // D391: a recomendada e uma so. A marca tambem numa outra opcao desfaz a escolha.
   const outras = [];
   for (let i = 1; i < rotulos.length; i++) if (marcada(rotulos[i])) outras.push(i + 1);
-  if (outras.length) return 'a pergunta ' + n + ' marca como recomendada tambem a opcao ' + outras.join(', ');
+  if (outras.length) {
+    // D396 n. 39: "a opcao 2"; "as opcoes 2 e 3"
+    const quais = outras.length === 1 ? 'a opcao ' + outras[0]
+      : 'as opcoes ' + outras.slice(0, -1).join(', ') + ' e ' + outras[outras.length - 1];
+    return 'a pergunta ' + n + ' marca como recomendada tambem ' + quais + ' - a marca vai so na 1a opcao';
+  }
   return null;
 }
 
@@ -50,7 +65,8 @@ io.blindar(function () {
 
     return io.negarFerramenta([
       'Pergunta ao dono fora do padrao: ' + defeitos.join('; ') + '.',
-      'Refaca a pergunta: exatamente 3 opcoes, a recomendada em primeiro com (Recomendado) no rotulo, ' +
+      // D396 n. 40: a marca vai numa opcao so
+      'Refaca a pergunta: exatamente 3 opcoes, a recomendada em primeiro com (Recomendado) no rotulo, so nela, ' +
         'cada uma com consequencia pratica e custo.',
       'Para desligar este portao no projeto: "portaoDecisao": false em .claude/esquadro/projeto.json.'
     ].join('\n'));

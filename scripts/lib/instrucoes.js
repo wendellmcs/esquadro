@@ -6,6 +6,12 @@ const ambiente = require('./ambiente.js');
 // Metodo FIXO: numero sem metodo declarado nao e medida, e opiniao com casas decimais.
 const RE_ITEM = /^\s*(?:[-*+]\s+|\d+\.\s+)\S/;
 const METODO = 'conta linhas que comecam com marcador de lista ou numero, nas fontes canonicas, em regras.md e nas skills do projeto';
+// D396 n. 16: o metodo diz de onde vieram as fontes; candidata nao se passa por canonica.
+const METODO_POR_ORIGEM = {
+  declaradas: METODO,
+  candidatas: 'conta linhas que comecam com marcador de lista ou numero, nas fontes candidatas (achadas pela varredura, nao declaradas), em regras.md e nas skills do projeto',
+  nenhuma: 'conta linhas que comecam com marcador de lista ou numero, em regras.md e nas skills do projeto (nenhuma fonte canonica declarada ou candidata)'
+};
 
 function contarArquivo(arquivo) {
   try {
@@ -38,10 +44,21 @@ function contar(cwd, projeto, candidatos) {
   alvos.push(path.join('.claude', 'esquadro', 'regras.md'));
   for (const s of ambiente.detectar(cwd).skills) alvos.push(path.join('.claude', 'skills', s, 'SKILL.md'));
 
+  // D396 n. 11: o mesmo arquivo citado duas vezes (fonte declarada que tambem e regras.md ou SKILL.md,
+  // `./CLAUDE.md` ao lado de `CLAUDE.md`) contava em dobro. Vale a primeira citacao. O caminho real
+  // `native` traz a caixa do disco (`claude.md` e `CLAUDE.md` sao o mesmo arquivo onde o disco ignora
+  // caixa); arquivo que nao existe fica no caminho escrito e conta 0 de qualquer jeito. A chave e a
+  // leitura saem do mesmo `resolve`: com `join`, fonte em caminho absoluto lia `cwd/C:/...` e contava 0.
+  const vistos = new Set();
   const porArquivo = [];
   let total = 0;
   for (const rel of alvos) {
-    const n = contarArquivo(path.join(cwd, rel));
+    const caminho = path.resolve(cwd, rel);
+    let chave;
+    try { chave = fs.realpathSync.native(caminho); } catch (e) { chave = caminho; }
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    const n = contarArquivo(caminho);
     if (n > 0) { porArquivo.push({ arquivo: rel.replace(/\\/g, '/'), n: n }); total += n; }
   }
   porArquivo.sort(function (a, b) { return b.n - a.n; });
@@ -54,7 +71,7 @@ function contar(cwd, projeto, candidatos) {
     avisarA: limite(ambiente.LIMITES.avisarA, 150),
     estourou: total > teto,
     fontes: fontes.origem,
-    metodo: METODO
+    metodo: METODO_POR_ORIGEM[fontes.origem]
   };
 }
 

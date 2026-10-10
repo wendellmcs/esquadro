@@ -532,6 +532,29 @@ test('T11-5: a linha decisoes do Passo 7c remete ao 4b e nao pergunta de novo', 
   assert.ok(/sem perguntar de novo/i.test(linha), 'a linha decisoes nao diz que nao se pergunta de novo');
 });
 
+test('D396 n. 12, 17, 20, 21, 26, 28: os textos de skill e README dizem o que o codigo faz', () => {
+  const p4b = plano(secaoDoInit('Passo 4b'));
+  assert.ok(/uma pergunta por lugar/.test(p4b), 'n. 17: o 4b nao diz que e uma pergunta por lugar (3 lugares != 3 opcoes)');
+  const naoGravar = plano(secaoDoInit('Passo 7c')).match(/\*\*N[ãa]o gravar\*\*[^*]*/);
+  assert.ok(naoGravar, 'n. 20: sumiu a opcao Nao gravar do 7c');
+  assert.ok(!/nada se perde/.test(naoGravar[0]) && /Passo 4b/.test(naoGravar[0]),
+    'n. 20: o Nao gravar do 7c tem de dizer que a resposta do 4b se perde');
+  assert.ok(/Gerado por `\/esquadro:init`"; com mais de uma/.test(p4b), 'n. 21: o re-init nao diz qual skill e a do projeto');
+  const padrao = plano(ler('skills/padrao/SKILL.md'));
+  assert.ok(/Gerado por `\/esquadro:init`"; com mais de uma assim, perguntar ao dono/.test(padrao),
+    'n. 21: o Passo 0-bis nao diz qual skill e a do projeto');
+  // sessao 27: so a gerada deixava de fora a skill de execucao escrita a mao, que a secao 1 diz que vence
+  assert.ok(/perguntar ao dono qual vale; sem nenhuma assim, a escrita [àa] m[ãa]o/.test(padrao),
+    'sessao 27: o Passo 0-bis exclui a skill de execucao escrita a mao');
+  const revisar = ler('skills/revisar/SKILL.md');
+  assert.ok(!/~50 pares/.test(revisar) && /com mais de 50 pares, lotes de at[ée] 50/.test(revisar), 'n. 26: lote do juiz ambiguo');
+  const i = README.indexOf('\n## Como desligar uma trava');
+  const f = README.indexOf('\n## ', i + 4);
+  assert.ok(i !== -1 && /"portaoDecisao": false/.test(README.slice(i, f)), 'n. 28: o portaoDecisao fora de Como desligar');
+  const linhaFim = README.split('\n').filter((l) => /`scripts\/fim-sessao\.js`/.test(l))[0];
+  assert.ok(/1,5 s/.test(linhaFim) && /`timeout`/.test(linhaFim), 'n. 12: o README nao diz que o timeout nao aumenta o 1,5 s');
+});
+
 test('T11-6: o README nao promete o aviso Plugin updated como certo e diz que a versao chega minutos depois', () => {
   const i = README.indexOf('Ligue a atualiza');
   const f = README.indexOf('**No painel do VS Code o bot', i);

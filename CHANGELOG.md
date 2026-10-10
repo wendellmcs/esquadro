@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.5.2 — o auditar so acusa sobreposicao de verdade, e os portoes dizem por que barram
+
+A sobreposicao de skills do `/esquadro:auditar` passa a pedir mais que uma palavra em comum, e uma
+leva de ajustes do que as revisoes cegas anteriores deixaram registrado. Os comportamentos novos vem
+com teste; a suite inteira roda com `npm test`.
+
+- **O `/esquadro:auditar` so acusa sobreposicao com 2 termos ou mais em comum.** Antes, 1 termo em
+  comum entre as descricoes de duas skills bastava. Agora sao 2 termos ou mais **e** a fracao de
+  termos comuns (os comuns sobre todos os termos do par) de 0,20 ou mais. Numa bateria de 80 pares
+  marcados, a regra antiga acusava 40, 39 deles sem sobreposicao; a nova acusa so o par que se
+  sobrepoe. Segue sendo aviso, nao bloqueio.
+- **O portao de estilo le mais formas de comando de shell** (so vale com `.claude/esquadro/design.json`):
+  - caminho em variavel que o proprio comando define antes (`OUT=x; ... > "$OUT/a.css"`,
+    `$out = 'x'`) vira o valor dela e passa pela conferencia normal: fora do projeto, nao conta. A
+    variavel que vem de fora, ou que e definida dentro de `bash -c`/`eval`, segue sem valor;
+  - no PowerShell, `(Join-Path a b)` e lido como o caminho `a/b`, nao como o fim do comando;
+  - `-InputObject` (`Out-File`, `Tee-Object`) e o conteudo, nao o arquivo escrito;
+  - `New-Item -Path pasta -Name arquivo` escreve `pasta/arquivo`, nao os dois soltos;
+  - copia para destino sem extensao (`cp a.css src`), `.` ou `..` vai para dentro da pasta. Nome de
+    arquivo sem extensao (`cp a.css Makefile`) tambem vira pasta: e o limite da leitura;
+  - `bash`/`sh` sem `-c` le o roteiro do heredoc (`bash <<EOF`), salvo quando recebe arquivo de roteiro;
+  - a negacao diz por que: o esquadro nao le o conteudo que um comando de shell vai gravar.
+- **O fim de sessao limpa tambem as marcas de veredito.** As marcas `<id>.veredito-<agente>.marca`,
+  que acumulavam na pasta de estado, saem pela mesma regra dos 7 dias. A pasta se le entrada a
+  entrada, com o prazo conferido antes de cada uma: pasta grande nao gasta mais o tempo da limpeza
+  antes de comecar.
+- **O portao de decisao diz o remedio de cada causa.** Opcao nula, em texto solto ou sem `label` em
+  texto barra, com "cada opcao e { label, description }". Cada causa traz o que fazer: "deixe
+  exatamente 3", "ponha (Recomendado) no rotulo dela", "a marca vai so na 1a opcao". A marca repetida
+  em duas opcoes sai como "as opcoes 2 e 3".
+- **O peso de instrucao nao conta o mesmo arquivo duas vezes.** Fonte declarada que tambem e
+  `regras.md` ou `SKILL.md`, `./CLAUDE.md` ao lado de `CLAUDE.md`, ou `claude.md` e `CLAUDE.md` onde o
+  disco ignora caixa: vale a primeira citacao. Fonte com caminho absoluto passa a ser lida
+  (contava 0). O metodo ao lado do numero diz de onde vieram as fontes: declaradas, candidatas
+  (achadas pela varredura) ou nenhuma.
+- **Apuracao da revisao cega.** Achado com linha 0 ou negativa e descartado como sem `arquivo:linha`
+  (antes molhava a ronda e nao tinha como ser refutado). Os pares para o juiz saem so entre vizinhos
+  em ordem de linha, sem comparar todos com todos; a lista sai igual. `mesmos: null` pela API vale
+  como sem juiz.
+- **Textos:** no init, a pergunta dos lugares de registro e uma por lugar, cada uma com as suas 3
+  opcoes, e a opcao de nao gravar a skill avisa que a resposta dos lugares de registro nao fica gravada
+  em lugar nenhum; no init e na skill
+  `padrao`, a skill de execucao do projeto e a que diz "Gerado por `/esquadro:init`" (com mais de
+  uma, pergunta-se ao dono; sem nenhuma, vale a escrita a mao); no `revisar`, "com mais de 50 pares,
+  lotes de ate 50"; no README, o `portaoDecisao` em "Como desligar uma trava" e o orcamento de 1,5 s
+  do fim de sessao (o `timeout` do `hooks.json` nao o aumenta).
+
 ## 0.5.1 — a recomendada e uma so, a lista vazia barra e o juiz nao aponta um achado para ele mesmo
 
 Tres ajustes do que a revisao cega da 0.5.0 deixou registrado. Os comportamentos novos vem com teste;

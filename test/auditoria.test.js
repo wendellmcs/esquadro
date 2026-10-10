@@ -54,6 +54,37 @@ test('auditoria: palavra vazia nao conta como sobreposicao', () => {
   ]).length, 0);
 });
 
+// D396/D398 (#10a): o unico "sim" da bateria da 2b-1 (descricoes de la; o nome do workspace trocado).
+test('auditoria: #10a - padrao x padrao-aaa (o "sim" da bateria) segue apontado, mesmo so com as duas skills', () => {
+  const r = aud.sobreposicoes([
+    { nome: 'padrao', descricao: 'Manual de execucao portatil para qualquer projeto. Use no inicio de toda tarefa que nao seja conversa pura - implementar, corrigir bug, planejar, revisar, auditar, mexer em UI, escrever doc, versionar, publicar, executar plano longo. Define a marcha de rigor (Rapida/Padrao/AAA), as lentes de inspecao (nove de codigo e oito de tela), o loop de julgamento cego com teto de rondas, os gatilhos contaveis de troca de chat, o formato obrigatorio de decisao do dono e o que um "pronto" precisa provar.' },
+    { nome: 'padrao-aaa', descricao: 'Manual de execucao obrigatorio deste workspace. Use no inicio de toda tarefa que nao seja conversa pura - implementar, corrigir bug, planejar, revisar, auditar, mexer em UI/CSS, escrever doc, versionar, publicar, executar plano longo. Define a marcha de rigor (Rapida/Padrao/AAA), o roteamento de agentes por custo, os oito portoes de qualidade visual e de codigo, o loop de inspecao cega com teto de rondas, os gatilhos contaveis de troca de chat e o formato obrigatorio de decisao do dono.' }
+  ]);
+  assert.strictEqual(r.length, 1);
+  assert.ok(r[0].termos.length >= 20, 'termos em comum: ' + r[0].termos.length);
+});
+
+test('auditoria: #10a - 2 termos em comum com Jaccard baixo (< 0,20) nao sao sobreposicao', () => {
+  // a = {revisar, codigo, fechar, sprint, tarefa, prazo}; b = os mesmos 2 + {gerar, grafico, barras, legenda, eixos}
+  // comuns 2, todos 11: Jaccard 0,18, abaixo do corte de 0,20 (hoje 1 termo bastava para apontar).
+  assert.strictEqual(aud.sobreposicoes([
+    { nome: 'a', descricao: 'revisar codigo fechar sprint tarefa prazo' },
+    { nome: 'b', descricao: 'revisar codigo gerar grafico barras legenda eixos' }
+  ]).length, 0);
+  // o mesmo par sem o termo a mais: 2/10 = 0,20, no corte, e apontado
+  assert.strictEqual(aud.sobreposicoes([
+    { nome: 'a', descricao: 'revisar codigo fechar sprint tarefa prazo' },
+    { nome: 'b', descricao: 'revisar codigo gerar grafico barras legenda' }
+  ]).length, 1);
+});
+
+test('auditoria: #10a - 1 termo em comum nao e sobreposicao, nem com Jaccard alto', () => {
+  assert.strictEqual(aud.sobreposicoes([
+    { nome: 'a', descricao: 'revisar' },
+    { nome: 'b', descricao: 'revisar' }
+  ]).length, 0);
+});
+
 test('auditoria: mesmo gatilho com acoes diferentes e contradicao', () => {
   const r = aud.contradicoes([
     { gatilho: 'ao fechar tarefa', acao: 'colar a saida do comando' },

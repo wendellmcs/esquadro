@@ -86,9 +86,10 @@ function validarVeredito(vd) {
       erros.push('achado com severidade invalida: ' + (a && a.severidade));
       continue;
     }
-    // Anti-teatro: sem arquivo:linha, o voto nao conta.
-    if (!a.arquivo || !Number.isInteger(a.linha)) {
-      erros.push('achado sem arquivo:linha, descartado: ' + String(a.descricao).slice(0, 60));
+    // Anti-teatro: sem arquivo:linha, o voto nao conta. D396 n. 37/38: linha a partir de 1, como a da
+    // refutacao (conferirRefutados); o achado de linha 0 molhava a ronda e nao tinha como ser refutado.
+    if (!a.arquivo || !Number.isInteger(a.linha) || a.linha < 1) {
+      erros.push('achado sem arquivo:linha (linha inteira a partir de 1), descartado: ' + String(a.descricao).slice(0, 60));
       continue;
     }
     if (!a.descricao || String(a.descricao).trim() === '') {
@@ -195,14 +196,15 @@ function conferirMesmos(lista, chavesExistentes) {
           'exatamente como veio em paresCandidatos');
       }
     }
+    // D396 n. 41: a forma (a resposta) antes do sentido (a mesma chave), como os campos acima.
+    if (RESPOSTAS_MESMO.indexOf(m.resposta) === -1) {
+      throw new Error(onde + '"resposta" tem de ser "sim", "nao" ou "nao-sei" (veio ' + JSON.stringify(m.resposta) + ')');
+    }
     // D391: um achado nao e par dele mesmo (paresCandidatos nunca o lista); sem isto saia o aviso
     // "provavel mesmo defeito que" a propria chave.
     if (m.novo === m.outro) {
       throw new Error(onde + '"novo" e "outro" sao a mesma chave (' + m.novo + '); copie o par exatamente como veio em ' +
         'paresCandidatos');
-    }
-    if (RESPOSTAS_MESMO.indexOf(m.resposta) === -1) {
-      throw new Error(onde + '"resposta" tem de ser "sim", "nao" ou "nao-sei" (veio ' + JSON.stringify(m.resposta) + ')');
     }
   }
   return lista;
@@ -283,22 +285,42 @@ function apurar(rondas, opcoes) {
   });
 
   // D387 (#11c): pares para o juiz. Nada aqui entra na contagem acima.
+  // D396 n. 23: cada grupo em ordem de linha, e so os vizinhos a ate DISTANCIA_PAR linhas se comparam (antes,
+  // todos com todos, sem teto). A saida segue na ordem de antes: a de doLadoNovo.
   const ehNovoDaUltima = new Set(novosChavesDaUltima);
+  const porGrupo = new Map();
+  doLadoNovo.forEach(function (x, i) {
+    if (!porGrupo.has(x.grupo)) porGrupo.set(x.grupo, []);
+    porGrupo.get(x.grupo).push({ y: x, j: i });
+  });
+  porGrupo.forEach(function (lista) {
+    lista.sort(function (p, q) { return p.y.meta.linha - q.y.meta.linha || p.j - q.j; });
+  });
   const paresCandidatos = [];
   doLadoNovo.forEach(function (x, i) {
     if (!ehNovoDaUltima.has(x.meta.chave)) return;
-    doLadoNovo.forEach(function (y, j) {
-      if (x.meta.chave === y.meta.chave || x.grupo !== y.grupo) return;
-      const distancia = Math.abs(x.meta.linha - y.meta.linha);
-      if (distancia > DISTANCIA_PAR) return;
+    const lista = porGrupo.get(x.grupo);
+    let ini = 0;
+    let fim = lista.length;
+    while (ini < fim) {
+      const meio = (ini + fim) >> 1;
+      if (lista[meio].y.meta.linha < x.meta.linha - DISTANCIA_PAR) ini = meio + 1; else fim = meio;
+    }
+    const perto = [];
+    for (let k = ini; k < lista.length && lista[k].y.meta.linha <= x.meta.linha + DISTANCIA_PAR; k++) perto.push(lista[k]);
+    perto.sort(function (p, q) { return p.j - q.j; });
+    perto.forEach(function (p) {
+      const y = p.y;
+      if (x.meta.chave === y.meta.chave) return;
       // Os dois novos da ultima ronda: o par sai uma vez so, na ordem em que apareceram.
-      if (ehNovoDaUltima.has(y.meta.chave) && j < i) return;
-      paresCandidatos.push({ novo: x.meta, outro: y.meta, distancia: distancia });
+      if (ehNovoDaUltima.has(y.meta.chave) && p.j < i) return;
+      paresCandidatos.push({ novo: x.meta, outro: y.meta, distancia: Math.abs(x.meta.linha - y.meta.linha) });
     });
   });
 
   const provaveisMesmos = [];
-  if (op.mesmos !== undefined) {
+  // D396 n. 24: null pela API e o mesmo que ausente (sem juiz); a CLI ja barra o mesmos.json com null.
+  if (op.mesmos !== undefined && op.mesmos !== null) {
     const mesmos = conferirMesmos(op.mesmos, vistos);
     const vistosPares = new Set();
     for (const m of mesmos) {

@@ -116,36 +116,46 @@ function limpar(sessionId) {
 // aumenta), entao a limpeza para sozinha antes disso: o que sobrar sai na proxima.
 const IDADE_LIMPEZA_MS = 7 * 24 * 60 * 60 * 1000;
 const LIMITE_LIMPEZA_MS = 800;
-// Os tres nomes que `gravar` e `travar` criam: <id>.json, <id>.json.trava e <id>.json.<pid>.<rand>.tmp.
-const NOME_DE_SESSAO = /^([a-zA-Z0-9_-]+)\.json(?:\.trava|\.\d+\.[a-z0-9]+\.tmp)?$/;
+// Os nomes que `gravar` e `travar` criam: <id>.json, <id>.json.trava e <id>.json.<pid>.<rand>.tmp; e
+// (D396 n. 1) a marca que o gravar-veredito.js cria por inspetor: <id>.veredito-<agente>.marca.
+const NOME_DE_SESSAO = /^([a-zA-Z0-9_-]+)\.(?:json(?:\.trava|\.\d+\.[a-z0-9]+\.tmp)?|veredito-[a-zA-Z0-9_-]+\.marca)$/;
 
 /**
- * Apaga, na pasta de estado, so os arquivos de sessao com `mtime` mais velho que 7 dias, nunca os da
- * sessao atual (comparada pelo id saneado, sem diferenciar caixa: ABC e abc sao o mesmo arquivo no
- * Windows). Nao apaga mais nada: marca de veredito, nome desconhecido, pasta e a propria raiz ficam.
+ * Apaga, na pasta de estado, so os arquivos de sessao (e as marcas de veredito dela) com `mtime` mais
+ * velho que 7 dias, nunca os da sessao atual (comparada pelo id saneado, sem diferenciar caixa: ABC e abc
+ * sao o mesmo arquivo no Windows). Nao apaga mais nada: nome desconhecido, pasta e a propria raiz ficam.
  * Nao usa `alterar` nem `travar` (nao pode esperar a trava de 2 s), nunca lanca e devolve quantos apagou.
- * `opcoes.limiteMs` e `opcoes.idadeMs` existem para o teste.
+ * `opcoes.limiteMs` e `opcoes.idadeMs` existem para o teste; numero que nao e finito (NaN, Infinity) cai
+ * no padrao (D396 n. 9). A pasta se le entrada a entrada, com o prazo conferido antes de cada uma: lida
+ * inteira de uma vez, uma pasta grande gastava o orcamento antes do primeiro olhar no prazo (D396 n. 8).
  */
 function limparVelhos(sessionIdAtual, agoraMs, opcoes) {
   const o = opcoes || {};
-  const limite = Date.now() + (typeof o.limiteMs === 'number' ? o.limiteMs : LIMITE_LIMPEZA_MS);
-  const idade = typeof o.idadeMs === 'number' ? o.idadeMs : IDADE_LIMPEZA_MS;
-  const agora = typeof agoraMs === 'number' ? agoraMs : Date.now();
+  const limite = Date.now() + (Number.isFinite(o.limiteMs) ? o.limiteMs : LIMITE_LIMPEZA_MS);
+  const idade = Number.isFinite(o.idadeMs) ? o.idadeMs : IDADE_LIMPEZA_MS;
+  const agora = Number.isFinite(agoraMs) ? agoraMs : Date.now();
   const atual = idSaneado(sessionIdAtual).toLowerCase();
   let apagados = 0;
   try {
     const pasta = raiz();
-    for (const entrada of fs.readdirSync(pasta, { withFileTypes: true })) {
-      if (Date.now() > limite) break;
-      if (!entrada.isFile()) continue;
-      const m = NOME_DE_SESSAO.exec(entrada.name);
-      if (!m || m[1].toLowerCase() === atual) continue;
-      try {
-        const arquivo = path.join(pasta, entrada.name);
-        if (agora - fs.statSync(arquivo).mtimeMs <= idade) continue;
-        fs.unlinkSync(arquivo);
-        apagados++;
-      } catch (e) { /* sumiu no meio, EPERM, EBUSY: segue com o proximo */ }
+    const dir = fs.opendirSync(pasta);
+    try {
+      for (;;) {
+        if (Date.now() > limite) break;
+        const entrada = dir.readSync();
+        if (!entrada) break;
+        if (!entrada.isFile()) continue;
+        const m = NOME_DE_SESSAO.exec(entrada.name);
+        if (!m || m[1].toLowerCase() === atual) continue;
+        try {
+          const arquivo = path.join(pasta, entrada.name);
+          if (agora - fs.statSync(arquivo).mtimeMs <= idade) continue;
+          fs.unlinkSync(arquivo);
+          apagados++;
+        } catch (e) { /* sumiu no meio, EPERM, EBUSY: segue com o proximo */ }
+      }
+    } finally {
+      dir.closeSync();
     }
   } catch (e) { /* pasta inexistente ou ilegivel: nada a limpar */ }
   return apagados;

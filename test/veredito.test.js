@@ -549,3 +549,51 @@ test('D387/contagem: com e sem mesmos, secas, encerrar, motivo, novos, placar e 
   assert.match(teto.motivo, /teto de 3 rondas com 3 achado/);
   assert.ok(teto.provaveisMesmos.length > 0);
 });
+
+// ---------------------------------------------------------------------------------------------
+// 0.5.2 (D396): P2 n. 23, 24, 37, 38 e 41 do plano secao 2.1
+// ---------------------------------------------------------------------------------------------
+
+test('D396 n. 23: muitos achados no mesmo arquivo nao viram conta quadratica, e os pares seguem os mesmos', () => {
+  // 30.000 P1 a 20 linhas um do outro: nenhum par; antes, 9e8 comparacoes
+  const longe = [];
+  for (let i = 0; i < 30000; i++) longe.push(achado('P1', 'A.txt', 1 + i * 20));
+  const t0 = Date.now();
+  const r = v.apurar([[veredito('correcao', longe)]], { mapas: [MAPA_AB] });
+  assert.ok(Date.now() - t0 < 2000, 'demorou ' + (Date.now() - t0) + ' ms');
+  assert.deepStrictEqual(r.paresCandidatos, []);
+  // ordem e conteudo: a de antes (a ordem em que os achados apareceram), com vizinhos dos dois lados
+  const perto = v.apurar([[veredito('correcao', [achado('P2', 'A.txt', 40), achado('P1', 'A.txt', 30), achado('P2', 'A.txt', 21),
+    achado('P1', 'A.txt', 35), achado('P2', 'A.txt', 19)])]], { mapas: [MAPA_AB] });
+  assert.deepStrictEqual(CHAVES(perto.paresCandidatos), [
+    ['P1|trabalho|30|correcao', 'P2|trabalho|40|correcao'],
+    ['P1|trabalho|30|correcao', 'P2|trabalho|21|correcao'],
+    ['P1|trabalho|30|correcao', 'P1|trabalho|35|correcao'],
+    ['P1|trabalho|35|correcao', 'P2|trabalho|40|correcao']
+  ]);
+});
+
+test('D396 n. 24: mesmos null pela API e o mesmo que sem juiz (nao e erro)', () => {
+  const rondas = [[veredito('correcao', [achado('P1', 'A.txt', 5), achado('P2', 'A.txt', 8)])]];
+  const r = v.apurar(rondas, { mapas: [MAPA_AB], mesmos: null });
+  assert.deepStrictEqual(r.provaveisMesmos, []);
+  assert.strictEqual(r.paresCandidatos.length, 1);
+});
+
+test('D396 n. 37/38: achado de linha 0 ou negativa e descartado (e nao molha a ronda que nao se podia refutar)', () => {
+  for (const linha of [0, -3]) {
+    const r = v.validarVeredito(veredito('correcao', [achado('P1', 'A.txt', linha), achado('P1', 'A.txt', 1)]));
+    assert.strictEqual(r.achadosValidos.length, 1, 'linha ' + linha + ' passou');
+    assert.ok(r.erros.some((e) => /a partir de 1/.test(e)), r.erros.join(' | '));
+  }
+  // o n. 38: refutar exige linha >= 1; o achado de linha 0 molhava a ronda sem saida
+  const ap = v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 0)])], [veredito('correcao', [])]]);
+  assert.strictEqual(ap.secas, 2, 'o P1 de linha 0 molhou a ronda');
+});
+
+test('D396 n. 41: par autorreferente com resposta invalida recebe a mensagem da resposta primeiro', () => {
+  const existentes = new Set(['k1', 'k2']);
+  assert.throws(() => v.conferirMesmos([{ novo: 'k1', outro: 'k1', resposta: 'talvez' }], existentes), /"resposta" tem de ser/);
+  // resposta valida: segue a mensagem da mesma chave
+  assert.throws(() => v.conferirMesmos([{ novo: 'k1', outro: 'k1', resposta: 'sim' }], existentes), /mesma chave/);
+});

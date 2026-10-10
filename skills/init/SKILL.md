@@ -270,7 +270,8 @@ daqui não é campo dele. A skill de execução (`padrao`) procura esses três l
 `ondeRegistrar` do adaptador; sem resposta, ela não sabe para onde mandar o que sobrou de uma revisão
 nem a decisão que o dono tomou.
 
-Use `AskUserQuestion`, com 3 opções como nas outras perguntas, e peça **um arquivo para cada**, para a
+Use `AskUserQuestion`, **uma pergunta por lugar** (os três lugares abaixo não são as 3 opções: cada
+pergunta tem as suas 3 opções, como nas outras perguntas), e peça **um arquivo para cada**, para a
 decisão não se perder dentro de uma lista de pendências:
 
 1. o **registro das decisões** do dono (o log de decisões: o arquivo onde cada decisão fica com a
@@ -291,7 +292,8 @@ gravar** a skill no 7c, a resposta do 4b não fica gravada em lugar nenhum — *
 naquela hora**.
 
 **No re-init, olhe antes se a skill do projeto já existe** (liste `.claude/skills/`: é a pasta com o
-`SKILL.md` que um init anterior gravou pelo 7c, com a fatia `decisoes`), porque o 7c **não grava por cima dela** (o
+`SKILL.md` que um init anterior gravou pelo 7c, com a fatia `decisoes`, e que diz "Gerado por
+`/esquadro:init`"; com mais de uma assim, pergunte ao dono qual é), porque o 7c **não grava por cima dela** (o
 script recusa sobrescrever skill que já existe, item 6 do 7c):
 
 - **existe e traz os três arquivos** na fatia `decisoes`: não repergunte; vale o que está lá;
@@ -524,7 +526,8 @@ recusa, e ele está certo.
 
 - **Gravar como está** — vira a skill deste projeto e passa a valer nas próximas sessões.
 - **Ajustar antes** — ele aponta o que mudar, você regera e mostra de novo.
-- **Não gravar** — o projeto fica só com `projeto.json` e `regras.md`; nada se perde dos portões.
+- **Não gravar** — o projeto fica só com `projeto.json` e `regras.md`; os portões seguem iguais, mas a
+  resposta do Passo 4b não fica gravada em lugar nenhum.
 
 **6. Só depois do OK:**
 

@@ -25,13 +25,22 @@ function termos(descricao) {
   return new Set(normalizar(descricao).filter(function (p) { return p.length > 3 && !VAZIAS.has(p); }));
 }
 
+// D396/D398 (#10a): 1 termo em comum acusava 40 de 80 pares, 39 deles sem sobreposicao. Agora so com
+// 2 termos em comum ou mais E a fracao de termos comuns (Jaccard: comuns / todos os termos do par) de
+// 0,20 ou mais - medido 80/80 na bateria da 2b-1 (plano da 0.5.2, secao 7). O "nao" mais perto teve 0,111.
+const MIN_TERMOS_COMUNS = 2;
+const MIN_JACCARD = 0.20;
+
 function sobreposicoes(skills) {
   const achados = [];
   const lista = (skills || []).map(function (s) { return { nome: s.nome, t: termos(s.descricao) }; });
   for (let i = 0; i < lista.length; i++) {
     for (let j = i + 1; j < lista.length; j++) {
       const comuns = Array.from(lista[i].t).filter(function (x) { return lista[j].t.has(x); });
-      if (comuns.length >= 1) achados.push({ a: lista[i].nome, b: lista[j].nome, termos: comuns });
+      const todos = lista[i].t.size + lista[j].t.size - comuns.length;
+      if (comuns.length >= MIN_TERMOS_COMUNS && comuns.length / todos >= MIN_JACCARD) {
+        achados.push({ a: lista[i].nome, b: lista[j].nome, termos: comuns });
+      }
     }
   }
   return achados;
