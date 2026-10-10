@@ -94,6 +94,20 @@ test('D387/portao-decisao: 3 opcoes sem a recomendada em primeiro barra (marca n
   });
 });
 
+test('D391/portao-decisao: a marca tambem fora da 1a opcao barra, citando a opcao', () => {
+  comProjeto({ versaoConfig: 1 }, (dir) => {
+    const duas = hook(dir, entrada(pergunta(['A (Recomendado)', 'B (Recomendado)', 'C'])));
+    assert.ok(negou(duas), duas.stdout);
+    assert.match(motivo(duas), /a pergunta 1 marca como recomendada tambem a opcao 2/);
+    const terceira = hook(dir, entrada(pergunta(['A (Recomendado)', 'B', 'C (recom.)'])));
+    assert.ok(negou(terceira), terceira.stdout);
+    assert.match(motivo(terceira), /a pergunta 1 marca como recomendada tambem a opcao 3/);
+    const todas = hook(dir, entrada(pergunta(['A (Recomendado)', 'B (Recommended)', 'C (Recomendada)'])));
+    assert.ok(negou(todas), todas.stdout);
+    assert.match(motivo(todas), /tambem a opcao 2, 3/);
+  });
+});
+
 test('D389/portao-decisao: sem a marca exata entre parenteses a 1a opcao barra (negacao e palavra solta)', () => {
   comProjeto({ versaoConfig: 1 }, (dir) => {
     for (const rotulo of ['Nao recomendado: apagar tudo', 'Manter (não recomendado)', 'Keep (not recommended)',
@@ -132,6 +146,14 @@ test('D387/portao-decisao: tool_input sem questions, ou com questions que nao e 
     liberou(hook(dir, {}));
     liberou(hook(dir, { tool_input: { questions: 'texto' } }));
     liberou(hook(dir, { tool_input: { questions: { options: [] } } }));
+  });
+});
+
+test('D391/portao-decisao: questions como lista vazia barra (nao ha pergunta no padrao)', () => {
+  comProjeto({ versaoConfig: 1 }, (dir) => {
+    const r = hook(dir, { tool_input: { questions: [] } });
+    assert.ok(negou(r), r.stdout);
+    assert.match(motivo(r), /nenhuma pergunta/);
   });
 });
 

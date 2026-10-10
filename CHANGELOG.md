@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.1 — a recomendada e uma so, a lista vazia barra e o juiz nao aponta um achado para ele mesmo
+
+Tres ajustes do que a revisao cega da 0.5.0 deixou registrado. Os comportamentos novos vem com teste;
+a suite inteira roda com `npm test`.
+
+- **A recomendada e uma so.** O `portao-decisao.js` confere a marca em todas as opcoes, nao so na
+  primeira: a marca tambem na 2a ou na 3a opcao barra a pergunta, e a mensagem diz quais opcoes
+  repetiram a marca.
+- **Lista de perguntas vazia barra.** `AskUserQuestion` com `questions: []` passava sem conferencia;
+  agora o portao barra com "nenhuma pergunta na lista".
+- **O juiz nao aponta um achado para ele mesmo.** Um `mesmos.json` com `novo` igual a `outro` para a
+  apuracao com erro e a instrucao de copiar o par como veio em `paresCandidatos`; antes saia o aviso
+  "provavel mesmo defeito que" a propria chave.
+
 ## 0.5.0 — o juiz que aponta achado repetido e o portao da pergunta ao dono
 
 Duas pecas da frente do decisor local: um modelo pequeno entra na revisao cega so para

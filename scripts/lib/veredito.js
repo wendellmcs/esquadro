@@ -195,6 +195,12 @@ function conferirMesmos(lista, chavesExistentes) {
           'exatamente como veio em paresCandidatos');
       }
     }
+    // D391: um achado nao e par dele mesmo (paresCandidatos nunca o lista); sem isto saia o aviso
+    // "provavel mesmo defeito que" a propria chave.
+    if (m.novo === m.outro) {
+      throw new Error(onde + '"novo" e "outro" sao a mesma chave (' + m.novo + '); copie o par exatamente como veio em ' +
+        'paresCandidatos');
+    }
     if (RESPOSTAS_MESMO.indexOf(m.resposta) === -1) {
       throw new Error(onde + '"resposta" tem de ser "sim", "nao" ou "nao-sei" (veio ' + JSON.stringify(m.resposta) + ')');
     }

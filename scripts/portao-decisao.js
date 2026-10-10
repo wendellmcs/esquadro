@@ -20,11 +20,13 @@ function defeitoDaPergunta(q, n) {
   if (opcoes.length !== 3) {
     return 'pergunta ' + n + ' tem ' + opcoes.length + (opcoes.length === 1 ? ' opcao' : ' opcoes');
   }
-  const primeira = opcoes[0];
-  const rotulo = primeira && typeof primeira === 'object' ? primeira.label : primeira;
-  if (typeof rotulo !== 'string' || !MARCA_RECOMENDADA.test(rotulo)) {
-    return 'a 1a opcao da pergunta ' + n + ' nao e a recomendada';
-  }
+  const rotulos = opcoes.map(function (o) { return o && typeof o === 'object' ? o.label : o; });
+  const marcada = function (r) { return typeof r === 'string' && MARCA_RECOMENDADA.test(r); };
+  if (!marcada(rotulos[0])) return 'a 1a opcao da pergunta ' + n + ' nao e a recomendada';
+  // D391: a recomendada e uma so. A marca tambem numa outra opcao desfaz a escolha.
+  const outras = [];
+  for (let i = 1; i < rotulos.length; i++) if (marcada(rotulos[i])) outras.push(i + 1);
+  if (outras.length) return 'a pergunta ' + n + ' marca como recomendada tambem a opcao ' + outras.join(', ');
   return null;
 }
 
@@ -38,7 +40,8 @@ io.blindar(function () {
     const perguntas = e.tool_input && e.tool_input.questions;
     if (!Array.isArray(perguntas)) return io.permitir();
 
-    const defeitos = [];
+    // D391: lista vazia nao e pergunta no padrao (antes nenhum defeito = liberava).
+    const defeitos = perguntas.length === 0 ? ['nenhuma pergunta na lista'] : [];
     perguntas.forEach(function (q, i) {
       const d = defeitoDaPergunta(q, i + 1);
       if (d) defeitos.push(d);

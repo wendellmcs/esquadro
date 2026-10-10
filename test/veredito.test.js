@@ -492,6 +492,13 @@ test('D387/conferirMesmos: forma errada lanca erro com a posicao e o que fazer',
   assert.strictEqual(v.conferirMesmos([{ novo: 'k1', outro: 'k2', resposta: 'nao-sei' }], existentes).length, 1);
 });
 
+test('D391/conferirMesmos: novo igual a outro lanca erro (um achado nao e par dele mesmo)', () => {
+  const existentes = new Set(['k1', 'k2']);
+  assert.throws(() => v.conferirMesmos([{ novo: 'k1', outro: 'k2', resposta: 'sim' }, { novo: 'k1', outro: 'k1', resposta: 'sim' }],
+    existentes), /posicao 2.*"novo" e "outro" sao a mesma chave \(k1\)/);
+  assert.throws(() => v.conferirMesmos([{ novo: 'k2', outro: 'k2', resposta: 'nao' }], existentes), /mesma chave/);
+});
+
 test('D387/apurar: mesmos com chave que nao existe entre os achados apurados lanca erro', () => {
   assert.throws(() => v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 5)])]],
     { mapas: [MAPA_AB], mesmos: [{ novo: 'P1|trabalho|5|correcao', outro: 'P1|trabalho|99|correcao', resposta: 'sim' }] }),
