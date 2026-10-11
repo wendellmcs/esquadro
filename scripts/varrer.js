@@ -17,11 +17,25 @@ const projeto = require('./lib/config.js').carregarProjeto(cwd);
 // D98 rodada 3: e `existsSync` responde `true` para um DIRETORIO chamado package.json,
 // caso em que o `lerJson` falha com EISDIR e nada e lido - a frase voltava a mentir.
 // A frase promete LEITURA; entao quem responde por ela tem de ser a leitura.
-function leuOPackage(base) {
-  try { fs.readFileSync(path.join(base, 'package.json'), 'utf8'); return true; }
+function leuArquivo(base, rel) {
+  try { fs.readFileSync(path.join(base, rel), 'utf8'); return true; }
   catch (e) { return false; }
 }
-const leuPackage = leuOPackage(cwd);
+const leuPackage = leuArquivo(cwd, 'package.json');
+
+// S8/L3-var-1 (D426): a lista de leituras tambem vale so para o que foi lido de fato. Antes saia
+// "(se existirem) settings.json, settings.local.json e .mcp.json" sem conferir, e o projeto.json
+// (que `carregarProjeto` abre acima) nem constava.
+function emLista(itens) {
+  return itens.length > 1 ? itens.slice(0, -1).join(', ') + ' e ' + itens[itens.length - 1] : itens[0];
+}
+const doAmbiente = ['.claude/settings.json', '.claude/settings.local.json', '.mcp.json']
+  .filter(function (rel) { return leuArquivo(cwd, rel); });
+const leituras = [];
+if (leuPackage) leituras.push('o package.json, para achar o script de teste');
+if (projeto) leituras.push('o .claude/esquadro/projeto.json, para saber o que o projeto declarou');
+if (doAmbiente.length) leituras.push(emLista(doAmbiente) + ', para detectar o ambiente');
+leituras.push('os arquivos de instrucao do projeto, so para contar linhas');
 
 const saida = {
   teto: {
@@ -37,9 +51,10 @@ const saida = {
     // D98: a frase anterior dizia "nenhum conteudo de arquivo entrou" enquanto o
     // `lerJson` lia o package.json. Era falsa, e falsa e a familia de defeito que
     // este projeto existe para barrar.
-    observacao: leuPackage
-      ? 'so a lista de caminhos foi varrida; o unico conteudo de arquivo lido foi o package.json, para achar o script de teste'
-      : 'so a lista de caminhos foi varrida; nenhum conteudo de arquivo foi lido'
+    // D423 (DC-04): a frase seguinte ("o unico conteudo lido foi o package.json") tambem era
+    // falsa: `ambiente.detectar` le .claude/settings*.json e .mcp.json, e `instrucoes.contar`
+    // abre os arquivos de instrucao para contar linhas. A frase nomeia as leituras que houve.
+    observacao: 'a varredura lista caminhos; de conteudo, le ' + emLista(leituras)
   },
   ambiente: require('./lib/ambiente.js').detectar(cwd),
   instrucoes: require('./lib/instrucoes.js').contar(cwd, projeto || {}, projeto ? undefined : inferido.candidatosCanonicos),

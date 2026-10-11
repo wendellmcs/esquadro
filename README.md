@@ -47,7 +47,8 @@ Todo agente de código tem os mesmos vícios, e nenhum deles aparece no primeiro
 | manda o modelo mais caro corrigir um typo | barra o agente do topo da escada quando a tarefa só tem trabalho leve |
 
 Instrução no prompt não segura nada disso por muito tempo: numa conversa longa, ela se perde. Aqui,
-cada vício está atrás de um **hook** do Claude Code que chama um script. Ou o agente prova, ou não
+cada vício está atrás de um **hook**: um gancho do Claude Code, que roda um script em momentos fixos,
+como antes de escrever um arquivo ou ao fim da resposta. Ou o agente prova, ou não
 passa — e o que ele consegue contornar, como ampliar o próprio escopo, fica contado e é dito no
 fecho do turno.
 
@@ -59,7 +60,7 @@ fecho do turno.
   <img src="assets/terminal-fecho.svg" alt="Sessão de exemplo: o agente diz que terminou sem colar prova, e o portão de fecho devolve o turno com a mensagem literal do scripts/portao-fecho.js" width="780">
 </p>
 
-O agente disse que terminou e não mostrou nada. O hook `Stop` leu a resposta, não achou saída de
+O agente disse que terminou e não mostrou nada. O hook `Stop` (o que roda quando o agente fecha o turno) leu a resposta, não achou saída de
 comando colada e devolveu o turno. A frase do agente é de exemplo; **a resposta do portão é a saída
 literal** do `scripts/portao-fecho.js` desta versão.
 
@@ -208,10 +209,13 @@ em qualquer marcha: é a declaração mais específica das duas.
 à frente dele, e a partir daí só o que estiver nele libera escrita, para aquela sessão. Sem vínculo,
 vale o `escopo.md` de sempre. Aposentar uma frente é mover o arquivo dela para fora da pasta.
 
-Em sessão sem interação (`claude -p`), o Claude Code trata `<projeto>/.claude/**` como arquivo
-sensível e nega a escrita, nem `acceptEdits` nem regra explícita liberam. O vínculo acontece assim
-mesmo, porque o hook roda antes dessa checagem, mas o arquivo da frente tem de existir antes (crie-o
-numa sessão interativa), e o agente precisa lê-lo antes de editar, um passo por vez.
+Em sessão sem interação (`claude -p`, que executa um pedido e termina sem perguntar nada), o Claude
+Code trata `<projeto>/.claude/**` como arquivo sensível e nega a escrita. Nem o modo `acceptEdits`
+(que aprova as edições sozinho) nem uma regra de permissão explícita liberam. O vínculo acontece assim
+mesmo, porque o hook roda antes dessa checagem. Para isso, o arquivo da frente tem de existir antes
+(crie-o numa sessão interativa), e o agente tem de lê-lo com `Read` antes de editá-lo com `Edit`, em
+duas chamadas separadas, a leitura primeiro: o Claude Code recusa a edição de arquivo que a sessão
+ainda não leu. Se a sessão seguir sem vínculo, confira essas duas condições.
 
 **3. Trabalhe.** O agente corrige o frete e, no caminho, acha um defeito na cobrança. Ao tentar
 editar `src/pagamento/cobranca.js`, recebe de volta:
@@ -229,7 +233,7 @@ Escolha uma:
 O defeito da cobrança vira registro para você decidir depois, em vez de um diff que ninguém pediu.
 
 **4. Revise às cegas.** `/esquadro:revisar src/carrinho/frete.js` despacha os inspetores, um por
-lente; o `scripts/apurar-ronda.js --arquivo src/carrinho/frete.js` diz se a ronda foi seca. Você
+lente; o script `apurar-ronda.js` do plugin (que o `/esquadro:revisar` roda por você) diz se a ronda foi seca. Você
 fica sabendo quantos agentes rodaram — custo é informação sua.
 
 **5. Feche com prova.** "Pronto, os testes passam" sem saída colada volta, como no terminal lá em
@@ -262,9 +266,9 @@ O plugin se pendura em dez pontos do ciclo de uma sessão:
 
 | Quando | Script | O que faz |
 |---|---|---|
-| a sessão abre, reabre ou compacta | `scripts/abertura.js` | fotografa o `git status` (o que já estava modificado é de outra frente), reinjeta as suas regras e o escopo em vigor, avisa escopo herdado de outra tarefa, `intocaveis` que não pegam nada e plano ativo de outra sessão |
-| você manda um pedido | `scripts/abrir-turno.js` | zera as marcas do turno anterior: trabalho feito, busca feita, bloqueio; se você perguntar se o contexto está bom, manda o Claude trocar de chat com o handoff |
-| antes de `Write` e `Edit` | `scripts/portao-escopo.js` | intocáveis, outra frente, "Fora", marcha, escopo, criar sem buscar, catraca e, com design system declarado, token fora do sistema |
+| a sessão abre, reabre ou compacta | `scripts/abertura.js` | fotografa o `git status` (o que já estava modificado é de outra frente), reinjeta as suas regras e o escopo em vigor, avisa escopo herdado de outra tarefa, `intocaveis` que não pegam nada e plano ativo de outra sessão; a cada 7 dias, roda a auditoria do `/esquadro:auditar` e avisa só o que passou do limite |
+| você manda um pedido | `scripts/abrir-turno.js` | zera as marcas do turno anterior: trabalho feito, busca feita, bloqueio; se você perguntar se o contexto está bom, manda o Claude trocar de chat com o handoff (o texto de continuação que leva o trabalho a um chat novo); se você corrigir o jeito dele trabalhar ("eu já te disse", "da próxima vez…"), manda o Claude oferecer, no fim da resposta, virar regra com `/esquadro:aprender` |
+| antes de `Write` e `Edit` | `scripts/portao-escopo.js` | intocáveis, outra frente, "Fora", marcha, escopo, criar sem buscar, catraca (régua que só aperta: teto que não sobe e piso que não desce) e, com design system declarado, token fora do sistema |
 | antes de `Bash` e `PowerShell` | `scripts/portao-destrutivo.js` · `scripts/portao-estilo.js` | comando destrutivo, idioma de shell errado e `cd` solto; avisa, sem negar, quando a tabela de idioma do PowerShell não se lê. Com design system declarado, nega arquivo de estilo escrito por comando de shell e manda usar `Write` ou `Edit` |
 | antes de `Task` e `Agent` | `scripts/portao-agente.js` · `scripts/portao-apelido.js` | agente caro em marcha rápida; `model:` do agente contra o apelido gravado no projeto |
 | antes de `AskUserQuestion` | `scripts/portao-decisao.js` | barra pergunta ao dono sem exatamente 3 opções ou sem a recomendada em primeiro; desliga com `"portaoDecisao": false` no `projeto.json` |
@@ -273,7 +277,7 @@ O plugin se pendura em dez pontos do ciclo de uma sessão:
 | o turno termina | `scripts/portao-fecho.js` | cobra evidência, barra etapa com subitem aberto, barra o turno que gravou um handoff sem colar o prompt em bloco de código na resposta final, grava os contadores, avisa quando é hora de trocar de chat |
 | a sessão fecha | `scripts/fim-sessao.js` | apaga os arquivos de sessão parados há mais de 7 dias, nunca o da sessão que está fechando; o orçamento é de 1,5 s (o `timeout` do `hooks.json` não o aumenta), e a limpeza para antes disso: o que sobrar sai na próxima |
 
-Três coisas acontecem sem você pedir:
+Cinco coisas acontecem sem você pedir:
 
 - **As suas regras voltam em toda sessão.** O `regras.md` do projeto e o escopo em vigor são
   reinjetados também ao retomar e depois de compactar o contexto — que é justamente quando a regra
@@ -283,8 +287,23 @@ Três coisas acontecem sem você pedir:
   3 decisões suas respondidas ou 3 commits. Basta um, e os limiares se ajustam em `limiares`, no
   `projeto.json`. O aviso não fica só na tela: chega também ao Claude, que roda o handoff e cola o
   prompt pronto na mesma resposta (detalhe abaixo). Funciona sem o `/esquadro:init`.
-- **Etapa com subitem aberto não fecha.** Com um plano ativo (`node scripts/plano.js --abrir
-  <plano>`), dizer que a etapa terminou enquanto ela ainda tem caixa aberta é barrado pelo fecho.
+- **Etapa com subitem aberto não fecha.** Com um plano ativo, dizer que a etapa terminou enquanto ela
+  ainda tem caixa aberta é barrado pelo fecho. Para ativar um plano, rode na pasta do projeto:
+  `node "<plugin>/scripts/plano.js" --abrir <caminho do plano>`. O `<plugin>` é a pasta onde o plugin
+  está instalado; [a seção das ferramentas de linha de comando](#as-ferramentas-de-linha-de-comando),
+  no fim deste README, mostra como achá-la.
+
+  O plano fica em nome da sessão que o abriu, e outra sessão aberta no mesmo projeto recebe um aviso
+  de que o plano é alheio. Dentro do Claude Code o id da sessão é lido sozinho. Fora dele (num
+  terminal comum), acrescente `--sessao <id>` com o id da sessão que vai executar o plano: o
+  `session_id` que os hooks recebem, igual ao nome do arquivo `<id>.jsonl` da conversa, na pasta
+  `.claude/projects/` da sua pasta pessoal. Sem a flag, o plano fica registrado como `sem-sessao`, e
+  toda sessão recebe o aviso.
+- **Correção vira sugestão de regra.** Quando você corrige o jeito de o Claude trabalhar, ele oferece,
+  no fim da resposta, transformar a correção em regra com `/esquadro:aprender`. Só grava com o seu sim.
+- **A auditoria roda sozinha.** A cada 7 dias, na abertura, o plugin confere peso de instrução,
+  skills repetidas, regras que se contradizem e skills paradas, e só fala se algo passou do limite
+  (detalhe em `/esquadro:auditar`, abaixo).
 
 <details>
 <summary>O aviso de troca de chat, literal</summary>
@@ -319,7 +338,8 @@ se soma ao laço: espera o próximo fim de turno com trabalho.
 
 Basta um. Sem `projeto.json`, valem os padrões da tabela; com ele, só as chaves que você escreve
 mudam. O commit entra com 3, e não 1, porque o aviso sai uma vez só: com 1, todo mundo que commita
-receberia o aviso no primeiro commit.
+receberia o aviso no primeiro commit. A auditoria automática usa mais duas chaves de `limiares`, que
+não são gatilho de troca de chat: `diasEntreAuditorias` e `diasSkillParada` (ver `/esquadro:auditar`).
 
 **Perguntar também dispara.** Se você perguntar se o contexto ou a memória da conversa está bom
 ("o contexto está bom?", "contexto tá cheio?", "is the context ok?"), a pergunta é a resposta: o
@@ -334,6 +354,19 @@ conversa —, então o plugin não finge contá-los. Para esses, vale a sua perg
 **Como conferir que os ganchos rodam:** ao abrir a sessão aparece a linha
 "esquadro: lendo o estado do repositorio". Se ela não aparece, o `node` não está no `PATH` — todo
 gancho é um script `node` — ou o plugin não está ativo; `claude plugin list` mostra o segundo caso.
+
+**Ver os números a qualquer hora:** dois comandos que vêm com o plugin, sem instalar nada à parte. Eles
+são *mods* (extensões que o próprio Claude Code roda dentro da sessão) e só existem no Claude Code 2.1.287
+ou mais novo: se `/esquadro-sessao` não aparecer, rode `claude --version` e atualize; se a versão já
+for essa ou mais nova, abra uma sessão nova, porque os dois comandos são registrados quando a sessão começa. O nome leva hífen,
+e não os dois-pontos dos outros comandos do esquadro, porque comando de mod não leva o prefixo do plugin. `/esquadro-sessao` responde o
+medidor da sessão — contexto usado, janelas de limite (5h e semana) com a hora em que renovam, custo,
+previsão em turnos (só depois de 2 turnos com consumo; antes disso diz que não tem dado) e cada
+gatilho da tabela acima com o valor e o limiar. `/esquadro-plano` responde o painel do plano ativo
+(tarefas feitas, abertas e a próxima). No painel de chat da extensão do VS Code os dois respondem em
+texto; no terminal e no app Desktop o medidor também fica na linha de status, e quando um gatilho
+cruza aparece uma faixa acima do prompt com o botão "gerar handoff". Nada disso abre rede: os números
+vêm do próprio Claude Code e dos arquivos do esquadro na sua máquina.
 
 **Do que o gatilho de commit depende:** de o plugin ver que o `git commit` passou. Ele conta o commit
 pelo `gitOperation.commit.sha` que o Claude Code informa na resposta (medido no Claude Code 2.1.258)
@@ -371,10 +404,11 @@ declarado, e sem ele a primeira escrita é negada com a instrução de declarar.
 além do `projeto.json`, da escada de agentes gravada nele: sem a escada, ela conta o despacho e não
 opina.
 
-Quantas vezes cada trava disparou neste projeto:
+Quantas vezes cada trava disparou neste projeto. Rode na pasta do projeto, trocando `<plugin>` pela
+pasta onde o plugin está instalado ([como achá-la](#as-ferramentas-de-linha-de-comando)):
 
 ```
-node scripts/uso.js
+node "<plugin>/scripts/uso.js"
 ```
 
 Ele lê `.claude/esquadro/contadores.json` e lista os disparos em ordem decrescente, com o total.
@@ -552,8 +586,9 @@ Tokens de saída, somados nas 12 execuções de cada condição: resposta padrã
   mesmas doze perguntas, que não mudaram. A medição que aprovou é a mesma que orientou o ajuste.
 - **Sessão longa não foi medida:** cada pergunta é uma sessão nova. O efeito pode enfraquecer depois de muitos turnos;
   a abertura reinjeta o bloco a cada compactação.
-- **O instrumento vem no plugin:** `node scripts/medir-qualidade.js --gerar --modelo <nome> --destino <pasta>`, depois
-  `--pares` e `--veredito` na pasta da rodada. O julgamento de cada par fica com o inspetor do plugin, o mesmo da revisão cega.
+- **O instrumento vem no plugin:** `node "<plugin>/scripts/medir-qualidade.js" --gerar --modelo <nome> --destino <pasta>`, depois
+  `--pares` e `--veredito` na pasta da rodada (`<plugin>` é a pasta do plugin instalado; ver "As ferramentas de linha
+  de comando", no fim deste README). O julgamento de cada par fica com o inspetor do plugin, o mesmo da revisão cega.
 
 ---
 
@@ -605,9 +640,9 @@ A falha que ele ataca: **o agente é otimista ao julgar o próprio código**. Qu
 escreveu, ele não lê o código — ele re-deriva o raciocínio que o produziu, e o raciocínio que
 produziu o bug reproduz o bug.
 
-- **Pacote cego.** O `scripts/preparar-revisao.js` escreve o antes e o depois como `A.txt` e
+- **Pacote cego.** O `preparar-revisao.js` do plugin escreve o antes e o depois como `A.txt` e
   `B.txt`, sem dizer qual é qual, numa base por arquivo (`.claude/esquadro/revisao/<arquivo>/<n>/`);
-  o `apurar-ronda.js --arquivo <caminho>` apura a base dele. O `mapa.json` que desfaz a cegueira só
+  o `apurar-ronda.js` apura a base de cada arquivo. O `mapa.json` que desfaz a cegueira só
   o script de apuração lê.
 - **Lentes distintas, não inspetores repetidos.** Nove cópias do mesmo revisor acham o mesmo
   problema nove vezes; nove lentes acham nove classes de problema. Cada lente é um inspetor
@@ -616,7 +651,7 @@ produziu o bug reproduz o bug.
   estado obrigatório de fora, **P2** é melhoria fora do pedido, e vira registro, não correção.
 - **A régua do projeto vai junto.** A seção "Régua" do `regras.md` entra no pacote, e o inspetor
   cita o valor dela — não o gosto dele. Sem régua declarada, a revisão diz que rodou sem régua.
-- **Quem decide é o script.** O `scripts/apurar-ronda.js` conta só os achados do lado novo; o que
+- **Quem decide é o script.** O `apurar-ronda.js` conta só os achados do lado novo; o que
   aponta para o lado antigo é informação, não bloqueio. Achado refutado na fonte primária entra
   em `refutados.json` **com a prova**, ou o script para com erro.
 - **Convergência com teto.** Duas rondas secas seguidas aprovam. A ronda 1 descobre; as seguintes
@@ -660,9 +695,16 @@ produziu o bug reproduz o bug.
 Ele escreve lado a lado **o que você disse** e **o que ele entendeu**, para o mal-entendido aparecer
 agora e não daqui a um mês. Depois transforma a correção em `gatilho -> ação` — proibição solta
 decai em conversa longa; gatilho é convocado pela própria ação —, recusa fato volátil (versão,
-preço, nome de modelo), propõe com o `scripts/propor-regra.js` **sem gravar**, e pergunta em três
+preço, nome de modelo), propõe com o `propor-regra.js` do plugin (que a skill roda por você) **sem gravar**, e pergunta em três
 opções. Só grava depois do sim, e avisa quando o arquivo de regras passa de umas 40, porque regra
 demais dilui a atenção que ela devia concentrar.
+
+**Você não precisa lembrar do comando.** Quando a sua mensagem parece uma correção ao comportamento
+do Claude ("eu já te disse", "não foi isso que pedi", "pare de…", "da próxima vez…"), o `abrir-turno.js`
+avisa o Claude, que atende o pedido primeiro e oferece em uma linha transformar aquilo em regra. O gancho
+nunca grava nada: quem grava é a skill, depois do seu sim. No máximo uma sugestão a cada cinco turnos;
+relato de bug ("o botão para de funcionar") e resposta a pergunta ("não, pode seguir") não contam.
+Desliga com `"sugerirAprender": false` no `projeto.json`; sem a chave, fica ligado.
 
 ### `/esquadro:handoff` — a ponte entre chats
 
@@ -682,6 +724,19 @@ mede o peso contra o teto (com o método ao lado do número), aponta sobreposiç
 itens fora da rubrica e regra sem cicatriz, e confere se o catálogo de modelos ainda é o que o
 projeto supõe — consultado no agente principal, porque hook nenhum do plugin abre conexão. Ela
 propõe cortar, fundir ou manter com motivo. **Não apaga, não move, não edita.**
+
+**Você também não precisa lembrar de rodá-la.** Na abertura da sessão, num projeto com `projeto.json`, o
+`abertura.js` roda a mesma auditoria no máximo uma vez a cada 7 dias e **só fala se algo passou do teto**:
+peso de instrução acima do teto, skills que se sobrepõem, regras que se contradizem, ou skill do projeto
+cujo `SKILL.md` não muda há 90 dias ou mais (pela data do último commit que o tocou; sem git, ou com o
+arquivo fora do git, pela data do arquivo). Tudo em ordem =
+silêncio. O aviso sai em uma lista curta, com no máximo cinco nomes por item, e termina apontando
+`/esquadro:auditar` para o detalhe. A data da última auditoria fica em `.claude/esquadro/auditoria.json`
+(apagar o arquivo faz a próxima abertura auditar de novo); se a auditoria falhar, sai uma linha com a causa
+mandando rodar `/esquadro:auditar`, que mostra o relatório inteiro; a data é gravada mesmo assim, para o
+aviso não se repetir a cada sessão. Os prazos se ajustam em
+`limiares`, no `projeto.json`: `diasEntreAuditorias` (padrão 7) e `diasSkillParada` (padrão 90). Desliga com
+`"auditarNaAbertura": false`; sem a chave, fica ligado. Sem `projeto.json` ela não roda.
 
 ### `padrao` — o manual que o agente carrega
 
@@ -717,7 +772,8 @@ cega, com 27 inspetores.
 A pergunta era se o manual escrito à mão podia ser aposentado. O manual foi desligado numa branch,
 uma mudança de interface foi feita só com o plugin, e uma sessão que **não** fez o trabalho julgou,
 obrigação por obrigação, o que segurou cada uma: hook, skill, regra reinjetada — ou nada. O
-`scripts/experimento.js` deu o veredito (as linhas omitidas, marcadas com `…`, citam o projeto):
+`experimento.js` do plugin (que se roda à mão, como mostra a tabela no fim) deu o veredito
+(as linhas omitidas, marcadas com `…`, citam o projeto):
 
 ~~~text
 EXPERIMENTO - o manual antigo ainda e preciso?
@@ -768,8 +824,9 @@ Bash, e barrou `&&`, `head` e `tail` onde eles eram corretos. Na 0.2.0, o portã
 
 A primeira publicação, montada à mão, saiu com 92 arquivos de 95 — e os que faltavam eram
 justamente o detector de vazamento e o teste dele. Quem pegou o erro foi o contador de testes, não
-a leitura da lista. Desde então o `scripts/exportar.js` monta o que vai a público com a mesma lista
-que o detector audita, e confere quantos arquivos copiou.
+a leitura da lista. Desde então o `exportar.js` do plugin (que se roda à mão, como mostra a tabela
+no fim) monta o que vai a público com a mesma lista que o detector audita, e confere quantos
+arquivos copiou.
 
 ---
 
@@ -777,15 +834,36 @@ que o detector audita, e confere quantos arquivos copiou.
 
 Não são travas nem comandos do agente: são scripts que você roda quando quer o número.
 
+Os scripts moram na pasta do **plugin**, não na do seu projeto. Rode cada comando **da pasta do seu
+projeto**, trocando `<plugin>` pelo caminho completo da pasta do plugin:
+
+- **Plugin instalado:** a cópia que o Claude Code guarda na sua pasta pessoal, em
+  `$HOME/.claude/plugins/cache/esquadro-local/esquadro/<versão>/` (use a versão mais recente). O
+  `$HOME` é trocado pela sua pasta pessoal dentro das aspas, tanto no bash quanto no PowerShell. Não
+  escreva `~` no lugar: entre aspas o bash não o troca, e o PowerShell também não o troca num
+  argumento do `node`.
+- **Plugin carregado de um clone** com `claude --plugin-dir`: a pasta desse clone.
+
+Exemplo: `node "<plugin>/scripts/uso.js"`. Rodar `node scripts/uso.js` direto do seu projeto dá
+`Cannot find module`. Todo comando deste README que começa por `node "<plugin>/scripts/` segue essa
+regra, e `--raiz <pasta>` (nos scripts que aceitam) troca a pasta que o script examina; sem ele vale
+a pasta atual.
+
+**A exceção é o `exportar.js`**, que é de quem publica o próprio plugin. Ele não examina o seu
+projeto: monta a lista de arquivos com o `git` do **clone do código-fonte** do plugin, e por isso o
+`--raiz` dele tem de ser esse clone. A cópia instalada no cache não traz a pasta `.git` e não serve
+de `--raiz`: o script para com "NAO DEU PARA MEDIR" (saída 2) e não escreve nada. Use o clone nos
+dois lugares, como na tabela.
+
 | Rodar | O que devolve |
 |---|---|
-| `node scripts/uso.js` | quantas vezes cada trava disparou neste projeto |
-| `node scripts/cobertura.js` | quais portões este ambiente consegue verificar, quais não, e por quê |
-| `node scripts/cicatriz.js` | para cada regra do seu manual: existe decisão, incidente ou achado atrás dela? |
-| `node scripts/plataforma.js` | em que sistemas cada trecho dependente de plataforma foi de fato exercitado |
-| `node scripts/sanitar.js` | se algum dado seu vazou, nas três superfícies: conteúdo, autoria do histórico e mensagem de commit |
-| `node scripts/exportar.js` | monta, numa pasta à parte, exatamente o que iria para um repositório público |
-| `node scripts/experimento.js` | monta a tabela de obrigações do seu manual e julga o resultado: o plugin bastou, ou ainda falta manual? |
+| `node "<plugin>/scripts/uso.js"` | quantas vezes cada trava disparou neste projeto |
+| `node "<plugin>/scripts/cobertura.js"` | quais portões este ambiente consegue verificar, quais não, e por quê |
+| `node "<plugin>/scripts/cicatriz.js" --manual <pasta ou arquivo do seu manual> --corpus <pasta com o seu histórico em .md>` | para cada regra do seu manual: existe decisão, incidente ou achado atrás dela? Sem `--corpus` o script avisa que não leu histórico e não separa nada; sem `--manual` mede as skills do próprio plugin |
+| `node "<plugin>/scripts/plataforma.js" --raiz "<plugin>"` | em que sistemas cada trecho dependente de plataforma foi de fato exercitado |
+| `node "<plugin>/scripts/sanitar.js"` | se algum dado seu vazou, nas três superfícies: conteúdo, autoria do histórico e mensagem de commit; age sobre a pasta atual, ou sobre outra com `--raiz <pasta>` |
+| `node "<clone do plugin>/scripts/exportar.js" --raiz "<clone do plugin>" --destino <pasta>` | só para quem publica o próprio plugin: monta, numa pasta à parte, exatamente o que iria para um repositório público (sem `--gravar` só mostra o que copiaria) |
+| `node "<plugin>/scripts/experimento.js" --manual <pasta do seu manual>` | monta a tabela de obrigações do seu manual e do plugin; depois de preenchida (o script diz onde), rode de novo com `--veredito` para julgar: o plugin bastou, ou ainda falta manual? Sem `--manual` a tabela traz só as obrigações do plugin |
 
 Os dois últimos existem porque este repositório foi publicado e porque o plugin foi posto à prova
 contra um manual de verdade — os dois casos estão contados acima.
@@ -843,7 +921,8 @@ não é buraco — buraco é o que ninguém disse.
 - **Campo de configuração que ninguém documentou.** Alguns campos de frontmatter de agente
   funcionam hoje e podem sumir sem aviso, porque nunca foram prometidos. O teste de apelidos vivos
   detecta quando um deles deixa de valer; impedir, não impede.
-- **O harness muda.** Evento de hook, formato de plugin, campo de configuração. Guardar o método
+- **O harness muda.** O harness é o programa que roda o modelo e chama os ganchos, aqui o Claude Code.
+  Podem mudar o evento de hook, o formato de plugin e os campos de configuração. Guardar o método
   em vez do resultado reduz o estrago — não o elimina.
 - **Conferência que vive em instrução não é determinística.** Só hook é garantido. A comparação
   com o catálogo de modelos do harness precisa rodar no agente principal, e instrução a um modelo
@@ -859,7 +938,7 @@ que o `/esquadro:revisar` despacha — o `inspetor` e o `juiz-mesmo` — declara
 apelido de modelo e um esforço, para que toda revisão não saia no modelo mais caro da sessão. São os
 únicos lugares. Se
 o apelido deixar de valer, o teste de apelidos vivos acusa e diz qual — rode
-`node scripts/provar-apelidos.js --plugin` e sonde de novo.
+`node "<plugin>/scripts/provar-apelidos.js" --plugin` e sonde de novo.
 
 ---
 
@@ -874,7 +953,7 @@ qualquer máquina: a tabela de idioma de shell recebe a plataforma de quem chama
 O que sobra depende do sistema de verdade, e sobre esse trecho ninguém mediu nada fora do Windows.
 
 ```
-node scripts/plataforma.js
+node "<plugin>/scripts/plataforma.js" --raiz "<plugin>"
 ```
 
 Ele imprime a matriz ponto a ponto e termina dizendo quantos deles seguem sem teste em cada

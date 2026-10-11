@@ -348,7 +348,11 @@ test('varredura: design system dispara com sinal de verdade', () => {
 });
 
 test('varrer.js: a CLI nao mente na observacao e estima o que imprime', () => {
-  const dir = montar({ 'package.json': JSON.stringify({ scripts: { test: 'node --test' } }) });
+  const dir = montar({
+    'package.json': JSON.stringify({ scripts: { test: 'node --test' } }),
+    '.claude/settings.json': '{}',
+    '.mcp.json': '{}'
+  });
   try {
     const cli = path.join(__dirname, '..', 'scripts', 'varrer.js');
     // R3: spawnSync com shell:false, tambem no teste.
@@ -359,7 +363,11 @@ test('varrer.js: a CLI nao mente na observacao e estima o que imprime', () => {
       !/nenhum conteudo de arquivo/i.test(saida.teto.observacao),
       'a observacao nao pode negar uma leitura que houve'
     );
-    assert.ok(/package\.json/.test(saida.teto.observacao), 'a observacao nomeia o unico conteudo lido');
+    assert.ok(/package\.json/.test(saida.teto.observacao), 'a observacao nomeia o package.json lido');
+    // D423 (DC-04): o package.json NAO e o unico conteudo lido; ambiente.js e instrucoes.js tambem leem.
+    assert.ok(!/unico conteudo/i.test(saida.teto.observacao), 'nao pode dizer que o package.json e o unico: ' + saida.teto.observacao);
+    assert.ok(/settings/.test(saida.teto.observacao) && /\.mcp\.json/.test(saida.teto.observacao), 'nomeia as leituras do ambiente: ' + saida.teto.observacao);
+    assert.ok(/instru/.test(saida.teto.observacao) && /contar linhas/.test(saida.teto.observacao), 'nomeia a leitura das instrucoes: ' + saida.teto.observacao);
     const tokensReais = Math.ceil(r.stdout.length / 4);
     const desvio = Math.abs(saida.teto.tokensEstimados - tokensReais) / tokensReais;
     assert.ok(desvio < 0.05, 'estimado ' + saida.teto.tokensEstimados + ' x real ' + tokensReais);
@@ -428,8 +436,38 @@ test('varrer.js: sem package.json a CLI nao diz que leu package.json', () => {
     assert.strictEqual(r.status, 0, r.stderr);
     const obs = JSON.parse(r.stdout).teto.observacao;
     assert.ok(!/package\.json/.test(obs), 'nao pode nomear um arquivo que nao existe: ' + obs);
-    assert.ok(/nenhum conteudo de arquivo foi lido/.test(obs), obs);
+    // D423 (DC-04): sem package.json ainda ha leitura (instrucoes); a frase nao pode negar.
+    assert.ok(!/nenhum conteudo de arquivo/i.test(obs), 'nao pode negar a leitura das instrucoes: ' + obs);
+    assert.ok(/contar linhas/.test(obs), obs);
+    // S8 L3-var-1: settings e .mcp.json NAO existem aqui, entao a frase nao os nomeia (nada de "se existirem")
+    assert.ok(!/settings|\.mcp\.json|se existirem/.test(obs), 'nomeou leitura que nao houve: ' + obs);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// S8 L3-var-1 (D426): a frase lista o que a CLI leu DE FATO, arquivo a arquivo (inclusive o projeto.json,
+// que `carregarProjeto` abre), em vez de "(se existirem)" sem conferir.
+test('varrer.js: a observacao nomeia so as leituras que houve, projeto.json incluido', () => {
+  const todos = montar({
+    'package.json': JSON.stringify({ scripts: { test: 'node --test' } }),
+    '.claude/settings.json': '{}', '.claude/settings.local.json': '{}', '.mcp.json': '{}',
+    '.claude/esquadro/projeto.json': JSON.stringify({ fontesCanonicas: [] })
+  });
+  const so = montar({ '.mcp.json': '{}', 'a.js': '1' });
+  const ilegivel = montar({ '.claude/esquadro/projeto.json': '{isso nao fecha' });
+  try {
+    const t = rodarVarrer(todos).teto.observacao;
+    for (const nome of ['package.json', 'projeto.json', 'settings.json', 'settings.local.json', '.mcp.json', 'contar linhas']) {
+      assert.ok(t.includes(nome), nome + ' faltou: ' + t);
+    }
+    assert.ok(!/se existirem/.test(t), t);
+    const u = rodarVarrer(so).teto.observacao;
+    assert.ok(u.includes('.mcp.json'), u);
+    assert.ok(!/settings|projeto\.json|package\.json/.test(u), 'nomeou leitura que nao houve: ' + u);
+    // projeto.json que existe mas nao se le: nao houve leitura util, a frase nao o nomeia
+    assert.ok(!/projeto\.json/.test(rodarVarrer(ilegivel).teto.observacao));
+  } finally {
+    for (const d of [todos, so, ilegivel]) fs.rmSync(d, { recursive: true, force: true });
+  }
 });
 
 test('varrer.js: package.json que e DIRETORIO nao vira "li o package.json"', () => {

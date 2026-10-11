@@ -60,7 +60,7 @@ const FUNDO = 2;
 // D80/F1: WRAPPER DE PROCESSO - o nome que NAO e o comando, e sim quem EXECUTA
 // o resto da linha.
 //
-// `posCmd` (:357-366) so conhece DUAS coisas: o indice 0 e o token depois de um
+// `posCmd` (montado em `montar`) so conhece DUAS coisas: o indice 0 e o token depois de um
 // INTRODUTOR. Qualquer palavra antes do comando desligava as tres regras `fn:`
 // (`apelidoPS`, `formaCmd`, `apagaRemoto`) de uma vez - e o portao passou a
 // ENSINAR a burla: `ssh host "git push origin --delete main"` barrava e
@@ -106,12 +106,12 @@ const FUNDO = 2;
 // A recursao vem DE GRACA, em dois lugares, e por isso nao ha recursao nova
 // aqui: (1) a abertura encadeia sozinha no mesmo segmento
 // (`env nohup timeout 5 rd /s /q build` abre no `env`); (2) a releitura do
-// argumento citado (bloco FUNDO, :265-308) ja desce ate FUNDO=2 com a leitura
+// argumento citado (bloco FUNDO, no fim de `lerComando`) ja desce ate FUNDO=2 com a leitura
 // PRIMARIA para todo argumento citado com espaco, entao
 // `ssh host bash -lc "env rd /s /q build"` cai no mesmo caminho um nivel abaixo.
 //
 // A abertura alimenta SO `posAmpla` (:montar), nunca `posCmd`. E deliberado: o
-// gate da D68 no FUNDO (:289) continua lendo `posCmd`, entao
+// gate da D68 no FUNDO (o `seg.posCmd.has(k)` de `lerComando`) continua lendo `posCmd`, entao
 // `sudo git commit -m "explica (rd /s /q build)"` NAO recebe a leitura de
 // parentese dentro da prosa citada, e o falso positivo que a D68 fechou fica
 // fechado.
@@ -312,7 +312,7 @@ function lerComando(cmd, fundo, opts) {
 
     // FIX22/F3: `{}` COLADO e o ALVO do comando, nao um bloco de script.
     // `rm -rf {}` e o idioma de delecao mais comum do shell (`find -exec`,
-    // `xargs -I{}`), e ele passava: `{` e `}` estao em SEPARA_SEGMENTO (:24)
+    // `xargs -I{}`), e ele passava: `{` e `}` estao em SEPARA_SEGMENTO (no topo do arquivo)
     // e cortavam o segmento em `rm -rf ` sem nada depois, entao o `\s+\S` da
     // regra 1 do `rm` (ver REGRAS) nao tinha `\S` para casar. `op.chaveVazia`
     // faz o par COLADO virar UM token nesta leitura ALTERNATIVA (nunca na
@@ -593,7 +593,7 @@ function montar(texto, tokens, citados, nivel, semCmd0) {
       // D80/R1: token CITADO nao entra na regiao ampliada. `"erase"` em
       // `-Pattern "erase"` e string, nao comando. Nao se perde comando
       // aninhado de verdade: `bash -c "rd src -Recurse"` e RELIDO no bloco
-      // FUNDO (:265-308), e la os tokens de dentro sao NAO citados.
+      // FUNDO (em `lerComando`), e la os tokens de dentro sao NAO citados.
       for (let j = k + 1; j < lista.length; j++) if (!cit[j]) posAmpla.add(j);
       // O `break` E CARGA ESTRUTURAL, nao economia de laco - documentado aqui
       // porque nada dizia, e a proxima passada de limpeza tenderia a remove-lo.
@@ -641,7 +641,15 @@ function abreResto(t) {
 // ---------------------------------------------------------------- as regras
 
 // D47/D50: opcao global do git entre o `git` e o subcomando, e o sufixo `.exe`.
-const GIT = '\\bgit(?:\\.exe)?\\s+(?:-\\S+(?:\\s+[^-\\s]\\S*)?\\s+)*';
+// D420/SH-01: o `semAspas` (lerComando) so tira a aspa do token SEM espaco; token com espaco
+// dentro continua entre aspas, e o `\S*` de antes quebrava nele - `git -C "a b" reset --hard`,
+// `git -c user.name="A B" push -f` e o executavel citado `"C:\Program Files\Git\cmd\git.exe"` escapavam
+// de todas as regras do git. Agora o valor da opcao (e a opcao) aceita trechos entre aspas inteiros;
+// a aspa SEM par vira caractere comum (alternativas disjuntas pela antecipacao: custo linear,
+// medido a mao na s63 - 4x de entrada custou ~4x de tempo; nenhum teste do repo mede o tempo da regex GIT).
+// O texto citado continua sendo classificado como antes (D48): so a cadeia de opcoes ficou mais larga.
+const ASPA_OU_LETRA = '(?:"[^"]*"|\'[^\']*\'|"(?![^"]*")|\'(?![^\']*\')|[^\\s"\'])+';
+const GIT = '\\bgit(?:\\.exe)?["\']?\\s+(?:-' + ASPA_OU_LETRA + '(?:\\s+(?!-)' + ASPA_OU_LETRA + ')?\\s+)*';
 
 // D49: o subcomando tem de ser um token COMPLETO - `rebase.autoStash` e
 // configuracao publicada do git, e o `.` e fronteira de palavra.
@@ -683,7 +691,7 @@ function nu(t) { return t.indexOf('^') === -1 ? t : t.replace(/\^/g, ''); }
 // pode fazer barrar mais, e nunca muda onde um comando comeca ou termina.
 //
 // DE PROPOSITO nao injeta token nenhum em `lista`: a injecao da atribuicao
-// (:352) entra em `semAspas`, e um token sintetico ali cria ADJACENCIA que nao
+// (o laco inicial de `montar`) entra em `semAspas`, e um token sintetico ali cria ADJACENCIA que nao
 // existe no texto real - medido: com a atribuicao generalizada,
 // `alias z='rm -rf'; z build` passava a casar a regra 1 por `z=rm rm -rf`, um
 // bloqueio por acidente de texto, nao por posicao de comando. Descascar na
@@ -826,6 +834,46 @@ function apagaRemoto(seg) {
   return false;
 }
 
+// S1/L1-1: flags de `git checkout` que nao tiram o `.` do alvo e nao mudam o descarte.
+const CHECKOUT_FLAG = '(?:-[fq]+|--(?:force|ours|theirs|quiet|no-overlay|overlay|ignore-skip-worktree-bits))';
+
+// S1/H-1, D428: `git restore --staged .` (ou `-S`) so desfaz o stage: o working tree nao muda. Regra ESTRITA,
+// ancorada no subcomando: o segmento abre com `git` (opcoes globais `-C <dir>`/`-c k=v` aceitas), depois
+// `restore`, UMA OU MAIS `--staged`/`-S`, um `--` isolado opcional e o `.` final - nada alem de espaco.
+// Qualquer outra coisa barra (wrapper `sudo -S`/`ssh -S`, `-W`, `--source`, `restore` repetido...). O texto
+// citado vira `""` antes, para valor entre aspas (`-C "a b"`) ser um token so.
+const SO_INDICE = /^\s*git(?:\.exe)?\s+(?:-[Cc]\s+\S+\s+)*restore\s+(?:(?:--staged|-S)\s+)+(?:--\s+)?\.\s*$/;
+function soIndice(t) {
+  return SO_INDICE.test(t.replace(/"[^"]*"|'[^']*'/g, '""'));
+}
+
+// D429/1: `git clean -n`/`--dry-run` (inclusive agrupado: `-nfd`, `-dn`) so lista o que apagaria. O `n` depois de um
+// `e` no aglomerado (`-en`) e o padrao do `-e`, nao dry-run.
+// s62: lido token a token, so como OPCAO do clean - citado vira `""`, o `--` encerra as opcoes (o resto e pathspec)
+// e o token depois de `-e`/`--exclude` (ou de aglomerado terminado em `e`) e o padrao, nao opcao. O git aceita
+// abreviacao unica de opcao longa: `--d`/`--dry` sao o `--dry-run` e `--e`/`--exc` o `--exclude`.
+// D431: vale a ULTIMA opcao, como no git - `--no-dry-run` (ou `--no-d`) depois do `-n` volta a apagar.
+function dryRunClean(t) {
+  const toks = t.replace(/"[^"]*"|'[^']*'/g, '""').split(/\s+/);
+  const i = toks.findIndex(function (x) { return /^clean$/i.test(x); });
+  if (i === -1) return false;
+  let dry = false;
+  for (let k = i + 1; k < toks.length; k++) {
+    const x = toks[k];
+    if (x === '--') break;
+    const longa = /^--([a-z-]+)$/.exec(x);
+    if (longa && 'dry-run'.indexOf(longa[1]) === 0) { dry = true; continue; }
+    if (longa && longa[1].length > 3 && 'no-dry-run'.indexOf(longa[1]) === 0) { dry = false; continue; }
+    if (longa && 'exclude'.indexOf(longa[1]) === 0) { k++; continue; }
+    if (!/^-[a-zA-Z]+$/.test(x)) continue;
+    const e = x.indexOf('e');
+    const n = x.indexOf('n');
+    if (n !== -1 && (e === -1 || n < e)) dry = true;
+    if (e === x.length - 1) k++;
+  }
+  return dry;
+}
+
 // Piso built-in. O projeto acrescenta o que for dele em projeto.json.
 // `semAspas: true` faz a regra rodar tambem sobre o segmento com as aspas de
 // token removidas (D50): e assim que `git re""set --hard` vira `git reset --hard`.
@@ -840,10 +888,33 @@ const REGRAS = [
   { fn: apelidoPS, motivo: 'apelido do PowerShell para Remove-Item, recursivo ou forcado' },
   { fn: formaCmd, motivo: 'forma do cmd: apaga a arvore inteira' },
   { re: new RegExp(GIT + 'reset\\s+--hard\\b', 'i'), semAspas: true, motivo: 'git reset --hard descarta trabalho nao commitado' },
-  { re: new RegExp(GIT + 'clean\\s+-[a-zA-Z]*[fdx]', 'i'), semAspas: true, motivo: 'git clean apaga arquivo nao rastreado' },
-  { re: new RegExp(GIT + 'checkout\\s+--\\s+\\.', 'i'), semAspas: true, motivo: 'git checkout -- . descarta todas as mudancas' },
-  { re: new RegExp(GIT + 'restore\\s+(--staged\\s+)?\\.(\\s|$)', 'i'), semAspas: true, motivo: 'git restore . descarta todas as mudancas' },
-  { re: new RegExp(GIT + 'push' + FIM, 'i'), e: /(\s--force(-with-lease)?\b|\s-f\b)/i, semAspas: true, motivo: 'push forcado reescreve historico remoto' },
+  // D420/SH-03: `--force` por extenso tambem apaga (so `-f` agrupado era lido).
+  // D429/1: a flag que apaga (-f/-d/-x agrupada ou --force) pode vir depois de outra opcao (`-q -fd`, `-e x -fd`);
+  // `libera` tira o dry-run (`-n`, `-nfd`, `--dry-run`), que so lista. `-en`: o `n` e o valor do `-e`, nao dry-run.
+  // D431: `--force` abreviado (`--f`, `--fo`, `--forc`) tambem apaga - o git aceita abreviacao unica.
+  { re: new RegExp(GIT + 'clean' + FIM + SEG + '\\s(?:-[a-zA-Z]*[fdx]|--f(?:o(?:r(?:ce?)?)?)?' + FIM + ')', 'i'), libera: dryRunClean, semAspas: true, motivo: 'git clean apaga arquivo nao rastreado' },
+  // D420/SH-04: alem de `checkout -- .`, descartam a arvore inteira `checkout .`, `checkout HEAD -- .`
+  // e `checkout <ref> -- .`. Todas as formas exigem que o `.` seja um token (D433: a forma `-- .` tambem,
+  // senao `git checkout -- .gitignore` e `./src/a.js` virariam falso positivo).
+  // S1/L1-1: as flags que nao mudam o efeito (`-f`, `--force`, `--ours`, `--theirs`, `-q`...) podem vir antes
+  // do `.`; `git checkout -f .` e `--ours .` descartam a arvore como `checkout -- .`. Lista fechada, nao
+  // `-\S+`: `-b nova .` e `-p .` (interativo) nao entram.
+  // D429/1: `checkout -f <ramo>`/`--force <ramo>` (e `<ramo> -f`) joga fora as mudancas locais ao trocar. A flag so conta
+  // antes do `--` (depois dele e pathspec: `checkout -- -f` e um arquivo).
+  { re: new RegExp(GIT + 'checkout\\s+(?:(?!--(?:\\s|$))[^\\s;|&]+\\s+)*(?:-[a-zA-Z]*f[a-zA-Z]*|--force)' + FIM, 'i'), semAspas: true, motivo: 'git checkout -f descarta mudancas locais' },
+  { re: new RegExp(GIT + 'checkout\\s+(?:' + CHECKOUT_FLAG + '\\s+)*(?:--\\s+\\.' + FIM + '|(?:[^\\s;|&-]\\S*\\s+)?(?:--\\s+)?\\.' + FIM + ')', 'i'), semAspas: true, motivo: 'git checkout . (ou git checkout -- .) descarta todas as mudancas' },
+  // D420/SH-04: `restore` aceita `--`, `--worktree`, `--source=X`, `--source X`, `-s X`, `-S`, `-W` antes do `.`.
+  // S1/L1-1: `-SW` agrupado e valor entre aspas (`--source "a b"`) tambem. S1/H-1: so o indice (`--staged`/`-S`
+  // sem `--worktree`/`-W`) nao perde trabalho - `libera` tira essa forma (ver `soIndice`).
+  { re: new RegExp(GIT + 'restore\\s+(?:(?:--staged|--worktree|--source=' + ASPA_OU_LETRA + '|--source\\s+' + ASPA_OU_LETRA + '|-s\\s+' + ASPA_OU_LETRA + '|-[SW]+|--)\\s+)*\\.(\\s|$)', 'i'), libera: soIndice, semAspas: true, motivo: 'git restore . descarta todas as mudancas' },
+  // D420/SH-04: `switch -f`/`--force`/`--discard-changes` jogam fora as mudancas locais ao trocar de branch.
+  // s62: `-f` agrupado (`-fq`, `-fc`, `-qf`) tambem, como no checkout.
+  { re: new RegExp(GIT + 'switch' + FIM + SEG + '\\s(?:-[a-zA-Z]*f[a-zA-Z]*|--force|--discard-changes)(?![\\w-])', 'i'), semAspas: true, motivo: 'git switch forcado descarta mudancas locais' },
+  // D420/SH-03: `-f` agrupado a outras flags curtas (`-fu`, `-uf`, `-vf`) tambem forca o push.
+  // S1/L1-2: sem `i` (git distingue `-F` de `-f`) e o aglomerado so vale se TODAS as letras forem flag curta do
+  // push (f n d u q v o 4 6): `-fix` e argumento, nao flag. O `(?=...)` valida o aglomerado inteiro e o
+  // `[^f\s]*f` acha o primeiro `f` - uma corrida so, linear (antes eram duas em volta do `f`: 30000 letras = 2,8 s).
+  { re: new RegExp(GIT + 'push' + FIM, 'i'), e: /(\s--force(-with-lease)?\b|\s-(?=[fnduqvo46]+(?![\w-]))[^f\s]*f)/, semAspas: true, motivo: 'push forcado reescreve historico remoto' },
   // D81/F4: `apaga referencia no remoto` VOLTA A TER TAMBEM A FORMA DE TEXTO
   // DO FIX ROUND 4, ao lado da regra de token. As duas SOMAM - `lerTudo` une as
   // leituras e barra se qualquer uma barrar.
@@ -920,10 +991,10 @@ function extras(projeto) {
 
 function casa(r, seg) {
   if (r.fn) return r.fn(seg);
-  if (r.re.test(seg.texto) && (!r.e || r.e.test(seg.texto))) return true;
-  if (r.semAspas && seg.semAspas !== seg.texto) {
-    if (r.re.test(seg.semAspas) && (!r.e || r.e.test(seg.semAspas))) return true;
-  }
+  // S1/H-1: `libera` e a excecao da regra (forma inofensiva que o `re` ainda casa).
+  const bate = (t) => r.re.test(t) && (!r.e || r.e.test(t)) && !(r.libera && r.libera(t));
+  if (bate(seg.texto)) return true;
+  if (r.semAspas && seg.semAspas !== seg.texto && bate(seg.semAspas)) return true;
   return false;
 }
 

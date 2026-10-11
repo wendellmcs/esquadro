@@ -9,15 +9,22 @@ const { spawnSync } = require('node:child_process');
  * guarda da D46 congelaria uma foto que falhou ate o fim da sessao, e a trava 5b
  * ficaria muda pelo resto do dia sem uma linha ao usuario.
  */
-function correr(cwd, args) {
+function correr(cwd, args, opcoes) {
   let r;
   try {
+    // maxBuffer opcional: o padrao do spawnSync (1 MiB, mantido) estoura em saida grande e viraria `null`.
+    // timeout opcional (ms; padrao 5000): existe para o teste nao esperar 5 s.
     r = spawnSync('git', args, {
-      cwd: cwd, encoding: 'utf8', shell: false, timeout: 5000, windowsHide: true
+      cwd: cwd, encoding: 'utf8', shell: false, windowsHide: true,
+      timeout: opcoes && opcoes.timeout ? opcoes.timeout : 5000,
+      maxBuffer: opcoes && opcoes.maxBuffer ? opcoes.maxBuffer : 1024 * 1024
     });
   } catch (e) {
     return null;
   }
+  // A2-14: o retorno segue `null` (mesmo contrato), mas quem quiser saber POR QUE passa `opcoes.falha` (um
+  // objeto) e le `falha.timeout === true` depois: git lento nao e o mesmo que "fora do repositorio".
+  if (r && r.error && r.error.code === 'ETIMEDOUT' && opcoes && opcoes.falha) opcoes.falha.timeout = true;
   if (!r || r.error || r.status !== 0 || typeof r.stdout !== 'string') return null;
   return r.stdout;
 }
@@ -87,4 +94,51 @@ function rastreados(cwd) {
   return bruto.split(/\r?\n/).filter(function (a) { return !!a; });
 }
 
-module.exports = { modificados, prefixo, rastreados };
+/**
+ * A2 (D426): quando cada arquivo de `pasta` mudou pela ultima vez, segundo o HISTORICO (nao o mtime,
+ * que um clone ou checkout zera para "agora"). UM processo git so: `git log --name-status` limitado a
+ * `pasta`.
+ * Devolve Map(caminho relativo ao cwd, em barra normal -> ms do commit), ou `null` quando o git nao
+ * respondeu (ausente, fora de repo, timeout): "nao sei", nunca "nada mudou". `pasta` sem nenhum commit
+ * (repositorio novo, ou pasta so criada agora num repositorio que tem commits em outros lugares) da Map
+ * VAZIO, nao `null` (quem consome cai no mtime nos dois casos). `opcoes.falha` (objeto)
+ * recebe `timeout: true` quando o `null` foi timeout (A2-14); `opcoes.timeout`/`opcoes.maxBuffer` vao ao `correr`.
+ * Arquivo nao rastreado nao aparece no Map.
+ * `-z` (A2-13): o git nao cita nome nenhum (aspas, tab, barra invertida, acento chegam como estao) e as
+ * pecas vem separadas por NUL: `\x01<data>`, depois `\n<S>`, `<caminho>`, `<S>`, `<caminho>`... O cabecalho de
+ * cada commit e \x01<data> (nao `@<data>`), e o caminho e SEMPRE a peca que segue uma letra de estado: nome
+ * `@123` ou com caractere de controle nunca se confunde com cabecalho.
+ * A data de um caminho e a MAIOR entre as suas mudancas (A2-15), nao a primeira que o log mostra: ordem
+ * topologica, rebase e relogio torto desfazem "primeira = mais nova". Empate: vale a primeira vista.
+ * A2-16: se a mudanca mais nova de um caminho e a DELECAO (`D`), ele sai do Map - apagado no git nao tem
+ * "ultima mudanca", e o arquivo recriado sem commit leria a data do commit antigo; sem o caminho no Map o
+ * consumidor usa o mtime. A delecao nunca da a data (era o que o `--diff-filter=d` garantia); `--no-renames`
+ * faz o renomear virar `D` (nome antigo) + `A` (nome novo), sem o par de caminhos do estado `R`.
+ * maxBuffer de 32 MiB: historico grande de .claude/skills passa de 1 MiB sem virar `null`.
+ */
+function ultimasMudancas(cwd, pasta, opcoes) {
+  if (!cwd || !pasta) return null;
+  const o = opcoes || {};
+  const bruto = correr(cwd, ['log', '-z', '--relative', '--name-status', '--no-renames', '--format=%x01%ct', '--', pasta],
+    { maxBuffer: o.maxBuffer || 32 * 1024 * 1024, timeout: o.timeout, falha: o.falha });
+  if (bruto === null) return null;
+  const achados = new Map(); // caminho -> { quando, apagado }
+  const partes = bruto.split('\0');
+  let quando = null;
+  for (let i = 0; i < partes.length; i++) {
+    const peca = partes[i].replace(/^\n+/, '');
+    if (!peca) continue;
+    const cab = /^\x01(\d+)$/.exec(peca);
+    if (cab) { quando = Number(cab[1]) * 1000; continue; }
+    if (!/^[A-Z]\d*$/.test(peca)) continue; // peca que nao e estado: ignora, sem consumir caminho
+    const caminho = partes[++i];
+    if (quando === null || !caminho) continue;
+    const antes = achados.get(caminho);
+    if (!antes || quando > antes.quando) achados.set(caminho, { quando: quando, apagado: peca[0] === 'D' });
+  }
+  const mapa = new Map();
+  for (const [caminho, a] of achados) if (!a.apagado) mapa.set(caminho, a.quando);
+  return mapa;
+}
+
+module.exports = { modificados, prefixo, rastreados, ultimasMudancas, correr };

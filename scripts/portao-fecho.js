@@ -10,11 +10,12 @@ const saude = require('./lib/saude.js');
 function avisoDeAmpliacao(contadores) {
   const n = (contadores && contadores.escopo_ampliado) || 0;
   if (!n) return null;
-  // desenho §5: o escape existe, mas fica visivel.
-  return 'esquadro: o escopo foi ampliado ' + n + 'x neste turno.';
+  // desenho §5: o escape existe, mas fica visivel. O aviso e para o usuario e diz o que fazer: conferir.
+  return 'esquadro: o escopo foi ampliado ' + n + 'x neste turno (escopo = a lista do que o agente pode editar). ' +
+    'Se voce nao pediu isso, confira o que entrou no escopo.md e mande reverter; se pediu, nao precisa fazer nada.';
 }
 
-function encerrarTurno(e, s) {
+function encerrarTurno(e, s, avisoExtra) {
   const contadores = s.contadores || {};
   const cwd = config.raizDoProjeto(e.cwd);
   estado.descarregar(cwd, contadores);
@@ -23,10 +24,8 @@ function encerrarTurno(e, s) {
   // D123: dois baldes. `contadores` e do TURNO - descarregado e depois ZERADO, senao o
   // ledger da D14 conta o mesmo disparo de novo a cada turno (medido: 1 -> 2 -> 3).
   // `contadoresSessao` acumula e so alimenta o gatilho de saude; nunca e descarregado.
-  const acumulados = Object.assign({}, s.contadoresSessao || {});
-  for (const chave of Object.keys(contadores)) {
-    acumulados[chave] = (acumulados[chave] || 0) + contadores[chave];
-  }
+  // A conta mora em saude.acumular: o medidor da sessao (Bloco M) le a mesma.
+  const acumulados = saude.acumular(s);
   const vs = saude.avaliar(Object.assign({}, s, { contadores: acumulados }), projeto && projeto.limiares);
 
   // T10-1: em laco (stop_hook_active) nao se continua a conversa nem se marca o aviso como dado:
@@ -36,6 +35,7 @@ function encerrarTurno(e, s) {
   const partes = [];
   const amp = avisoDeAmpliacao(contadores);
   if (amp) partes.push(amp);
+  if (avisoExtra) partes.push(avisoExtra);
   if (avisa) partes.push(vs.aviso);
 
   // O estado do TURNO morre aqui (trabalhoReal, bloqueouNesteTurno, contadores); o da
@@ -55,11 +55,49 @@ function encerrarTurno(e, s) {
   // e o faz agir (rodar o handoff e colar o prompt na mesma resposta).
   if (avisa) {
     // D412: o turno que gravou o handoff e ja colou o bloco nao recebe a ordem de colar de novo.
-    // Mesma regra do portao (handoffSemPrompt), sem o projeto: a ordem nao depende do portaoHandoff.
+    // Mesma regra do portao (handoffSemPrompt, declarada mais abaixo: `function` sobe ao topo do arquivo), sem o projeto: a ordem nao depende do portaoHandoff.
     const jaColado = s.gravouHandoff === true && !handoffSemPrompt(e, s, null);
     saida.hookSpecificOutput = { hookEventName: 'Stop', additionalContext: saude.instrucaoAoModelo(vs.gatilhos, jaColado) };
   }
   io.permitir(saida);
+}
+
+// PT-01: o numero que a alegacao cita ("A Tarefa 1 esta concluida", "Fechei a etapa 3"). Mesmas duas
+// formas do plano.alegaEtapaConcluida, com o numero capturado. L2-fec-1: a regex de la nao e exportada;
+// o teste de paridade (test/portao-fecho.test.js) confere as duas contra um corpus. L2-fec-2: o grupo
+// captura a LISTA ("1 e 2", "1, 2", "1 e tarefa 2") e `tarefaACobrar` separa os numeros. L2-fec-7: sem
+// quantificadores de espaco adjacentes (`\s+(?:a|o)?\s*` fazia backtracking quadratico). N2: plural
+// (`s?`, "as"/"os") e auxiliares plurais ("estao", "foram"), como no plano.js.
+const RE_ALEGA_N = [
+  /\b(?:tarefa|etapa|onda|fase)s?\s+(\d+(?:\s*(?:,|e)\s*(?:(?:tarefa|etapa|onda|fase)s?\s+)?\d+)*)\s*(?:est[aá] |est[aã]o |foi |foram )?(?:conclu[ií]d|fechad|finalizad|pronta|complet)/gi,
+  /\b(?:conclu[ií]|fech|finaliz|complet)\w*\s+(?:(?:as|os|a|o)\s*)?(?:tarefa|etapa|onda|fase)s?\s+(\d+(?:\s*(?:,|e)\s*(?:(?:tarefa|etapa|onda|fase)s?\s+)?\d+)*)/gi
+];
+
+/** A tarefa do plano que o subitem aberto cobra, na ordem: (1) a que a alegacao cita, se o numero existe
+ *  no plano (fechada = alegacao verdadeira, nao cobra); numero inexistente vale como sem numero;
+ *  (2) a `tarefa` do plano-ativo.json, se existe no plano (fechada = nao cobra); (3) a primeira com caixa aberta ate a ultima com caixa marcada (a em andamento), inclusive; (4) a primeira
+ *  aberta, so se nenhuma tem caixa marcada (nada andou). Nunca "a primeira aberta" quando ha sinal de
+ *  qual e a atual: uma tarefa futura nao e subitem pendente de quem fechou a anterior. */
+function tarefaACobrar(tarefas, mensagem, ativo) {
+  const texto = String(mensagem == null ? '' : mensagem);
+  const citadas = [];
+  for (const re of RE_ALEGA_N) {
+    let m;
+    re.lastIndex = 0;
+    while ((m = re.exec(texto)) !== null) (m[1].match(/\d+/g) || []).forEach(function (d) { citadas.push(parseInt(d, 10)); });
+  }
+  const alvo = function (n) { return tarefas.filter(function (t) { return t.n === n; })[0]; };
+  const comAberto = function (t) { return t && t.abertos > 0 ? t : undefined; };
+  const existentes = citadas.filter(alvo);
+  // numero que nao existe no plano nao se confere (ex.: "etapa 7" de outro plano): se NENHUM existe,
+  // a alegacao vale como sem numero e segue para as regras abaixo; se algum existe e esta fechado, a
+  // alegacao e verdadeira e nao se cobra nada.
+  if (existentes.length) return existentes.map(alvo).filter(comAberto)[0];
+  const atual = ativo && ativo.tarefa !== null && ativo.tarefa !== undefined ? parseInt(ativo.tarefa, 10) : NaN;
+  if (!isNaN(atual) && alvo(atual)) return comAberto(alvo(atual));
+  const andamento = tarefas.filter(function (t) { return t.total - t.abertos > 0; }).pop();
+  if (andamento) return tarefas.filter(function (t) { return t.n <= andamento.n && t.abertos > 0; })[0];
+  return tarefas.filter(function (t) { return t.abertos > 0; })[0];
 }
 
 /** D412: handoff gravado neste turno e a resposta final sem bloco de codigo. D415: so
@@ -109,11 +147,16 @@ io.blindar(function () {
 
     const planoLib = require('./lib/plano.js');
     const ativo = planoLib.lerAtivo(cwd);
+    let planoIlegivel = null;
     if (ativo && planoLib.alegaEtapaConcluida(e.last_assistant_message)) {
       let tarefas = [];
       try { tarefas = planoLib.parseTarefas(require('node:fs').readFileSync(require('node:path').join(cwd, ativo.arquivo), 'utf8')); }
-      catch (err) { tarefas = []; }
-      const aberta = tarefas.filter(function (t) { return t.abertos > 0; })[0];
+      catch (err) {
+        // S52-fec-1: plano ilegivel nao barra, mas tambem nao passa calado.
+        tarefas = [];
+        planoIlegivel = 'esquadro: o plano ativo (' + String(ativo.arquivo) + ') nao pode ser lido; a alegacao de etapa concluida passou sem conferir os subitens.';
+      }
+      const aberta = tarefaACobrar(tarefas, e.last_assistant_message, ativo);
       if (aberta) {
         s.contadores = s.contadores || {};
         s.contadores.subitem_pendente = (s.contadores.subitem_pendente || 0) + 1;
@@ -122,9 +165,10 @@ io.blindar(function () {
     }
 
     const semEvidencia = evidencia.deveBloquear(e.last_assistant_message);
-    if (!semEvidencia && !semPrompt) return encerrarTurno(e, s);
+    if (!semEvidencia && !semPrompt) return encerrarTurno(e, s, planoIlegivel);
 
     const motivos = [];
+    if (planoIlegivel) motivos.push(planoIlegivel);
     if (semEvidencia) {
       s.contadores = s.contadores || {};
       s.contadores.fecho_sem_evidencia = (s.contadores.fecho_sem_evidencia || 0) + 1;

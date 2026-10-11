@@ -132,3 +132,231 @@ test('D244/P2 .04em: medida sem zero a esquerda e lida inteira, com e sem sinal'
   assert.deepStrictEqual(v('a { margin: -.5em 0.04em 12px; }'), ['-.5em', '0.04em', '12px']);
   assert.strictEqual(design.conferir('a { letter-spacing: .04em; }', { espacos: ['.04em'] }).ok, true);
 });
+
+// PT-05 (lote 2, D422): seletor de id feito so de letras hex (#add-btn, #feed) nao e cor.
+test('design PT-05: seletor de id com letras hex NAO e cor fora do sistema', () => {
+  const css = [
+    '#add-btn { padding: var(--s); }',
+    '#fade-overlay { margin: 4px; }',
+    '#feed { margin: 4px; }',
+    '#decade-list li { margin: 4px; }',
+    '#main { margin: 4px; }',
+    '#feed, #add { margin: 4px; }',
+    '#feed:hover { margin: 4px; }',
+    '#bad > .x { margin: 4px; }'
+  ].join('\n');
+  const r = design.conferir(css, DESIGN);
+  assert.deepStrictEqual(r.fora, [], 'seletor lido como cor: ' + JSON.stringify(r.fora));
+});
+
+test('design PT-05: controle - cor em posicao de valor segue sendo achada', () => {
+  const casos = [
+    ['.a { color: #fff; }', '#fff'],
+    ['.a { border: 1px solid #abc; }', '#abc'],
+    ['.a{background:#123456}', '#123456'],
+    ['.a { color: #abcdef80; }', '#abcdef80'],
+    ['#feed { color: #bad; }', '#bad'],
+    ['.a { background: linear-gradient(#fed, #def); }', '#fed'],
+    ['.a { box-shadow: 0 0 #cab, 0 0 #bad; }', '#bad'],
+    ['  #fed;', '#fed'],
+    ['.a { color: #ABC }', '#abc']
+  ];
+  for (const [css, esperado] of casos) {
+    const r = design.conferir(css, DESIGN);
+    assert.ok(r.fora.some((f) => f.tipo === 'cor' && f.valor === esperado), css + ' -> ' + JSON.stringify(r.fora));
+  }
+});
+
+// Ronda 1 da revisao cega do lote 2: o criterio por "`:` na linha" cegava cor em valor de varias linhas.
+// Novo criterio: o que vem primeiro DEPOIS do #hex no arquivo - `{` e seletor; `;`, `}` ou nada e valor.
+test('design PT-05 D1: cor em valor de varias linhas e achada', () => {
+  const cores = (css) => design.conferir(css, DESIGN).fora.filter((f) => f.tipo === 'cor').map((f) => f.valor);
+  assert.deepStrictEqual(cores('.a { box-shadow:\n  0 1px 2px #123456,\n  0 4px 8px #abcdef;\n}'), ['#123456', '#abcdef'], 'sombra');
+  assert.deepStrictEqual(cores('.a {\n  color:\n  #ff6601\n;\n}'), ['#ff6601'], 'ponto e virgula na linha de baixo');
+  assert.deepStrictEqual(cores('.a {\n  border:\n  1px solid\n  #ff6601 dashed;\n}'), ['#ff6601'], 'nome de borda depois');
+  assert.deepStrictEqual(cores('.a {\n  background:\n  #ff6601\n}'), ['#ff6601'], 'sem ; antes de }');
+  assert.deepStrictEqual(cores('.a {\n  background:\n  #ff6601'), ['#ff6601'], 'ate o fim do arquivo');
+  assert.deepStrictEqual(cores('.a\n  color #ff6601'), ['#ff6601'], 'Stylus sem chaves');
+  assert.deepStrictEqual(cores('.a { background: linear-gradient(\n  #fff,\n  #000\n); }'), ['#fff', '#000'], 'gradiente multilinha');
+});
+
+test('design PT-05 D2: seletor de id depois de pseudo-classe NAO e cor; lista multilinha so poupa a linha do {', () => {
+  const cores = (css) => design.conferir(css, DESIGN).fora.filter((f) => f.tipo === 'cor').map((f) => f.valor);
+  assert.deepStrictEqual(cores('.menu:hover #feed {\n  margin: 4px;\n}'), []);
+  assert.deepStrictEqual(cores('a:hover #fed {\n  margin: 4px;\n}'), []);
+  // D423: lista de ids em varias linhas passa a ser acusada por engano (so o #bad, da linha com `{`, e seletor).
+  // Aceito pelo dono como registro: sem `{` na mesma linha o #hex e valor.
+  assert.deepStrictEqual(cores('#feed,\n#add,\n.x:focus #bad {\n  margin: 4px;\n}'), ['#feed', '#add']);
+  assert.deepStrictEqual(cores('.a:not(.b) > #dead { margin: 4px; }'), []);
+});
+
+// D423 (estreitar ao caso seguro): #hex so e seletor de id quando o `{` esta na MESMA linha e tudo entre o
+// inicio do trecho e o `{` e caractere de seletor. O resto acusa, mesmo que um `{` apareca na linha seguinte.
+test('design PT-05 E1 (D423): so `#id {` na mesma linha e seletor; o resto acusa', () => {
+  const cores = (css) => design.conferir(css, DESIGN).fora.filter((f) => f.tipo === 'cor').map((f) => f.valor);
+  assert.deepStrictEqual(cores('a {\n  color: #fff // {\n}'), ['#fff'], '`{` em comentario // nao decide');
+  assert.deepStrictEqual(cores('a\n  color #fff\n  #{$x} {\n  }'), ['#fff'], 'Stylus: `{` da linha seguinte');
+  assert.deepStrictEqual(cores('color: #fff\n{'), ['#fff'], '`{` solto na linha seguinte');
+  assert.deepStrictEqual(cores('$cor: #ff0000\n.btn {\n  x: 1;\n}'), ['#ff0000'], 'variavel sem ; e seletor depois');
+  assert.deepStrictEqual(cores('.m(\n  $a: #fff,\n  $b: #000) {\n}'), ['#fff', '#000'], 'mixin multilinha, `) {`');
+  assert.deepStrictEqual(cores('  border 1px #fff #{$w}'), ['#fff'], 'Stylus: o `{` e de interpolacao');
+  assert.deepStrictEqual(cores('#dead\n{ margin: 4px; }'), ['#dead'], '`{` na linha seguinte');
+  // #ffffff esta no sistema de teste (conferir o calaria): le-se direto de valoresCrus.
+  const crus = design.valoresCrus('.a {\n  @if $x { }\n  } @else if $bg == #ffffff {\n}')
+    .filter((a) => a.tipo === 'cor').map((a) => a.valor);
+  assert.deepStrictEqual(crus, ['#ffffff'], '`} @else if ... {`: o prefixo nao e de seletor');
+  // controles: continuam seletor
+  assert.deepStrictEqual(cores('#feed {\n  x: 1;\n}'), []);
+  assert.deepStrictEqual(cores('#add-btn { x: 1; }'), []);
+  assert.deepStrictEqual(cores('a:not(#dead) {\n  x: 1;\n}'), []);
+  assert.deepStrictEqual(cores('@media x { #feed {\n  x: 1;\n} }'), []);
+  assert.deepStrictEqual(cores('.menu:hover #feed {\n  x: 1;\n}'), []);
+  assert.deepStrictEqual(cores('#feed, #add { x: 1; }'), []);
+});
+
+// Ronda 2 da revisao cega do lote 2 (falsos negativos): o terminador decisivo agora tem alcance curto
+// (resto da linha, ou a proxima linha nao vazia) e a linha e lida sem comentario inline, sem at-rule de
+// valor e sem argumento de funcao.
+test('design PT-05 G1: cor em argumento de mixin, funcao ou at-rule seguida de { e achada', () => {
+  const cores = (css) => design.conferir(css, DESIGN).fora.filter((f) => f.tipo === 'cor').map((f) => f.valor);
+  assert.deepStrictEqual(cores('.a {\n  @include tema(#ff0000) {\n    margin: 4px;\n  }\n}'), ['#ff0000'], 'include com argumento');
+  assert.deepStrictEqual(cores('.a {\n  @include btn($bg: #ff0000) {\n    margin: 4px;\n  }\n}'), ['#ff0000'], 'argumento nomeado');
+  assert.deepStrictEqual(cores('.m(@c: #fff) {\n  margin: 4px;\n}'), ['#fff'], 'mixin Less');
+  assert.deepStrictEqual(cores('@if $c == #fff {\n  .a { margin: 4px; }\n}'), ['#fff'], '@if');
+  assert.deepStrictEqual(cores('@each $c in #fff, #000 {\n  .a { margin: 4px; }\n}'), ['#fff', '#000'], '@each');
+});
+
+test('design PT-05 G2: { dentro de comentario inline nao decide', () => {
+  const cores = (css) => design.conferir(css, DESIGN).fora.filter((f) => f.tipo === 'cor').map((f) => f.valor);
+  assert.deepStrictEqual(cores('.a {\n  background: #abc /* base { */;\n}'), ['#abc'], 'comentario antes do ;');
+  assert.deepStrictEqual(cores('.a {\n  color: #ff0000 /* ajuste { */\n}'), ['#ff0000'], 'comentario no fim da linha');
+});
+
+test('design PT-05 G3: { distante (Stylus, sem ;) nao transforma a cor anterior em seletor', () => {
+  const cores = (css) => design.conferir(css, DESIGN).fora.filter((f) => f.tipo === 'cor').map((f) => f.valor);
+  assert.deepStrictEqual(cores('a\n  color #ff6601\nb\n  width {w}px'), ['#ff6601']);
+  assert.deepStrictEqual(cores('a\n  color #ff6601\nb\n  c #123456\n  d 1\n  width #{$x}px'), ['#ff6601', '#123456']);
+});
+
+// Excecoes que mantem o que ja era certo (a regra "dentro de parenteses e valor" e "@ e valor" ja nao as pegam).
+// D424: dois furos novos do D423. (1) o `\w` no lookbehind de RE_COR escondia `solid#f00`; agora so `&#123;` e
+// poupado, e `a#fed {` segue poupado pela regra da mesma linha. (2) `:` + letra qualquer valia como pseudo-classe
+// e escondia a propriedade aninhada do SCSS (`border:solid #f00 { ... }`); agora so nome conhecido vale.
+// Falso positivo ACEITO (D424): `url(icones.svg#add)` volta a ser acusado, como no HEAD.
+test('design PT-05 E2 (D424): cor colada em palavra e propriedade aninhada acusam; pseudo conhecida segue seletor', () => {
+  const crus = (css) => design.valoresCrus(css).filter((a) => a.tipo === 'cor').map((a) => a.valor);
+  assert.deepStrictEqual(crus('a{border:1px solid#f00}'), ['#f00'], 'colada em palavra');
+  assert.deepStrictEqual(crus('a{border:solid #f00 { left:0 }}'), ['#f00'], 'propriedade aninhada, uma linha');
+  assert.deepStrictEqual(crus('a {\n  border:solid #f00 {\n    left: 0;\n  }\n}'), ['#f00'], 'propriedade aninhada, varias linhas');
+  assert.deepStrictEqual(crus('a{border:1px#000}'), ['#000'], 'colada em unidade');
+  assert.deepStrictEqual(crus('.a { background: url(icones.svg#add); }'), ['#add'], 'url com ancora: falso positivo aceito');
+  assert.deepStrictEqual(crus('a&#123;b'), [], '`&#123;` segue poupado');
+  // controles: seguem seletor
+  assert.deepStrictEqual(crus('a#fed {\n x: 1;\n}'), []);
+  assert.deepStrictEqual(crus('a:hover #feed {\n x: 1;\n}'), []);
+  assert.deepStrictEqual(crus('li:nth-child(2) #fed {\n x: 1;\n}'), []);
+  assert.deepStrictEqual(crus('a::before #fed {\n x: 1;\n}'), []);
+  assert.deepStrictEqual(crus('.x:focus-visible #bad {\n x: 1;\n}'), []);
+  assert.deepStrictEqual(crus('.x:not(.y):first-child #bad {\n x: 1;\n}'), []);
+});
+
+test('design PT-05 G1: seletor em pseudo-classe funcional e em at-rule de bloco continua NAO sendo cor', () => {
+  const cores = (css) => design.conferir(css, DESIGN).fora.filter((f) => f.tipo === 'cor').map((f) => f.valor);
+  assert.deepStrictEqual(cores('a:not(#dead) {\n  margin: 4px;\n}'), []);
+  assert.deepStrictEqual(cores('.x:is(#feed, .y) > #fed {\n  margin: 4px;\n}'), []);
+  assert.deepStrictEqual(cores('@media screen { #feed { margin: 4px; } }'), []);
+  assert.deepStrictEqual(cores('@media screen { #feed { color: #bad; } }'), ['#bad']);
+  assert.deepStrictEqual(cores('@include tema(#feed) { margin: 4px; }'), ['#feed']);
+});
+
+test('design PT-05 D1: varredura linear - arquivo grande com muitas cores nao trava', () => {
+  const css = '.a { color: #fed; }\n'.repeat(20000) + '.b { background: ' + '#abc, '.repeat(20000) + '#def; }';
+  const t0 = Date.now();
+  const v = design.valoresCrus(css).filter((a) => a.tipo === 'cor');
+  assert.strictEqual(v.length, 40001);
+  assert.ok(Date.now() - t0 < 3000, 'demorou ' + (Date.now() - t0) + 'ms');
+});
+
+// S5 (L2-des-4, S52-des-1/2/4): comentario de bloco multilinha, `--x:` no meio da linha e seletor de atributo.
+test('design S5: comentario de bloco atravessa linhas; o que esta fora dele na mesma linha e lido', () => {
+  const crus = (css) => design.valoresCrus(css).map((a) => a.valor);
+  assert.deepStrictEqual(crus('/*\n cor antiga #fff e 8px\n*/\na { x: 1 }'), [], 'linha interna sem `*` inicial');
+  assert.deepStrictEqual(crus('/* a\n   #fff\n   #000 */\na { x: 1 }'), [], 'abre na 1a linha, fecha na 3a');
+  assert.deepStrictEqual(crus('/*\n x\n*/ color: #f00;'), ['#f00'], 'o que vem depois do `*/` e lido');
+  assert.deepStrictEqual(crus('/* nota */ color: #f00;'), ['#f00'], 'linha que comeca com `/*` fechado');
+  assert.deepStrictEqual(crus('/* a */ /* b #fff */ color: #00f;'), ['#00f'], 'dois blocos na linha');
+  assert.deepStrictEqual(crus('*zoom: 1; color: #f00'), ['#f00'], 'hack `*prop` nao e comentario');
+  assert.deepStrictEqual(crus('/**\n * x #fff\n */\na { color: #f00 }'), ['#f00'], 'bloco estilo JSDoc');
+  assert.deepStrictEqual(crus('/*\r\n #fff\r\n*/\r\na { color: #f00 }'), ['#f00'], 'CRLF');
+  assert.deepStrictEqual(crus('// x #fff\ncolor: #f00;'), ['#f00'], '`//` no inicio segue pulando a linha');
+  assert.deepStrictEqual(crus('// abre /*\ncolor: #f00;'), ['#f00'], '`/*` dentro de linha `//` nao abre bloco');
+  assert.deepStrictEqual(design.valoresCrus('/*\n 8px\n*/').filter((a) => a.tipo === 'medida'), [], 'medida em comentario');
+  assert.deepStrictEqual(design.valoresCrus('a {\n color: #f00; /* #fff\n 8px */ margin: 4px;\n}').map((a) => a.valor + '@' + a.linha),
+    ['#f00@2', '4px@3']);
+});
+
+test('design S5: so a declaracao do token (`--x: v`) fica fora; o resto da linha e lido', () => {
+  const crus = (css) => design.valoresCrus(css).map((a) => a.valor);
+  assert.deepStrictEqual(crus('.a { --x: 1px; color: #f00; }'), ['#f00']);
+  assert.deepStrictEqual(crus('.a { color: #f00; --x: 1px }'), ['#f00']);
+  assert.deepStrictEqual(crus('.a { --x: #fff }'), [], 'a definicao do token segue fora');
+  assert.deepStrictEqual(crus(':root { --a: #fff; --b: 2px; }'), []);
+  assert.deepStrictEqual(crus('.a{--x:var(--y);color:#f00}'), ['#f00']);
+  assert.deepStrictEqual(crus('.btn--primary:hover { color: #f00; }'), ['#f00'], '`--` dentro de nome de classe nao e token');
+});
+
+test('design S5: seletor de atributo balanceado nao faz o id virar cor', () => {
+  const crus = (css) => design.valoresCrus(css).map((a) => a.valor);
+  assert.deepStrictEqual(crus('#feed[data-x] {\n x: 1;\n}'), []);
+  assert.deepStrictEqual(crus('#feed[data-x="1"] {\n x: 1;\n}'), []);
+  assert.deepStrictEqual(crus('a[href^=\'http\'] #fed, #dad[x] {\n x: 1;\n}'), []);
+  assert.deepStrictEqual(crus('#feed[data-x {\n x: 1;\n}'), ['#feed'], 'colchete aberto e valor');
+  assert.deepStrictEqual(crus('#feed]x {\n x: 1;\n}'), ['#feed'], 'colchete fechado sem abrir e valor');
+  assert.deepStrictEqual(crus('a{border:solid #f00 [x] { left:0 }}'), ['#f00'], 'propriedade aninhada segue valor');
+  assert.deepStrictEqual(crus('#feed[data-x] { color: #bad; }'), ['#bad'], 'a cor do bloco segue acusada');
+});
+
+test('design D429/5: fallback cru de var() e acusado; o nome do token nunca', () => {
+  // substitui o controle S5 que afirmava o contrario (decisao do dono D429 item 5)
+  const crus = (css) => design.valoresCrus(css).map((a) => a.valor);
+  assert.deepStrictEqual(crus('a { color: var(--a, #f00); }'), ['#f00']);
+  assert.deepStrictEqual(crus('a { color: var(--a,#f00); }'), ['#f00'], 'sem espaco');
+  assert.deepStrictEqual(crus('a { color: var(--a, var(--b, #0f0)); }'), ['#0f0'], 'aninhado');
+  assert.deepStrictEqual(crus('a { padding: var(--a, 13px); }'), ['13px'], 'medida no fallback');
+  assert.deepStrictEqual(crus('a { color: var(--a, rgba(0, 0, 0, .5)); }'), ['rgba(0,0,0,.5)'], 'rgba no fallback');
+  assert.deepStrictEqual(crus('a { color: var(--a, var(--b)); }'), []);
+  assert.deepStrictEqual(crus('a { color: var(--a); }'), []);
+  assert.deepStrictEqual(crus('a { color: var(--a, ); }'), []);
+  assert.deepStrictEqual(crus('a { --x: var(--y, #f00); }'), [], 'declaracao de token segue isenta');
+  assert.deepStrictEqual(crus('a { color: var(--a, #f00); border: 1px solid #0f0; }'), ['#f00', '#0f0', '1px'], 'o resto da linha segue lido');
+  const t = Date.now();
+  design.valoresCrus('a { x: ' + 'var(--a, '.repeat(3000) + 'x' + ')'.repeat(3000) + '; }');
+  assert.ok(Date.now() - t < 500, 'linear');
+});
+
+test('design S5: `//` de comentario no meio da linha encerra a busca de `/*`; `://` de url nao e comentario', () => {
+  const crus = (css) => design.valoresCrus(css).map((a) => a.valor + '@' + a.linha);
+  assert.deepStrictEqual(crus('a { x: 1 } // nota /*\n.b { color: #f00; }'), ['#f00@2'], '`/*` depois de `//` nao abre bloco');
+  assert.deepStrictEqual(crus('a { } // so nota\n.b { color: #f00; }'), ['#f00@2'], 'controle: sem `/*`');
+  assert.deepStrictEqual(crus('.a { background: url(http://x/y.png); }\n.b { color: #0f0; }'), ['#0f0@2'], 'controle: `://` nao e comentario');
+  assert.deepStrictEqual(crus('.a { background: url(http://x/y.png); } /* abre\n #fff\n*/\n.b { color: #0f0; }'), ['#0f0@4'], '`/*` depois de `://` abre bloco');
+  assert.deepStrictEqual(crus('/* a // b */ .x { color: #f00; } /* c\n #fff */'), ['#f00@1'], '`//` dentro de bloco nao conta');
+});
+
+// S52-des (ronda 1): `/*` dentro de string nao abre bloco; fragmento que comeca no meio de um comentario.
+test('design S5: `/*` dentro de string nao abre comentario de bloco', () => {
+  const crus = (css) => design.valoresCrus(css).map((a) => a.valor + '@' + a.linha);
+  assert.deepStrictEqual(crus('a::after { content: "/*"; }\n.x { color: #f00; padding: 13px }'), ['#f00@2', '13px@2']);
+  assert.deepStrictEqual(crus('a::after { content: \'/*\'; }\n.x { color: #f00 }'), ['#f00@2'], 'aspa simples');
+  assert.deepStrictEqual(crus('a::after { content: "a\\"/*"; }\n.x { color: #f00 }'), ['#f00@2'], 'aspa escapada nao fecha a string');
+  assert.deepStrictEqual(crus('a::after { content: "//"; } /* c #fff */ .x { color: #f00 }'), ['#f00@1'], '`//` em string nao encerra a busca');
+  assert.deepStrictEqual(crus('/* real\n #fff\n*/\n.x { color: #f00 }'), ['#f00@4'], 'controle: comentario real segue fechando');
+});
+
+test('design S5: fragmento que comeca no meio de um comentario de bloco', () => {
+  const crus = (css) => design.valoresCrus(css).map((a) => a.valor + '@' + a.linha);
+  assert.deepStrictEqual(crus(' * antes era #ff6600 */\n a{color:var(--x)}'), [], 'o primeiro delimitador e `*/`');
+  assert.deepStrictEqual(crus(' * x #fff\n * y #000 */ a { color: #f00 }'), ['#f00@2'], 'fecha na 2a linha, o resto e lido');
+  assert.deepStrictEqual(crus('* { padding: 13px }'), ['13px@1'], 'seletor universal segue acusado (S52-des-1)');
+  assert.deepStrictEqual(crus('a { color: #f00 }\n/* nota */ b { color: #0f0 }'), ['#f00@1', '#0f0@2'], 'primeiro delimitador `/*`: nao e fragmento');
+});

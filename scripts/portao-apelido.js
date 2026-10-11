@@ -14,6 +14,18 @@ function arg(nome) {
 }
 function tem(nome) { return process.argv.indexOf('--' + nome) !== -1; }
 
+/**
+ * S8/L2-ape-2: caminho que o AGENTE vai copiar para o shell. Aspas duplas servem ao caso normal (espaco,
+ * acento, `\` do Windows); com `$`, crase ou `"` o shell reinterpretaria o pedaco, entao vai entre aspas
+ * simples (vale no Bash e no PowerShell). Com `'` tambem, so sobra escapar para o Bash.
+ * (O mesmo helper existe em abertura.js: os dois sao scripts de entrada e nao dividem lib.)
+ */
+function caminhoParaShell(p) {
+  if (!/[$`"]/.test(p)) return '"' + p + '"';
+  if (p.indexOf("'") === -1) return "'" + p + "'";
+  return '"' + p.replace(/([\\$`"])/g, '\\$1') + '"';
+}
+
 function conferirAqui(cwd) {
   return apelidos.conferir(config.carregarProjeto(cwd), agentesLib.listar(cwd));
 }
@@ -129,8 +141,8 @@ io.blindar(function () {
         hookEventName: 'PreToolUse',
         additionalContext: texto + '\n\n' + [
           'Ofereca ao dono, em 3 opcoes, e rode a que ele escolher:',
-          '  a) node "${CLAUDE_PLUGIN_ROOT}/scripts/portao-apelido.js" --corrigir <agente> --para arquivo',
-          '  b) node "${CLAUDE_PLUGIN_ROOT}/scripts/portao-apelido.js" --corrigir <agente> --para mapa',
+          '  a) node ' + caminhoParaShell(__filename) + ' --corrigir <agente> --para arquivo',
+          '  b) node ' + caminhoParaShell(__filename) + ' --corrigir <agente> --para mapa',
           '  c) nao mexer agora - fica registrado no relatorio de cobertura.'
         ].join('\n')
       }

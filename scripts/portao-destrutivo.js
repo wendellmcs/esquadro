@@ -40,13 +40,17 @@ io.blindar(function () {
     const shell = require('./lib/shell.js');
     const problemas = shell.conferir(comando, projeto && projeto.plataforma, e.tool_name);
     if (problemas.length) {
-      const tentativa = estado.incrementar(e.session_id, 'shell_idioma_errado');
+      // D420/SH-02: o contador e acessorio. Estado fora do ar (diretorio nao gravavel) lancava aqui,
+      // `io.blindar` liberava e o comando RODAVA: o incrementar nunca pode ficar entre o veredito e a negacao.
+      let tentativa = 1;
+      try { tentativa = estado.incrementar(e.session_id, 'shell_idioma_errado'); } catch (err) { /* o balde vale menos que a negacao */ }
       return io.negarFerramenta(shell.motivo(comando, problemas, tentativa));
     }
 
     const r = destrutivo.classificar(comando, projeto);
     if (r.destrutivo) {
-      estado.incrementar(e.session_id, 'comando_destrutivo');
+      // D420/SH-02: idem - o contador nunca impede a negacao.
+      try { estado.incrementar(e.session_id, 'comando_destrutivo'); } catch (err) { /* idem */ }
       return io.negarFerramenta(destrutivo.motivo(comando, r));
     }
 
@@ -55,7 +59,8 @@ io.blindar(function () {
     // para o comando seguinte; a mensagem mostra a forma certa.
     const solto = shell.cdSolto(comando, e.tool_name, projeto && projeto.plataforma);
     if (solto) {
-      estado.incrementar(e.session_id, 'cd_solto');
+      // D420/SH-02: idem.
+      try { estado.incrementar(e.session_id, 'cd_solto'); } catch (err) { /* idem */ }
       return io.negarFerramenta(shell.motivoCdSolto(comando, solto));
     }
 

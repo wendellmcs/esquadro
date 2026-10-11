@@ -11,7 +11,37 @@ function ehArquivoDeEstilo(caminho, projeto) {
   return glob.casaAlgum(extras, caminho);
 }
 
-const RE_COR = /#[0-9a-fA-F]{3,8}\b|\brgba?\([^)]*\)|\bhsla?\([^)]*\)/g;
+// RE_COR acha cor escrita a mao no estilo. (PT-05 = item 5 da triagem do lote 2, D423/D424 em docs/decisoes.md.)
+// `(?![\w-])` - `#add-btn` e `#fade-overlay` sao seletores de id, nao `#add`/`#fade`; `(?<!&)` - `&#123;`
+// tambem nao (D424: o `\w` aqui escondia `solid#f00`; `a#fed {` segue poupado pela regra abaixo, e `url(x.svg#add)`
+// volta a ser acusado, falso positivo aceito). O que sobra e `#feed {`: so o caso seguro (D423) e seletor, o resto e valor (`valoresCrus`).
+const RE_COR = /(?<!&)#[0-9a-fA-F]{3,8}(?![\w-])|\brgba?\([^)]*\)|\bhsla?\([^)]*\)/g;
+
+// Como `#hex` vira "seletor de id" e fica fora da checagem (as constantes abaixo servem a esse teste, feito em `valoresCrus`):
+// Criterio (D423, estreitar ao caso seguro; antes o `{` da linha seguinte e as listas de seletores em cadeia
+// decidiam e deixavam passar cor real). `#hex` so e seletor de id quando TUDO vale: (1) comentario `/* */` inline
+// e lido como espaco; (2) linha de at-rule (`@include`, `@if`, `@each`...) = valor, salvo at-rule que abre bloco
+// de seletor (`@media x { #feed {`); (3) `#hex` dentro de `(` = valor (argumento de mixin/funcao), salvo `(` de
+// pseudo-classe de seletor (`:not(#dead) {`); (4) ha um `{` na MESMA linha depois do `#hex` (a linha e cortada
+// no primeiro `//`, so para isto) e ele nao e o de `#{` (interpolacao); (5) do ultimo `{`, `}` ou `;` antes do
+// `#hex` ate esse `{` so ha caractere de seletor (`ehTrechoDeSeletor`). Sem `{` na linha = valor.
+const RE_TERMINADOR = /[{;}]/g;
+const RE_CHAR_DE_SELETOR = /[A-Za-z0-9_\s.#,>+~*&-]/;
+// D424: `:` so vale como pseudo-classe/elemento quando o NOME e conhecido (lista curta e explicita). `:` + letra
+// qualquer escondia a propriedade aninhada do SCSS (`border:solid #f00 { ... }`); nome desconhecido = valor.
+const PSEUDOS_FUNCIONAIS = ['not', 'is', 'where', 'has', 'matches', 'any', '-webkit-any', '-moz-any', 'host',
+  'host-context', 'global', 'local', 'slotted'];
+const PSEUDOS_CONHECIDOS = new Set(PSEUDOS_FUNCIONAIS.concat(['hover', 'focus', 'focus-visible', 'focus-within',
+  'active', 'visited', 'link', 'checked', 'disabled', 'enabled', 'required', 'optional', 'invalid', 'valid', 'empty',
+  'root', 'target', 'first-child', 'last-child', 'only-child', 'first-of-type', 'last-of-type', 'only-of-type',
+  'nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'placeholder-shown', 'read-only', 'read-write',
+  'any-link', 'before', 'after', 'placeholder', 'selection', 'marker', 'first-line', 'first-letter', 'backdrop']));
+const RE_NOME_DE_PSEUDO = /-?[A-Za-z][\w-]*/y;       // `y` + lastIndex: sem fatiar a string a cada `:`
+// `(` aceito dentro do trecho: as funcionais acima e as `nth-*` (que levam `2n+1`, `odd`).
+const RE_PAREN_DE_PSEUDO = /:(?:not|is|where|has|matches|any|-webkit-any|-moz-any|host|host-context|global|local|slotted|nth-child|nth-last-child|nth-of-type|nth-last-of-type)$/;
+const RE_AT_DE_BLOCO = /^@(?:media|supports|container|layer|scope|at-root|document|-moz-document)\b/;
+const RE_PSEUDO_DE_SELETOR = /:(?:not|is|where|has|matches|any|-webkit-any|-moz-any|host|host-context|global|local|slotted)$/;
+
 // As unidades que o portao le. O `%` e as outras (pt, vw, ch...) ficam de fora de
 // proposito: bloquear `%` acusaria todo `width:100%`. O README e o CHANGELOG dizem
 // isso com estas mesmas unidades, e um teste confere (ronda 2 do Passo 8b).
@@ -28,17 +58,166 @@ function normalizarValor(v) {
   return String(v).trim().toLowerCase().replace(/\s+/g, '');
 }
 
+// D429/5: so o `var(--nome,` e o `)` que fecha viram espaco (indices intactos); o fallback fica e e lido como valor.
+// Uma passada (linear), pilha de `(` para achar o `)` certo do `var(` mesmo com `rgba(...)` ou `var(` aninhado.
+const RE_ABRE_VAR = /var\(\s*(?:--[\w-]*)?\s*,?/y;
 function semVar(linha) {
-  return linha.replace(/var\([^)]*\)/g, ' ');
+  const saida = linha.split('');
+  const pilha = [];                                    // um item por `(` aberto: true = `(` de var()
+  for (let i = 0; i < linha.length; i++) {
+    const c = linha.charAt(i);
+    if (c === 'v' && !/[\w-]/.test(linha.charAt(i - 1))) {
+      RE_ABRE_VAR.lastIndex = i;
+      const m = RE_ABRE_VAR.exec(linha);
+      if (m) {
+        for (let j = i; j < i + m[0].length; j++) saida[j] = ' ';
+        pilha.push(true);
+        i += m[0].length - 1;
+        continue;
+      }
+    }
+    if (c === '(') pilha.push(false);
+    else if (c === ')' && pilha.length && pilha.pop()) saida[i] = ' ';
+  }
+  return saida.join('');
+}
+
+// S5: primeiro delimitador de comentario a partir de `i`, fora de string ('..' ou ".." com `\` de escape; a string morre no
+// fim da linha): { tipo: 'abre' (`/*`) | 'fecha' (`*/`) | 'linha' (`//` que nao e `://` de url), pos } ou null.
+function proximoDelim(linha, i) {
+  let aspa = '';
+  for (; i < linha.length; i++) {
+    const c = linha.charAt(i);
+    if (aspa) {
+      if (c === '\\') i++;
+      else if (c === aspa) aspa = '';
+    } else if (c === '"' || c === "'") aspa = c;
+    else if (c === '/' && linha.charAt(i + 1) === '*') return { tipo: 'abre', pos: i };
+    else if (c === '*' && linha.charAt(i + 1) === '/') return { tipo: 'fecha', pos: i };
+    else if (c === '/' && linha.charAt(i + 1) === '/' && linha.charAt(i - 1) !== ':') return { tipo: 'linha', pos: i };
+  }
+  return null;
+}
+
+// S5: comentario de bloco (`/* */`) atravessa linhas. O que esta dentro dele vira espaco (indices intactos) e o
+// resto da linha e lido; `emBloco` diz se a linha ja comeca dentro de um. Uma passada por linha (linear).
+// Linha que COMECA com `//` e comentario inteiro e nao abre bloco (`// x /*`).
+function semComentario(linha, emBloco) {
+  if (!emBloco && /^\s*\/\//.test(linha)) return { texto: '', emBloco: false };
+  let saida = '';
+  let i = 0;
+  while (i < linha.length) {
+    if (emBloco) {
+      const fim = linha.indexOf('*/', i);
+      const ate = fim === -1 ? linha.length : fim + 2;
+      saida += ' '.repeat(ate - i);
+      i = ate;
+      emBloco = fim === -1;
+    } else {
+      const d = proximoDelim(linha, i);
+      // `//` antes do `/*`: o resto da linha e comentario de linha, o `/*` dele nao abre bloco (a cor, como antes, e lida)
+      if (!d || d.tipo === 'linha') { saida += linha.slice(i); break; }
+      const ate = d.tipo === 'abre' ? d.pos : d.pos + 2;   // `*/` solto fora de bloco e texto
+      saida += linha.slice(i, ate);
+      i = ate;
+      emBloco = d.tipo === 'abre';
+    }
+  }
+  return { texto: saida, emBloco: emBloco };
+}
+
+// S5: texto que comeca no meio de um comentario (o `new_string` de um Edit): o primeiro delimitador de bloco fora de
+// string e `*/`. NAO pular linha iniciada por `*` (`* { padding: 13px }` e o seletor universal).
+function comecaEmBloco(linhas) {
+  for (const l of linhas) {
+    if (/^\s*\/\//.test(l)) continue;
+    const d = proximoDelim(l, 0);
+    if (d && d.tipo !== 'linha') return d.tipo === 'fecha';
+  }
+  return false;
+}
+
+// S5: so a DECLARACAO do token (`--nome: valor`, ate `;` ou `}`) fica fora; o resto da linha e lido. O `--` precisa
+// abrir o nome (`.btn--primary:hover` nao e token).
+function semDeclaracaoDeToken(linha) {
+  return linha.replace(/(?<![\w-])--[\w-]+\s*:[^;}]*/g, function (c) { return ' '.repeat(c.length); });
+}
+
+// Trecho de seletor: so letras, digitos, `_`, `-`, espaco, `.`, `#`, `,`, `>`, `+`, `~`, `*`, `&`, `:` de
+// pseudo (`:`/`::` seguido de NOME conhecido, ate o fim do nome - D424), `(`/`)` de pseudo funcional balanceados
+// e seletor de atributo `[...]` balanceado (S5).
+function ehTrechoDeSeletor(s) {
+  let fundo = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charAt(i);
+    if (RE_CHAR_DE_SELETOR.test(c)) continue;
+    if (c === ':') {
+      RE_NOME_DE_PSEUDO.lastIndex = s.charAt(i + 1) === ':' ? i + 2 : i + 1;
+      const nome = RE_NOME_DE_PSEUDO.exec(s);
+      if (!nome || !PSEUDOS_CONHECIDOS.has(nome[0].toLowerCase())) return false;
+      i = RE_NOME_DE_PSEUDO.lastIndex - 1;             // o resto do nome ja foi lido
+      continue;
+    }
+    if (c === '(' && RE_PAREN_DE_PSEUDO.test(s.slice(Math.max(0, i - 24), i))) { fundo++; continue; }
+    if (c === ')' && fundo > 0) { fundo--; continue; }
+    if (c === '[') {                                   // S5: seletor de atributo; `[` sem `]` encerra (linear)
+      const fecha = s.indexOf(']', i + 1);
+      if (fecha === -1) return false;
+      i = fecha;
+      continue;
+    }
+    return false;
+  }
+  return fundo === 0;
 }
 
 function valoresCrus(texto) {
   const achados = [];
-  String(texto == null ? '' : texto).split(/\r?\n/).forEach(function (linha, i) {
-    if (/^\s*(\/\/|\/\*|\*)/.test(linha)) return;      // comentario nao e estilo
-    if (/--[\w-]+\s*:/.test(linha)) return;            // a propria definicao do token
-    const limpa = semVar(linha);
-    for (const v of (limpa.match(RE_COR) || [])) achados.push({ valor: normalizarValor(v), tipo: 'cor', linha: i + 1 });
+  const linhas = String(texto == null ? '' : texto).split(/\r?\n/);
+  let emBloco = comecaEmBloco(linhas);
+  const limpas = linhas.map(function (l) {
+    const r = semComentario(l, emBloco);               // comentario nao e estilo
+    emBloco = r.emBloco;
+    return semVar(semDeclaracaoDeToken(r.texto));      // a propria definicao do token tambem nao
+  });
+  limpas.forEach(function (limpa, i) {
+    const linhaDeValor = limpa.trim().charAt(0) === '@' && !RE_AT_DE_BLOCO.test(limpa.trim());
+    const corte = limpa.indexOf('//');                 // so para decidir: o `{` de um `//` nao conta (a cor, sim)
+    const paraTerm = corte === -1 ? limpa : limpa.slice(0, corte);
+    const term = [];
+    for (const t of paraTerm.matchAll(RE_TERMINADOR)) term.push(t.index);
+    let k = 0;                                         // as cores vem em ordem: os ponteiros so avancam
+    let kChecado = -1;                                 // trecho (entre dois terminadores) ja conferido
+    let trechoOk = false;
+    let pos = 0;
+    const pilha = [];                                  // um item por `(` aberto: true = `(` de seletor
+    let abertosDeValor = 0;
+    for (const m of limpa.matchAll(RE_COR)) {
+      for (; pos < m.index; pos++) {
+        const c = limpa.charAt(pos);
+        if (c === '(') {
+          const sel = RE_PSEUDO_DE_SELETOR.test(limpa.slice(Math.max(0, pos - 24), pos));
+          pilha.push(sel);
+          if (!sel) abertosDeValor++;
+        } else if (c === ')' && pilha.length) {
+          if (!pilha.pop()) abertosDeValor--;
+        }
+      }
+      if (m[0].charAt(0) === '#' && !linhaDeValor && abertosDeValor === 0) {
+        const fim = m.index + m[0].length;
+        while (k < term.length && term[k] < fim) k++;
+        // `{` da mesma linha, que nao seja o de `#{`; e o trecho (do terminador anterior ate ele) so de seletor.
+        // Todos os `#hex` do mesmo trecho dividem o resultado: a conferencia roda uma vez por trecho (linear).
+        if (k < term.length && limpa.charAt(term[k]) === '{' && limpa.charAt(term[k] - 1) !== '#') {
+          if (kChecado !== k) {
+            kChecado = k;
+            trechoOk = ehTrechoDeSeletor(limpa.slice(k > 0 ? term[k - 1] + 1 : 0, term[k]));
+          }
+          if (trechoOk) continue;                      // `#feed {`: seletor de id, nao cor
+        }
+      }
+      achados.push({ valor: normalizarValor(m[0]), tipo: 'cor', linha: i + 1 });
+    }
     for (const v of (limpa.match(RE_MEDIDA) || [])) achados.push({ valor: normalizarValor(v), tipo: 'medida', linha: i + 1 });
   });
   return achados;
@@ -95,11 +274,14 @@ function motivo(alvo, fora, sistema) {
   linhas.push('  raios:   ' + (sistema.raios || []).join(' '));
   linhas.push('  espacos: ' + (sistema.espacos || []).join(' '));
   linhas.push('');
-  linhas.push('Use o token, ou use var(--nome). Se o valor novo e mesmo necessario,');
+  linhas.push('Para cor e medida: use o token do sistema, ou var(--nome). Se o valor novo e mesmo necessario,');
   linhas.push('acrescenta-lo ao sistema e decisao do dono, nao julgamento seu:');
   linhas.push('leve com 3 opcoes e a recomendada marcada.');
+  if (fora.some(function (f) { return f.tipo === 'anti-referencia'; })) {
+    linhas.push('Para (anti-referencia): e um termo que o sistema proibe (ex.: gradiente); nao existe token para ele, tire o termo.');
+  }
   linhas.push('');
-  linhas.push('Nunca subir a catraca para o portao passar. Remover o valor cru e a saida.');
+  linhas.push('Nao suba o limite da checagem (a catraca) so para esta edicao passar: tire o valor cru, que e o caminho certo.');
   return linhas.join('\n');
 }
 

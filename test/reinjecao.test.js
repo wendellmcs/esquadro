@@ -534,3 +534,17 @@ test('F2-21 (D334): projeto aberto por link e plano ativo pelo caminho real: den
     }
   });
 });
+
+test('H-3/H-4: projeto.json que e LISTA JSON tambem nao se le: o aviso sai com a causa "nao e um objeto JSON"', () => {
+  comTmp((rein) => {
+    for (const bruto of ['[]', '[1, 2]']) {
+      const dir = projeto({ '.claude/esquadro/regras.md': REGRA, '.claude/esquadro/projeto.json': bruto });
+      try {
+        const t = rein.nucleo(dir);
+        assert.ok(t.includes('existe mas nao se le (nao e um objeto JSON)'), 'lista ' + bruto + ' sem aviso: ' + t);
+        assert.ok(t.includes('git status'), 'as regras seguem saindo: ' + t);
+        assert.ok(!t.includes('Contexto declarado'), t);
+      } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    }
+  });
+});

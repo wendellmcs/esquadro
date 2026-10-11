@@ -7,6 +7,23 @@ const PASTA = ['.claude', 'agents'];
 const CERCA = /^---\s*$/;
 
 /**
+ * H-5: valor entre aspas desfaz o escape do YAML (`\"` e `\\` nas duplas, `''` nas simples).
+ * So quando o valor inteiro e uma citacao bem formada; fora disso so tira as aspas das pontas,
+ * como sempre fez. Valor sem aspas segue cru.
+ */
+function desfazerCitacao(v) {
+  if (v.length >= 2 && v[0] === '"' && v[v.length - 1] === '"') {
+    const dentro = v.slice(1, -1);
+    if (/^(?:[^"\\]|\\.)*$/.test(dentro)) return dentro.replace(/\\(["\\])/g, '$1');
+  }
+  if (v.length >= 2 && v[0] === "'" && v[v.length - 1] === "'") {
+    const dentro = v.slice(1, -1);
+    if (/^(?:[^']|'')*$/.test(dentro)) return dentro.replace(/''/g, "'");
+  }
+  return v.replace(/^['"]/, '').replace(/['"]$/, '');
+}
+
+/**
  * Le o frontmatter de um agente. NAO e um parser de YAML e nao pretende ser:
  * le `chave: valor` de primeiro nivel, que e a unica forma que este plugin
  * escreve e a unica que o gatilho 3 precisa ler. Lista, bloco e aninhamento
@@ -30,7 +47,7 @@ function frontmatter(bruto) {
     if (CERCA.test(linhas[i])) return { ok: true, campos: campos };
     const m = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/.exec(linhas[i]);
     if (!m) continue;
-    const valor = m[2].trim().replace(/^['"]/, '').replace(/['"]$/, '').trim();
+    const valor = desfazerCitacao(m[2].trim()).trim();
     campos[m[1]] = valor === '' ? null : valor;
   }
   return { ok: false, campos: {} };

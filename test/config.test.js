@@ -126,3 +126,11 @@ test("config: carregarProjeto le o arquivo que caminhoEmEsquadro aponta (0.3.3, 
     assert.strictEqual(config.carregarProjeto(cwd).nome, "a");
   });
 });
+
+test('H-3: projeto.json e design.json que sao LISTA JSON valida nao sao objeto: devolvem null', () => {
+  for (const bruto of ['[]', '[1, 2]', '[{"intocaveis": ["x"]}]']) {
+    comProjeto(bruto, (cwd) => assert.strictEqual(config.carregarProjeto(cwd), null, 'projeto.json ' + bruto));
+    comDesign(bruto, (cwd) => assert.strictEqual(config.carregarDesign(cwd), null, 'design.json ' + bruto));
+  }
+  comProjeto('{}', (cwd) => assert.deepStrictEqual(config.carregarProjeto(cwd), {}, 'controle: objeto vazio segue objeto'));
+});

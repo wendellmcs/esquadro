@@ -1125,3 +1125,107 @@ test('T2/F3-22: arquivo e regras.md que nao se leem (sao pastas) dizem a causa t
     assert.match(r.stdout, /regras\.md \(causa: e uma pasta \(EISDIR\)\)/, r.stdout);
   } finally { fs.rmSync(dir2, { recursive: true, force: true }); }
 });
+
+// Lote 2 da D422, RV-01: revisar depois de commitar deixa os dois lados iguais. O pacote diz isso no mapa
+// (identico:true) e no aviso, para o apurar contar os achados dos dois rotulos como do lado atual.
+test('RV-01: arquivo igual ao HEAD grava identico:true no mapa e avisa que nao ha lado antigo', () => {
+  const dir = repoDeEnsaio();
+  try {
+    spawnSync('git', ['add', '-A'], { cwd: dir, encoding: 'utf8', shell: false });
+    spawnSync('git', ['commit', '-qm', 'trabalho'], { cwd: dir, encoding: 'utf8', shell: false });
+    const r = rodarCli(dir, 'raiz.txt');
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const saida = JSON.parse(r.stdout);
+    const mapa = JSON.parse(fs.readFileSync(path.join(path.dirname(saida.a), 'mapa.json'), 'utf8'));
+    assert.strictEqual(mapa.identico, true);
+    assert.match(saida.aviso, /igual ao HEAD/);
+    assert.match(saida.aviso, /nao ha lado antigo/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('RV-01: CONTROLE - arquivo diferente do HEAD e arquivo novo nao levam identico no mapa', () => {
+  const dir = repoDeEnsaio();
+  try {
+    fs.writeFileSync(path.join(dir, 'novo.txt'), 'so no disco\n', 'utf8');
+    for (const rel of ['raiz.txt', 'novo.txt']) {
+      const saida = JSON.parse(rodarCli(dir, rel).stdout);
+      const mapa = JSON.parse(fs.readFileSync(path.join(path.dirname(saida.a), 'mapa.json'), 'utf8'));
+      assert.strictEqual(mapa.identico, undefined, rel);
+      assert.doesNotMatch(saida.aviso, /igual ao HEAD/, rel);
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Ronda 2 do lote 2 (D422), RV-01: a comparacao do identico e por texto normalizado. Com core.autocrlf=true
+// (Windows) o disco tem CRLF e o blob do HEAD tem LF; BOM so num dos lados idem. So a decisao do identico
+// normaliza: o conteudo gravado em A.txt/B.txt segue o do disco.
+function mapaDeRevisaoCommitada(textoNoHead, textoNoDisco) {
+  const dir = repoDeEnsaio();
+  try {
+    spawnSync('git', ['config', 'core.autocrlf', 'false'], { cwd: dir, encoding: 'utf8', shell: false });
+    fs.writeFileSync(path.join(dir, 'raiz.txt'), textoNoHead, 'utf8');
+    spawnSync('git', ['add', '-A'], { cwd: dir, encoding: 'utf8', shell: false });
+    spawnSync('git', ['commit', '-qm', 'trabalho'], { cwd: dir, encoding: 'utf8', shell: false });
+    fs.writeFileSync(path.join(dir, 'raiz.txt'), textoNoDisco, 'utf8');
+    const r = rodarCli(dir, 'raiz.txt');
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const saida = JSON.parse(r.stdout);
+    const mapa = JSON.parse(fs.readFileSync(path.join(path.dirname(saida.a), 'mapa.json'), 'utf8'));
+    return { mapa: mapa, saida: saida };
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
+test('RV-01: mesmo texto com LF no HEAD e CRLF no disco ainda e identico', () => {
+  const x = mapaDeRevisaoCommitada('linha um\nlinha dois\n', 'linha um\r\nlinha dois\r\n');
+  assert.strictEqual(x.mapa.identico, true);
+  assert.match(x.saida.aviso, /igual ao HEAD/);
+  assert.match(x.saida.aviso, /nao ha lado antigo/);
+});
+
+test('RV-01: BOM so no disco ainda e identico', () => {
+  const x = mapaDeRevisaoCommitada('linha um\nlinha dois\n', '﻿' + 'linha um\nlinha dois\n');
+  assert.strictEqual(x.mapa.identico, true);
+  assert.match(x.saida.aviso, /igual ao HEAD/);
+});
+
+// S7 da P2 (D426), L2-pre-2: o identico vem da normalizacao, mas A.txt e B.txt sao gravados como estao no
+// disco e no HEAD. Se diferem em fim de linha ou BOM, o aviso nao pode dizer que sao "o mesmo texto": o inspetor
+// distingue os lados por esse resto.
+test('L2-pre-2: identico so pela normalizacao (CRLF ou BOM) avisa que A e B diferem em fim de linha ou BOM', () => {
+  const casos = [['LF no HEAD e CRLF no disco', 'linha um\nlinha dois\n', 'linha um\r\nlinha dois\r\n'],
+    ['BOM so no disco', 'linha um\nlinha dois\n', '﻿linha um\nlinha dois\n']];
+  for (const [nome, head, disco] of casos) {
+    const x = mapaDeRevisaoCommitada(head, disco);
+    assert.strictEqual(x.mapa.identico, true, nome);
+    assert.match(x.saida.aviso, /igual ao HEAD/, nome);
+    assert.match(x.saida.aviso, /diferem so no fim de linha ou no BOM/, nome);
+    assert.doesNotMatch(x.saida.aviso, /sao o mesmo texto/, nome);
+  }
+});
+
+test('L2-pre-2: CONTROLE - igual byte a byte segue dizendo que A e B sao o mesmo texto', () => {
+  const x = mapaDeRevisaoCommitada('linha um\nlinha dois\n', 'linha um\nlinha dois\n');
+  assert.strictEqual(x.mapa.identico, true);
+  assert.match(x.saida.aviso, /sao o mesmo texto/);
+  assert.doesNotMatch(x.saida.aviso, /diferem so no fim de linha/);
+});
+
+test('RV-01: CONTROLE - mudanca real de uma letra, com CRLF no disco, nao e identico', () => {
+  const x = mapaDeRevisaoCommitada('linha um\nlinha dois\n', 'linha um\r\nlinha dais\r\n');
+  assert.strictEqual(x.mapa.identico, undefined);
+  assert.doesNotMatch(x.saida.aviso, /igual ao HEAD/);
+});
+
+// RV-04 (D422): o mapa.json da revisao antiga, gravado com BOM pelo PowerShell 5.1, ainda diz o id dela.
+test('RV-04: mapa.json do formato antigo com BOM ainda diz o id da revisao antiga no aviso', () => {
+  const dir = repoDeEnsaio();
+  try {
+    const antiga = path.join(baseDeRevisao(dir), '1');
+    fs.mkdirSync(antiga, { recursive: true });
+    fs.writeFileSync(path.join(antiga, 'mapa.json'),
+      '\uFEFF' + JSON.stringify({ arquivo: 'a b/c.js', mapa: { A: 'HEAD', B: 'trabalho' } }), 'utf8');
+    const r = rodarCli(dir, 'raiz.txt');
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    assert.ok(JSON.parse(r.stdout).aviso.indexOf('.claude/esquadro/revisao/a_b__c.js/') !== -1, r.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

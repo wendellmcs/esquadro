@@ -69,10 +69,16 @@ function proximaDecisao(arquivoDeDecisoes) {
   return maior + 1;
 }
 
-const RE_CONCLUIDA = /\b(tarefa|etapa|onda|fase)\s+\d*\s*(esta |foi |)?(conclu[ií]d|fechad|finalizad|pronta|complet)|\b(conclu[ií]|fech|finaliz|complet)\w*\s+(a|o)?\s*(tarefa|etapa|onda|fase)\b/i;
+// N1: roda no gancho Stop, tem de ser linear. O texto passa antes por `\s+ -> ' '`: com um unico espaco
+// entre os tokens, o regex nao tem `\s+`/`\s*` adjacentes nem aninhados (era o backtracking quadratico).
+// N2: plural ("tarefas", "as tarefas") e lista de numeros ("1 e 2", "3, 4 e 5"), com os auxiliares
+// plurais ("estao", "foram"). Sem o nome da tarefa dentro da lista: cada nome da cadeia ("tarefa 1 e
+// tarefa 2 concluidas") ja casa sozinho, e a lista nao atravessa outro nome (cada inicio e local).
+// Mesmas duas formas do RE_ALEGA_N de scripts/portao-fecho.js (paridade em test/portao-fecho.test.js).
+const RE_CONCLUIDA = /\b(?:tarefa|etapa|onda|fase)s? (?:\d+(?: ?(?:,|e) ?\d+)* ?)?(?:est[aá] |est[aã]o |foi |foram )?(?:conclu[ií]d|fechad|finalizad|pronta|complet)|\b(?:conclu[ií]|fech|finaliz|complet)\w* (?:(?:as|os|a|o) )?(?:tarefa|etapa|onda|fase)s?\b/i;
 
 function alegaEtapaConcluida(texto) {
-  return RE_CONCLUIDA.test(String(texto == null ? '' : texto));
+  return RE_CONCLUIDA.test(String(texto == null ? '' : texto).replace(/\s+/g, ' '));
 }
 
 function motivoSubitemAberto(tarefa) {
@@ -90,7 +96,45 @@ function motivoSubitemAberto(tarefa) {
   ].join('\n');
 }
 
+/**
+ * Bloco M / M2 (D435): o painel do plano em texto (ASCII, R5) - o que o /esquadro-plano do mod
+ * responde. Mostra a vista o que o portao de fecho so barra no fim: passo aberto = tarefa aberta.
+ */
+function painelTexto(ativo, tarefas) {
+  if (!ativo || !ativo.arquivo) {
+    // Sem "esquadro - " no titulo: o motor ja escreve o nome do plugin antes da resposta do comando.
+    return 'painel do plano\nnenhum plano ativo (.claude/esquadro/plano-ativo.json). Para abrir: ' +
+      'node <pasta do plugin esquadro>/scripts/plano.js --abrir <caminho do plano>';
+  }
+  const linhas = ['painel do plano','plano ativo: ' + ativo.arquivo + ' (dono: ' + (ativo.sessionId || 'sem-sessao') + ')'];
+  const lista = Array.isArray(tarefas) ? tarefas : [];
+  if (!lista.length) {
+    linhas.push('o plano nao tem cabecalhos "### Tarefa N: titulo": o painel nao consegue contar as tarefas.');
+    return linhas.join('\n');
+  }
+  const abertas = lista.filter(function (t) { return t.abertos > 0; });
+  // Tarefa sem nenhuma caixa de passo: o portao nao a cobra, mas o painel nao a da como feita.
+  const feitas = lista.filter(function (t) { return t.total > 0 && t.abertos === 0; });
+  linhas.push('tarefas: ' + feitas.length + ' de ' + lista.length + ' concluidas');
+  for (const t of lista) {
+    linhas.push(t.abertos > 0
+      ? '  [ ] Tarefa ' + t.n + ': ' + t.titulo + ' (' + t.abertos + ' de ' + t.total + ' passos abertos)'
+      : t.total > 0
+        ? '  [x] Tarefa ' + t.n + ': ' + t.titulo
+        : '  [?] Tarefa ' + t.n + ': ' + t.titulo + ' (sem caixas de passo: o painel nao sabe se esta feita)');
+  }
+  const p = abertas[0];
+  const semCaixas = lista.filter(function (t) { return !(t.total > 0); }).length;
+  linhas.push(p
+    ? 'proxima: Tarefa ' + p.n + ' "' + p.titulo + '" - faltam ' + p.abertos + ' de ' + p.total + ' passos'
+    : semCaixas
+      // D436: so tarefa sem caixa sobrando nao e plano acabado - o painel nao sabe se ela esta feita.
+      ? 'proxima: nenhuma tarefa com passo aberto; ' + semCaixas + ' sem caixas de passo, confira a mao'
+      : 'proxima: nenhuma tarefa aberta');
+  return linhas.join('\n');
+}
+
 module.exports = {
   ATIVO, RE_TAREFA, RE_CAIXA, parseTarefas, lerAtivo, abrir, donoOutro,
-  proximaDecisao, alegaEtapaConcluida, motivoSubitemAberto
+  proximaDecisao, alegaEtapaConcluida, motivoSubitemAberto, painelTexto
 };

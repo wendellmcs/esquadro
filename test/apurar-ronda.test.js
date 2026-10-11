@@ -1151,3 +1151,112 @@ test('D387/mesmos.json: item fora da forma ou com chave que nao existe para com 
     }
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Lote 2 da D422: RV-04 (BOM do PowerShell 5.1), RV-03 (linha em texto) e RV-01 (arquivo igual ao HEAD).
+// ---------------------------------------------------------------------------------------------
+
+const BOM = '﻿';
+function comBom(arquivo) {
+  fs.writeFileSync(arquivo, BOM + fs.readFileSync(arquivo, 'utf8'), 'utf8');
+  assert.strictEqual(fs.readFileSync(arquivo, 'utf8').charCodeAt(0), 0xFEFF, 'o fixture tem de comecar com BOM');
+}
+
+for (const alvo of ['2/vereditos/correcao.json', '2/mapa.json']) {
+  test('RV-04: ' + alvo + ' gravado com BOM le normalmente (nao vira "ilegivel")', () => {
+    comRepo((cwd, tmp) => {
+      const base = baseFechada(cwd);
+      comBom(path.join(base, ...alvo.split('/')));
+      const r = rodar(['--sessao', 'rv04'], cwd, tmp);
+      assert.strictEqual(r.status, 0, r.stdout);
+      assert.strictEqual(r.json.encerrar, true, r.stdout);
+    });
+  });
+}
+
+test('RV-04: refutados.json com BOM le normalmente e a refutacao vale', () => {
+  comRepo((cwd, tmp) => {
+    const base = baseComPar(cwd);
+    fs.writeFileSync(path.join(base, 'refutados.json'), JSON.stringify([{ ronda: 2, lente: 'borda', arquivo: 'A.txt',
+      linha: 5, severidade: 'P1', prova: 'src/a.js:5 ja trata' }]), 'utf8');
+    comBom(path.join(base, 'refutados.json'));
+    const r = rodar(['--sessao', 'rv04-ref'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.strictEqual(r.json.achadosNovosP0P1.length, 0, 'a refutacao tem de valer: ' + r.stdout);
+  });
+});
+
+test('RV-04: mesmos.json com BOM le normalmente e o aviso do juiz aparece', () => {
+  comRepo((cwd, tmp) => {
+    const base = baseComPar(cwd);
+    fs.writeFileSync(path.join(base, 'mesmos.json'), JSON.stringify([{ novo: K_NOVO, outro: K_VELHO, resposta: 'sim' }]), 'utf8');
+    comBom(path.join(base, 'mesmos.json'));
+    const r = rodar(['--sessao', 'rv04-mes'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.strictEqual(r.json.provaveisMesmos.length, 1, r.stdout);
+  });
+});
+
+test('RV-04: fechada.json com BOM le normalmente e o fecho nao e contado outra vez', () => {
+  comRepo((cwd, tmp) => {
+    const base = baseFechada(cwd);
+    const um = rodar(['--sessao', 'rv04-fe'], cwd, tmp);
+    assert.strictEqual(um.status, 0, um.stdout);
+    comBom(path.join(base, 'fechada.json'));
+    const dois = rodar(['--sessao', 'rv04-fe'], cwd, tmp);
+    assert.strictEqual(dois.status, 0, dois.stdout);
+    assert.strictEqual(dois.json.revisaoFechadaContada.jaContada, true, dois.stdout);
+    assert.strictEqual(contadorDe(tmp, 'rv04-fe'), 1);
+  });
+});
+
+// RV-03: linha "42" (texto) ou "40-45" (intervalo) era descartada calada, e a ronda fechava "aprovado" com o P0 de pe.
+test('RV-03: pelo CLI, P0 com linha em texto ("42") ou intervalo ("40-45") molha a ronda, e nao fecha aprovado', () => {
+  comRepo((cwd, tmp) => {
+    const vd = (linha) => ({ lente: 'correcao', melhor: 'A',
+      achados: [{ severidade: 'P0', arquivo: 'A.txt', linha: linha, descricao: 'quebra' }] });
+    gravarNaBase(cwd, 'src__a.js', 'src/a.js', 1, [vd('42')]);
+    gravarNaBase(cwd, 'src__a.js', 'src/a.js', 2, [vd('40-45')]);
+    const r = rodar(['--sessao', 'rv03'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.notStrictEqual(r.json.motivo, 'duas rondas secas seguidas: aprovado', r.stdout);
+    assert.strictEqual(r.json.rondasSecas, 0, r.stdout);
+    assert.strictEqual(r.json.achadosNovosP0P1.length, 1, r.stdout);
+    assert.strictEqual(r.json.achadosNovosP0P1[0].linha, 40, 'o intervalo vale pela 1a linha: ' + r.stdout);
+    assert.deepStrictEqual(r.json.vereditosDescartados, [], r.stdout);
+  });
+});
+
+// RV-01: revisar depois de commitar deixa os dois lados iguais; o inspetor cita A ou B ao acaso, e o que cai no
+// rotulo "HEAD" ia para achadosDoLadoAntigo e nao molhava a ronda. Com identico:true, os dois rotulos sao o trabalho.
+test('RV-01: mapa com identico:true conta os achados dos dois rotulos como do lado atual', () => {
+  comRepo((cwd, tmp) => {
+    const vd = (arq, linha) => ({ lente: 'correcao', melhor: 'empate',
+      achados: [{ severidade: 'P0', arquivo: arq, linha: linha, descricao: 'quebra' }] });
+    gravarNaBase(cwd, 'src__a.js', 'src/a.js', 1, [vd('B.txt', 10)]);
+    gravarNaBase(cwd, 'src__a.js', 'src/a.js', 2, [vd('B.txt', 20)]);
+    const base = path.join(cwd, '.claude', 'esquadro', 'revisao', 'src__a.js');
+    for (const n of ['1', '2']) {
+      fs.writeFileSync(path.join(base, n, 'mapa.json'),
+        JSON.stringify({ arquivo: 'src/a.js', mapa: { A: 'trabalho', B: 'HEAD' }, identico: true }), 'utf8');
+    }
+    const r = rodar(['--sessao', 'rv01'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.strictEqual(r.json.encerrar, false, 'dois P0 reais nao fecham aprovado: ' + r.stdout);
+    assert.strictEqual(r.json.achadosNovosP0P1.length, 1, r.stdout);
+    assert.deepStrictEqual(r.json.achadosDoLadoAntigo, [], r.stdout);
+  });
+});
+
+test('RV-01: CONTROLE - mapa antigo, sem o campo, segue contando o rotulo HEAD como lado antigo', () => {
+  comRepo((cwd, tmp) => {
+    const vd = (arq, linha) => ({ lente: 'correcao', melhor: 'empate',
+      achados: [{ severidade: 'P0', arquivo: arq, linha: linha, descricao: 'quebra' }] });
+    gravarNaBase(cwd, 'src__a.js', 'src/a.js', 1, [vd('B.txt', 10)]);
+    gravarNaBase(cwd, 'src__a.js', 'src/a.js', 2, [vd('B.txt', 20)]);
+    const r = rodar(['--sessao', 'rv01c'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.strictEqual(r.json.motivo, 'duas rondas secas seguidas: aprovado', r.stdout);
+    assert.strictEqual(r.json.achadosDoLadoAntigo.length, 1, r.stdout);
+  });
+});

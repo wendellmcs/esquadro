@@ -37,35 +37,62 @@ function soma(contadores, chaves) {
   return chaves.reduce(function (t, k) { return t + ((contadores && contadores[k]) || 0); }, 0);
 }
 
+/**
+ * Bloco M / M1 (D435): os 6 gatilhos contaveis, cruzados ou nao, com valor e limiar - o que o
+ * medidor da sessao mostra. Fonte unica da regra: `avaliar` monta os gatilhos daqui.
+ * Diferente do `avaliar`, nao se cala com `avisouSaude`: o aviso ja dado nao zera o painel.
+ */
+function medir(estado, limiares) {
+  const e = estado || {};
+  const L = Object.assign({}, LIMIARES_PADRAO, limiares || {});
+  const c = e.contadores || {};
+  const item = function (chave, nome, valor, cruzou, texto) {
+    return { chave: chave, nome: nome, valor: valor, limiar: L[chave], cruzou: cruzou, texto: texto };
+  };
+  const turnos = e.turnosComTrabalho || 0;
+  const revisoes = c.revisao_fechada || 0;
+  const bloqueios = soma(c, BALDES_DE_BLOQUEIO);
+  // Array.isArray, como o typeof abaixo: texto ou objeto no estado corrompido nunca vira aviso.
+  const arquivos = Array.isArray(e.arquivosTocados) ? e.arquivosTocados.length : 0;
+  // typeof: estado corrompido (objeto, texto) nunca vira aviso.
+  const decisoes = typeof e.decisoesDoDono === 'number' ? e.decisoesDoDono : 0;
+  const commits = typeof e.commitsFeitos === 'number' ? e.commitsFeitos : 0;
+  return [
+    item('turnosComTrabalho', 'turnos com trabalho real', turnos, turnos >= L.turnosComTrabalho,
+      turnos + ' turnos com trabalho real (limiar ' + L.turnosComTrabalho + ')'),
+    item('revisoesFechadas', 'revisoes independentes fechadas', revisoes, revisoes >= L.revisoesFechadas,
+      revisoes + ' revisoes independentes fechadas (limiar ' + L.revisoesFechadas + ')'),
+    item('bloqueios', 'bloqueios de portao', bloqueios, bloqueios >= L.bloqueios,
+      bloqueios + ' bloqueios de portao nesta sessao (limiar ' + L.bloqueios + ')'),
+    item('arquivosTocados', 'arquivos tocados', arquivos, arquivos >= L.arquivosTocados,
+      arquivos + ' arquivos tocados (limiar ' + L.arquivosTocados + ')'),
+    item('decisoesDoDono', 'decisoes do dono respondidas', decisoes,
+      typeof e.decisoesDoDono === 'number' && decisoes >= L.decisoesDoDono,
+      decisoes + ' decisoes do dono respondidas (limiar ' + L.decisoesDoDono + ')'),
+    item('commits', 'commits nesta sessao', commits,
+      typeof e.commitsFeitos === 'number' && commits >= L.commits,
+      commits + ' commits nesta sessao (limiar ' + L.commits + ')')
+  ];
+}
+
+/** D123: o balde do TURNO somado ao da SESSAO - a conta que o gatilho de saude le. Nao muda a entrada. */
+function acumular(estado) {
+  const s = estado || {};
+  const acumulados = Object.assign({}, s.contadoresSessao || {});
+  const turno = s.contadores || {};
+  for (const chave of Object.keys(turno)) {
+    acumulados[chave] = (acumulados[chave] || 0) + turno[chave];
+  }
+  return acumulados;
+}
+
 function avaliar(estado, limiares) {
   const e = estado || {};
   if (e.avisouSaude) return { disparou: false, gatilhos: [], aviso: null };
 
-  const L = Object.assign({}, LIMIARES_PADRAO, limiares || {});
-  const c = e.contadores || {};
-  const gatilhos = [];
-
-  if ((e.turnosComTrabalho || 0) >= L.turnosComTrabalho) {
-    gatilhos.push(e.turnosComTrabalho + ' turnos com trabalho real (limiar ' + L.turnosComTrabalho + ')');
-  }
-  if ((c.revisao_fechada || 0) >= L.revisoesFechadas) {
-    gatilhos.push((c.revisao_fechada || 0) + ' revisoes independentes fechadas (limiar ' + L.revisoesFechadas + ')');
-  }
-  const bloqueios = soma(c, BALDES_DE_BLOQUEIO);
-  if (bloqueios >= L.bloqueios) {
-    gatilhos.push(bloqueios + ' bloqueios de portao nesta sessao (limiar ' + L.bloqueios + ')');
-  }
-  // Array.isArray, como o typeof abaixo: texto ou objeto no estado corrompido nunca vira aviso.
-  if ((Array.isArray(e.arquivosTocados) ? e.arquivosTocados.length : 0) >= L.arquivosTocados) {
-    gatilhos.push(e.arquivosTocados.length + ' arquivos tocados (limiar ' + L.arquivosTocados + ')');
-  }
-  // typeof: estado corrompido (objeto, texto) nunca vira aviso.
-  if (typeof e.decisoesDoDono === 'number' && e.decisoesDoDono >= L.decisoesDoDono) {
-    gatilhos.push(e.decisoesDoDono + ' decisoes do dono respondidas (limiar ' + L.decisoesDoDono + ')');
-  }
-  if (typeof e.commitsFeitos === 'number' && e.commitsFeitos >= L.commits) {
-    gatilhos.push(e.commitsFeitos + ' commits nesta sessao (limiar ' + L.commits + ')');
-  }
+  const gatilhos = medir(e, limiares)
+    .filter(function (g) { return g.cruzou; })
+    .map(function (g) { return g.texto; });
 
   if (!gatilhos.length) return { disparou: false, gatilhos: [], aviso: null };
 
@@ -272,5 +299,5 @@ const MOTIVO_HANDOFF_SEM_PROMPT = [
   'Para desligar este portao no projeto: "portaoHandoff": false em .claude/esquadro/projeto.json.'
 ].join('\n');
 
-module.exports = { LIMIARES_PADRAO, BALDES_DE_BLOQUEIO, avaliar, instrucaoAoModelo, perguntaSobreSaude,
+module.exports = { LIMIARES_PADRAO, BALDES_DE_BLOQUEIO, medir, acumular, avaliar, instrucaoAoModelo, perguntaSobreSaude,
   INSTRUCAO_DA_PERGUNTA, ehArquivoDeHandoff, temBlocoDeCodigo, MOTIVO_HANDOFF_SEM_PROMPT };

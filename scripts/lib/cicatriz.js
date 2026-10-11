@@ -90,8 +90,14 @@ function passagens(texto) {
   return saida;
 }
 
-/** Lista recursiva de .md sob `raiz`, em caminho relativo e com barra normal. */
+/**
+ * Lista recursiva de .md sob `raiz`, em caminho relativo e com barra normal.
+ * `raiz` pode ser um ARQUIVO (IN-10): quem aponta um arquivo de proposito - o historico
+ * deste projeto e um so - quer esse arquivo lido, qualquer que seja a extensao. Devolve
+ * [''] (o proprio arquivo, sem relativo); `abrirEm` resolve isso.
+ */
 function arquivosDe(raiz) {
+  try { if (fs.statSync(raiz).isFile()) return ['']; } catch (e) { return []; }
   const achados = [];
   (function andar(dir) {
     let entradas = [];
@@ -108,6 +114,12 @@ function arquivosDe(raiz) {
   }).sort();
 }
 
+/** Caminho de leitura de um item de `arquivosDe`: o relativo sob a pasta, ou o proprio arquivo. */
+function abrirEm(raiz, rel) { return rel ? path.join(raiz, rel) : raiz; }
+
+/** Nome para citar na prova: o relativo, ou o nome do arquivo quando `raiz` e um arquivo. */
+function nomeDe(raiz, rel) { return rel || path.basename(raiz); }
+
 /**
  * O indice de cicatrizes do corpus: so as passagens que carregam marca entram.
  * Passagem sem marca e prosa, e prosa nao prova dor de origem.
@@ -116,12 +128,12 @@ function indexar(raizCorpus) {
   const indice = [];
   for (const rel of arquivosDe(raizCorpus)) {
     let texto = '';
-    try { texto = fs.readFileSync(path.join(raizCorpus, rel), 'utf8'); } catch (e) { continue; }
+    try { texto = fs.readFileSync(abrirEm(raizCorpus, rel), 'utf8'); } catch (e) { continue; }
     for (const p of passagens(texto)) {
       const tipos = marcas(p.texto);
       if (!tipos.length) continue;
       indice.push({
-        arquivo: rel,
+        arquivo: nomeDe(raizCorpus, rel),
         linha: p.linha,
         tipos: tipos,
         termos: auditoria.termos(p.texto)
@@ -136,12 +148,12 @@ function itensDe(raizManual) {
   const itens = [];
   for (const rel of arquivosDe(raizManual)) {
     let texto = '';
-    try { texto = fs.readFileSync(path.join(raizManual, rel), 'utf8'); } catch (e) { continue; }
+    try { texto = fs.readFileSync(abrirEm(raizManual, rel), 'utf8'); } catch (e) { continue; }
     texto.split(/\r?\n/).forEach(function (l, i) {
       if (!instrucoes.RE_ITEM.test(l)) return;
       const corpo = l.replace(/^\s*(?:[-*+]\s+|\d+\.\s+)/, '').trim();
       if (!corpo) return;
-      itens.push({ arquivo: rel, linha: i + 1, texto: corpo });
+      itens.push({ arquivo: nomeDe(raizManual, rel), linha: i + 1, texto: corpo });
     });
   }
   return itens;
@@ -176,7 +188,9 @@ function conferir(item, indice, minimo, fracao) {
  */
 function varrer(raizManual, raizCorpus, opcoes) {
   const o = opcoes || {};
-  const temCorpus = !!raizCorpus && fs.existsSync(raizCorpus);
+  // S8/L2-cic-1: pasta que existe mas nao tem nenhum .md nao e corpus lido (indice vazio com
+  // `corpusLido: true` mandaria podar tudo); cai no modo degradado como a pasta inexistente.
+  const temCorpus = !!raizCorpus && fs.existsSync(raizCorpus) && arquivosDe(raizCorpus).length > 0;
   const indice = temCorpus ? indexar(raizCorpus) : [];
   const itens = itensDe(raizManual);
 

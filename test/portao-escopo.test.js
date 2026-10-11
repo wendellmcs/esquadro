@@ -541,3 +541,314 @@ test('escopo por frente: a mesma pasta em caixa alta continua liberando e vincul
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
+
+// ---------------------------------------------------- D420/PT-03: o contador nunca decide
+
+// O diretorio de estado vira um ARQUIVO: mkdir/rename do estado lancam ENOTDIR. O contador
+// e secundario - a negacao nao pode depender dele (antes, o incrementar lancava, o blindar
+// liberava e o Write em arquivo intocavel passava).
+function comEstadoIngravavel(fn) {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-inop-'));
+  const arquivo = path.join(base, 'e-um-arquivo');
+  fs.writeFileSync(arquivo, 'x', 'utf8');
+  try { fn(arquivo); } finally { fs.rmSync(base, { recursive: true, force: true }); }
+}
+
+test('D420/PT-03: estado inalteravel nao libera Write em intocavel', () => {
+  comEstadoIngravavel((tmp) => {
+    const dir = montarProjeto();
+    try {
+      const r = rodar(entrada(dir, 'segredos/k.txt'), tmp);
+      assert.ok(negou(r), 'intocavel passou com o estado inalteravel. stderr: ' + r.stderr);
+      assert.ok(r.json.hookSpecificOutput.permissionDecisionReason.includes('segredos/k.txt'));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('D420/PT-03: estado inalteravel nao libera sem_escopo, fora_do_escopo, fora_declarado nem criou_sem_buscar', () => {
+  comEstadoIngravavel((tmp) => {
+    const dir = montarProjeto();
+    try {
+      // padrao sem escopo.md
+      assert.ok(negou(rodar(entrada(dir, 'src/a.js'), tmp)), 'sem_escopo passou');
+      escrever(dir, '.claude/esquadro/escopo.md',
+        '## Dentro\n- src/a.js\n- src/novo/**\n## Fora de escopo\n- docs/ata.md\n');
+      escrever(dir, 'src/b.js', 'velho');
+      assert.ok(negou(rodar(entrada(dir, 'src/b.js'), tmp)), 'fora_do_escopo passou');
+      escrever(dir, 'docs/ata.md', 'velho');
+      assert.ok(negou(rodar(entrada(dir, 'docs/ata.md'), tmp)), 'fora_declarado passou');
+      assert.ok(negou(rodar(entrada(dir, 'src/novo/x.js'), tmp)), 'criou_sem_buscar passou');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('D420/PT-03: estado inalteravel nao libera Edit que afrouxa catraca', () => {
+  comEstadoIngravavel((tmp) => {
+    const dir = montarProjeto();
+    try {
+      escrever(dir, '.claude/esquadro/escopo.md', '## Dentro\n- src/a.js\n');
+      escrever(dir, 'src/a.js', 'velho');
+      const base = rodar({
+        session_id: 's1', cwd: dir, tool_name: 'Edit',
+        tool_input: { file_path: path.join(dir, 'src/a.js'), old_string: 'x', new_string: 'y' }
+      }, tmp);
+      liberou(base);
+      const r = rodar({
+        session_id: 's1', cwd: dir, tool_name: 'Edit',
+        tool_input: { file_path: path.join(dir, 'src/a.js'), old_string: 'max: 10', new_string: 'max: 20' }
+      }, tmp);
+      assert.ok(negou(r), 'catraca afrouxada passou com o estado inalteravel. stderr: ' + r.stderr);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+// ---------------------------------------------------- S2/L1-7 e L1-8: falha de estado nao fica calada
+
+const ARQ_FRENTE = '.claude/esquadro/escopos/omni.md';
+
+function escreverFrente(dir, tmp) {
+  return rodar({
+    session_id: 's1', cwd: dir, tool_name: 'Write',
+    tool_input: { file_path: path.join(dir, ARQ_FRENTE), content: '## Dentro\n- src/a.js\n' }
+  }, tmp);
+}
+
+test('S2/L1-7: estado ingravavel - Write do arquivo da frente LIBERA, mas avisa que o vinculo nao foi gravado', () => {
+  comEstadoIngravavel((tmp) => {
+    const dir = montarProjeto();
+    try {
+      const r = escreverFrente(dir, tmp);
+      liberou(r);
+      assert.ok(r.json && typeof r.json.systemMessage === 'string',
+        'o vinculo nao gravou e nada avisou. stdout json: ' + JSON.stringify(r.json));
+      assert.ok(r.json.systemMessage.includes('vinculo') && r.json.systemMessage.includes('omni'),
+        r.json.systemMessage);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('S2/L1-7: estado gravavel - o vinculo grava e nenhum aviso sai (controle)', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    try {
+      const r = escreverFrente(dir, tmp);
+      liberou(r);
+      assert.strictEqual(r.json, null, 'saiu aviso sem falha: ' + JSON.stringify(r.json));
+      assert.strictEqual(lerEstado(tmp, 's1').frente, 'omni');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('S2/L1-8: contador que nao grava deixa rastro - na negacao (motivo) e na liberacao (systemMessage), sem mudar a decisao', () => {
+  comEstadoIngravavel((tmp) => {
+    const dir = montarProjeto();
+    try {
+      // negacao: o intocavel segue negado, e o motivo diz que o contador nao gravou
+      const n = rodar(entrada(dir, 'segredos/k.txt'), tmp);
+      assert.ok(negou(n), 'a falha do contador nao pode soltar o intocavel');
+      const motivo = n.json.hookSpecificOutput.permissionDecisionReason;
+      assert.ok(motivo.includes('segredos/k.txt') && motivo.includes('contador'), motivo);
+      // liberacao: ampliar o escopo.md conta escopo_ampliado; segue liberado, com aviso
+      const l = rodar({
+        session_id: 's1', cwd: dir, tool_name: 'Write',
+        tool_input: { file_path: path.join(dir, '.claude/esquadro/escopo.md'), content: '## Dentro\n- src/a.js\n' }
+      }, tmp);
+      liberou(l);
+      assert.ok(l.json && typeof l.json.systemMessage === 'string' && l.json.systemMessage.includes('contador'),
+        'o balde escopo_ampliado nao gravou e nada avisou: ' + JSON.stringify(l.json));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('S2/L1-8: contador gravavel - negacao e liberacao saem sem rastro de falha (controle)', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    try {
+      const n = rodar(entrada(dir, 'segredos/k.txt'), tmp);
+      assert.ok(negou(n));
+      assert.ok(!n.json.hookSpecificOutput.permissionDecisionReason.includes('contador'),
+        n.json.hookSpecificOutput.permissionDecisionReason);
+      const l = rodar({
+        session_id: 's1', cwd: dir, tool_name: 'Write',
+        tool_input: { file_path: path.join(dir, '.claude/esquadro/escopo.md'), content: '## Dentro\n- src/a.js\n' }
+      }, tmp);
+      liberou(l);
+      assert.strictEqual(l.json, null, JSON.stringify(l.json));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+// ---------------------------------------------------- D420/PT-04: projeto.json ilegivel
+
+const JSON_COM_VIRGULA_SOBRANDO = '{"marchaPadrao":"padrao","intocaveis":["segredos/**"],}';
+
+test('D420/PT-04: projeto.json invalido nao e "sem projeto": a mensagem diz a causa real', () => {
+  comTmp((tmp) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-ileg-'));
+    try {
+      escrever(dir, '.claude/esquadro/projeto.json', JSON_COM_VIRGULA_SOBRANDO);
+      const primeiro = rodar(entrada(dir, 'src/a.js'), tmp);
+      liberou(primeiro);
+      assert.ok(primeiro.json && primeiro.json.systemMessage, 'sem aviso algum');
+      assert.match(primeiro.json.systemMessage, /projeto\.json existe mas nao se le/);
+      assert.match(primeiro.json.systemMessage, /DESLIGADOS/);
+      assert.doesNotMatch(primeiro.json.systemMessage, /nao tem \.claude/);
+      const segundo = rodar(entrada(dir, 'src/b.js'), tmp);
+      assert.strictEqual(segundo.json, null, 'repetiu o aviso na mesma sessao');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('D420/PT-04: projeto.json que nao e objeto tambem e ilegivel, e ausente continua "nao tem"', () => {
+  comTmp((tmp) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-ileg2-'));
+    try {
+      escrever(dir, '.claude/esquadro/projeto.json', '5');
+      const r = rodar(entrada(dir, 'src/a.js'), tmp);
+      assert.match(r.json.systemMessage, /existe mas nao se le/);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('D420/PT-04: a abertura avisa projeto.json ilegivel mesmo sem regras.md', () => {
+  comTmp((tmp) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-ileg3-'));
+    try {
+      escrever(dir, '.claude/esquadro/projeto.json', JSON_COM_VIRGULA_SOBRANDO);
+      const r = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'abertura.js')], {
+        input: JSON.stringify({ session_id: 'ab-ileg', cwd: dir, source: 'startup' }),
+        encoding: 'utf8', env: Object.assign({}, process.env, { ESQUADRO_TMP: tmp })
+      });
+      assert.strictEqual(r.status, 0, r.stderr);
+      assert.match(r.stdout, /projeto\.json existe mas nao se le/);
+      assert.match(r.stdout, /DESLIGADOS/);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('D420/PT-04: a abertura sem projeto.json NAO fala de ilegivel; com regras.md o aviso nao dobra', () => {
+  comTmp((tmp) => {
+    const vazio = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-ileg4-'));
+    const comRegras = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-ileg5-'));
+    try {
+      const abrir = (d, id) => spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'abertura.js')], {
+        input: JSON.stringify({ session_id: id, cwd: d, source: 'startup' }),
+        encoding: 'utf8', env: Object.assign({}, process.env, { ESQUADRO_TMP: tmp })
+      });
+      assert.doesNotMatch(abrir(vazio, 'ab-aus').stdout, /existe mas nao se le/);
+      escrever(comRegras, '.claude/esquadro/projeto.json', JSON_COM_VIRGULA_SOBRANDO);
+      escrever(comRegras, '.claude/esquadro/regras.md', '- ao editar -> rodar git status\n');
+      const r = abrir(comRegras, 'ab-dup');
+      assert.strictEqual((r.stdout.match(/existe mas nao se le/g) || []).length, 1, r.stdout);
+    } finally {
+      fs.rmSync(vazio, { recursive: true, force: true });
+      fs.rmSync(comRegras, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------- TS-01..03 (lote 3, D423): ramos de negacao do GANCHO
+
+function motivoDeNegacao(r) {
+  return (r.json && r.json.hookSpecificOutput && r.json.hookSpecificOutput.permissionDecisionReason) || '';
+}
+
+function comSessao(ent, id) { return Object.assign({}, ent, { session_id: id }); }
+
+function editar(dir, arquivo, antes, depois, id) {
+  return {
+    session_id: id || 's1', cwd: dir, hook_event_name: 'PreToolUse', tool_name: 'Edit',
+    tool_input: { file_path: path.join(dir, arquivo), old_string: antes, new_string: depois }
+  };
+}
+
+// O PostToolUse real (marcar-trabalho.js) e quem liga `buscouNesteTurno`: o teste usa o gancho de verdade.
+function registrarBusca(dir, tmp, id, ferramenta) {
+  const r = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'marcar-trabalho.js')], {
+    input: JSON.stringify({ session_id: id, cwd: dir, tool_name: ferramenta, tool_input: { file_path: path.join(dir, 'src/novo/x.js') } }),
+    encoding: 'utf8', env: Object.assign({}, process.env, { ESQUADRO_TMP: tmp })
+  });
+  assert.strictEqual(r.status, 0, r.stderr);
+}
+
+test('TS-01 (lote 3, D423): trava 7 - arquivo NOVO no escopo sem busca nega; Grep/Glob/Read no turno libera; nomeado no escopo libera', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    try {
+      escrever(dir, '.claude/esquadro/escopo.md', '## Dentro\n- src/**\n- src/nomeado.js\n');
+      escrever(dir, 'src/velho.js', 'velho');
+      // sem busca: nega, e pelo motivo da trava 7 (nao por outra via)
+      const sem = rodar(comSessao(entrada(dir, 'src/novo/x.js'), 'ts01-sem'), tmp);
+      assert.ok(negou(sem), 'arquivo novo sem busca tinha de negar');
+      assert.match(motivoDeNegacao(sem), /sem ter procurado/);
+      // a busca do turno alivia - cada ferramenta de busca, na sua sessao (a negacao acima nao vaza)
+      for (const f of ['Grep', 'Glob', 'Read']) {
+        const id = 'ts01-' + f;
+        assert.ok(negou(rodar(comSessao(entrada(dir, 'src/novo/x.js'), id), tmp)), 'controle: ' + f + ' antes da busca ainda nega');
+        registrarBusca(dir, tmp, id, f);
+        liberou(rodar(comSessao(entrada(dir, 'src/novo/x.js'), id), tmp));
+      }
+      // nomeado (sem coringa) no escopo: a deliberacao ja foi feita, sem busca
+      liberou(rodar(comSessao(entrada(dir, 'src/nomeado.js'), 'ts01-nome'), tmp));
+      // editar o que ja existe nunca exige busca
+      liberou(rodar(comSessao(entrada(dir, 'src/velho.js'), 'ts01-edit'), tmp));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('TS-02 (lote 3, D423): trava 8 - Edit que SOBE teto ou DESCE piso nega; mesmo numero e apertar passam; Write nao tem "antes"', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    try {
+      escrever(dir, '.claude/esquadro/escopo.md', '## Dentro\n- src/a.js\n');
+      escrever(dir, 'src/a.js', 'velho');
+      const sobe = rodar(editar(dir, 'src/a.js', '"teto": 3', '"teto": 8'), tmp);
+      assert.ok(negou(sobe), 'subir teto de 3 para 8 tinha de negar');
+      assert.match(motivoDeNegacao(sobe), /sobe a catraca/);
+      assert.match(motivoDeNegacao(sobe), /3 -> 8/);
+      const desce = rodar(editar(dir, 'src/a.js', '"minimo": 80', '"minimo": 40'), tmp);
+      assert.ok(negou(desce), 'descer piso de 80 para 40 tinha de negar');
+      assert.match(motivoDeNegacao(desce), /80 -> 40/);
+      // controles: o mesmo numero (K01/K02 trocariam > por >=), apertar o teto e apertar o piso nao negam
+      liberou(rodar(editar(dir, 'src/a.js', '"teto": 3', '"teto": 3'), tmp));
+      liberou(rodar(editar(dir, 'src/a.js', '"minimo": 80', '"minimo": 80'), tmp));
+      liberou(rodar(editar(dir, 'src/a.js', '"teto": 8', '"teto": 3'), tmp));
+      liberou(rodar(editar(dir, 'src/a.js', '"minimo": 40', '"minimo": 80'), tmp));
+      // Write nao tem "antes": criar/gravar uma catraca nao e afrouxar
+      const w = entrada(dir, 'src/a.js');
+      w.tool_input.content = '{ "teto": 8 }';
+      liberou(rodar(w, tmp));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('TS-03 (lote 3, D423): token_fora_do_sistema - Write (content) e Edit (new_string) em .css com cor fora do design.json negam; token dentro libera', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    try {
+      escrever(dir, '.claude/esquadro/escopo.md', '## Dentro\n- src/app.css\n');
+      escrever(dir, '.claude/esquadro/design.json',
+        JSON.stringify({ cores: ['#ff6600', '#ffffff'], raios: ['4px'], espacos: ['4px', '8px'], sombras: [], antiReferencias: [] }));
+      escrever(dir, 'src/app.css', '.a { color: #ff6600; }\n');
+      const escrita = (conteudo, id) => {
+        const w = comSessao(entrada(dir, 'src/app.css'), id);
+        w.tool_input.content = conteudo;
+        return w;
+      };
+      const wFora = rodar(escrita('.a { color: #ff0000; }\n', 'ts03-w'), tmp);
+      assert.ok(negou(wFora), 'Write com cor fora do sistema tinha de negar');
+      assert.match(motivoDeNegacao(wFora), /fora do design system/);
+      assert.match(motivoDeNegacao(wFora), /#ff0000/);
+      liberou(rodar(escrita('.a { color: #ff6600; }\n', 'ts03-w2'), tmp));
+      // Edit: o conteudo novo vem em new_string (nao ha `content`) - E26 so lia `content`
+      const eFora = rodar(editar(dir, 'src/app.css', 'color: #ff6600;', 'color: #ff0000;', 'ts03-e'), tmp);
+      assert.ok(negou(eFora), 'Edit com new_string fora do sistema tinha de negar');
+      assert.match(motivoDeNegacao(eFora), /fora do design system/);
+      assert.match(motivoDeNegacao(eFora), /#ff0000/);
+      liberou(rodar(editar(dir, 'src/app.css', 'color: #ff6600;', 'color: #ffffff;', 'ts03-e2'), tmp));
+      // o modulo e opcional: a mesma cor, sem design.json, nao nega
+      fs.rmSync(path.join(dir, '.claude', 'esquadro', 'design.json'));
+      liberou(rodar(editar(dir, 'src/app.css', 'color: #ff6600;', 'color: #ff0000;', 'ts03-sem'), tmp));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});

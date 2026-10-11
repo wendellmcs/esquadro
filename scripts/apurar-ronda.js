@@ -61,7 +61,8 @@ function lerMapaJson(base, ronda, naListagem) {
     corrompido(textoLib.causaDoErro(err));
   }
   let mj;
-  try { mj = JSON.parse(texto); } catch (err) { corrompido(err.message); }
+  // RV-04 (D422): o PowerShell 5.1 grava JSON com BOM; todo JSON lido daqui passa por semBom.
+  try { mj = JSON.parse(textoLib.semBom(texto)); } catch (err) { corrompido(err.message); }
   if (!mj || typeof mj !== 'object' || Array.isArray(mj)) corrompido('nao e um objeto');
   if (!mj.mapa || typeof mj.mapa !== 'object' || Array.isArray(mj.mapa)) corrompido('"mapa" nao e um objeto');
   return mj;
@@ -226,7 +227,10 @@ const rondas = pastas
     // D244/defeito 3: o mapa diz qual rotulo e o lado novo. Sem ele (pacote antigo), a ronda
     // e contada como antes, pelos dois lados, e a saida diz que foi assim.
     const mj = lerMapaJson(base, e.name);
-    const mapa = (mj && mj.mapa) || null;
+    let mapa = (mj && mj.mapa) || null;
+    // RV-01 (D422): arquivo igual ao HEAD (mapa.json com identico:true) nao tem lado antigo: o inspetor cita A
+    // ou B ao acaso, e os dois rotulos sao o trabalho. Mapa sem o campo conta como sempre.
+    if (mapa && mj.identico === true) mapa = { A: 'trabalho', B: 'trabalho' };
     if (!mapa) semMapa.push(Number(e.name));
     mapas.push(mapa);
     const dir = path.join(base, e.name, 'vereditos');
@@ -249,7 +253,7 @@ const rondas = pastas
     return arquivos.map(function (f) {
       const nome = [baseRel, e.name, 'vereditos', f].join('/');
       let vd;
-      try { vd = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch (err) {
+      try { vd = JSON.parse(textoLib.semBom(fs.readFileSync(path.join(dir, f), 'utf8'))); } catch (err) {
         ilegiveis.push(nome + ': ' + err.message);
         return null;
       }
@@ -279,7 +283,7 @@ if (semVeredito.length || ilegiveis.length || invalidos.length) {
 let refutados = [];
 const arqRefutados = path.join(base, 'refutados.json');
 if (fs.existsSync(arqRefutados)) {
-  try { refutados = JSON.parse(fs.readFileSync(arqRefutados, 'utf8')); } catch (err) {
+  try { refutados = JSON.parse(textoLib.semBom(fs.readFileSync(arqRefutados, 'utf8'))); } catch (err) {
     // 0.3.2, item 4: o erro cita o arquivo (cada base tem o seu) e diz o que fazer.
     process.stdout.write('ERRO: ' + baseRel + '/refutados.json ilegivel (' + err.message + '). Corrija o JSON ' +
       'ou apague o arquivo se nao ha refutacao, e rode este comando de novo.\n');
@@ -299,7 +303,7 @@ if (fs.existsSync(arqRefutados)) {
 let mesmos;
 const arqMesmos = path.join(base, 'mesmos.json');
 if (fs.existsSync(arqMesmos)) {
-  try { mesmos = JSON.parse(fs.readFileSync(arqMesmos, 'utf8')); } catch (err) {
+  try { mesmos = JSON.parse(textoLib.semBom(fs.readFileSync(arqMesmos, 'utf8'))); } catch (err) {
     process.stdout.write('ERRO: ' + baseRel + '/mesmos.json ilegivel (' + err.message + '). Corrija o JSON ' +
       'ou apague o arquivo se o juiz nao respondeu, e rode este comando de novo.\n');
     process.exit(1);
@@ -341,7 +345,7 @@ if (r.encerrar) {
   let previa = null;
   // Ronda 1 da T4: ilegivel e erro, como o refutados.json - recontar calado inflava o gatilho.
   if (fs.existsSync(arqFechada)) {
-    try { previa = JSON.parse(fs.readFileSync(arqFechada, 'utf8')); } catch (err) {
+    try { previa = JSON.parse(textoLib.semBom(fs.readFileSync(arqFechada, 'utf8'))); } catch (err) {
       falhar('ERRO: ' + baseRel + '/fechada.json ilegivel (' + err.message + '). Ele registra o fecho ja ' +
         'contado desta revisao. Apague-o e rode de novo: o fecho sera contado outra vez.\n');
     }

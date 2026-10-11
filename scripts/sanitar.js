@@ -65,7 +65,9 @@ function main() {
   // abrir a propria saida com o caminho absoluto desta maquina.
   console.log('Sanitacao de ' + pedida);
   console.log(prova.testadas + ' verificacoes: ' + prova.genericas + ' classes genericas + ' +
-              prova.locais + ' do vocabulario local, cada uma com isca e controle negativo.');
+              prova.locais + ' do vocabulario local (cada classe com isca e controle negativo) + ' +
+              (prova.testadas - prova.genericas - prova.locais) +
+              ' fora das classes (autoria do historico e mensagem de commit).');
   if (!r.comVocabularioLocal) {
     console.log('SEM ' + sanit.ARQUIVO_LOCAL + ': rodando so com as classes genericas.');
     console.log('Nome de pessoa, de empresa e de projeto interno NAO estao sendo procurados.');
@@ -84,10 +86,36 @@ function main() {
     ? r.achados.filter(function (a) { return a.superficie === 1; })
     : r.achados;
 
+  // D420/IN-01: arquivo da superficie que nao abriu e arquivo NAO lido. Aparece
+  // sempre; e sem achado nenhum o veredito e "nao deu para medir" (2), nunca LIMPO.
+  const ilegiveis = r.ilegiveis || [];
+  if (ilegiveis.length > 0) {
+    console.log('NAO LI ' + ilegiveis.length + ' arquivo(s) da superficie:');
+    ilegiveis.forEach(function (i) { console.log('  ' + i.arquivo + '  (' + i.porQue + ')'); });
+    console.log('');
+  }
+
+  // D429/2: binario (NUL) pula com aviso. Nao trava o veredito, mas nunca some do relatorio.
+  const naoConferidos = r.naoConferidos || [];
+  if (naoConferidos.length > 0) {
+    console.log('AVISO - nao conferido (binario): ' + naoConferidos.length + ' arquivo(s) da superficie, pulados:');
+    naoConferidos.forEach(function (i) { console.log('  ' + i.arquivo + '  (' + i.porQue + ')'); });
+    console.log('');
+  }
+
+  if (relevantes.length === 0 && ilegiveis.length > 0) {
+    console.error('NAO DEU PARA MEDIR: ' + ilegiveis.length + ' arquivo(s) da superficie nao abriram (lista acima).');
+    console.error('Sem le-los nao ha veredito. Saida 2, nao 0.');
+    process.exit(2);
+  }
+
   if (relevantes.length === 0) {
     console.log(soConteudo
       ? 'VEREDITO: LIMPO no conteudo.'
       : 'VEREDITO: LIMPO nas tres superficies.');
+    if (naoConferidos.length > 0) {
+      console.log('RESSALVA: ' + naoConferidos.length + ' arquivo(s) nao conferido(s) (binario) - lista acima.');
+    }
     process.exit(0);
   }
 

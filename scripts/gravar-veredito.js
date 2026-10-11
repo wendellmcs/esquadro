@@ -21,18 +21,10 @@ const veredito = require('./lib/veredito.js');
 const AGENTE = 'esquadro:inspetor';
 // revisao/<id>/<n>/vereditos (formato novo) ou revisao/<n>/vereditos (formato da 0.3.0).
 const PASTA_DE_RONDA = /(?:^|\/)\.claude\/esquadro\/revisao\/[^/]+(?:\/[^/]+)?\/vereditos$/i;
-const TODAS_AS_LENTES = veredito.LENTES.concat(veredito.LENTES_UI);
-
-function normal(s) { return String(s).trim().toLowerCase(); }
 
 /** O nome do arquivo: a chave da lente. O titulo so vale quando as duas familias nao o dividem. */
-function chaveDaLente(nome) {
-  if (typeof nome !== 'string') return null;
-  const porChave = TODAS_AS_LENTES.filter(function (l) { return normal(l.chave) === normal(nome); });
-  if (porChave.length === 1) return porChave[0].chave;
-  const porTitulo = TODAS_AS_LENTES.filter(function (l) { return normal(l.titulo) === normal(nome); });
-  return porTitulo.length === 1 ? porTitulo[0].chave : null;
-}
+// RV-02 (D422): a regra mora no veredito.js, que o apurar tambem usa para a chave de repeticao.
+const chaveDaLente = veredito.chaveDaLente;
 
 /** Tira o objeto JSON da mensagem: bloco de codigo, a mensagem inteira, ou do primeiro { ao ultimo }. */
 function extrairJson(mensagem) {

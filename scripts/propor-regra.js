@@ -15,7 +15,15 @@ const gravar = process.argv.indexOf('--gravar') !== -1;
 const alvo = path.join(process.cwd(), '.claude', 'esquadro', 'regras.md');
 
 if (!gatilho || !acao) {
-  process.stdout.write('uso: propor-regra.js --gatilho "<quando>" --acao "<o que fazer>" [--gravar]\n');
+  process.stdout.write("uso: propor-regra.js --gatilho '<quando>' --acao '<o que fazer>' [--gravar]\n");
+  process.exit(1);
+}
+
+// D434: regra e UMA linha so. Quebra de linha dentro do gatilho ou da acao gravaria a regra
+// partida (a segunda metade vira texto solto, e o arquivo diz "0 regras"). Recusa antes de tudo.
+if (/[\r\n]/.test(gatilho) || /[\r\n]/.test(acao)) {
+  process.stdout.write('RECUSADA: o gatilho ou a acao tem quebra de linha. Nada foi gravado.\n');
+  process.stdout.write('  - escreva gatilho e acao numa linha so (a regra e uma linha so) e rode de novo\n');
   process.exit(1);
 }
 

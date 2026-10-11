@@ -157,6 +157,11 @@ if (doHead.erro) {
 }
 const novo = doHead.novo === true;
 const anterior = novo ? '' : doHead.texto;
+// RV-01 (D422): arquivo igual ao HEAD (revisar depois de commitar) nao tem lado antigo.
+// Comparacao normalizada (sem BOM, CRLF -> LF) so para decidir o identico: com core.autocrlf=true o disco
+// tem CRLF e o blob do HEAD tem LF. O conteudo gravado em A.txt/B.txt nao e normalizado.
+const normalizado = function (t) { return textoLib.semBom(t).replace(/\r\n/g, '\n'); };
+const identico = !novo && normalizado(anterior) === normalizado(atual);
 
 // D257 secao 11, item 11: uma base por arquivo (revisao/<id>/<n>/). Revisao em andamento no formato
 // da 0.3.0 - pasta numerada solta em revisao/ - segue na base unica, para nao partir a revisao ao meio.
@@ -261,7 +266,7 @@ if (formatoAntigo) {
   } catch (e) { numeradas = []; }
   for (let i = 0; i < numeradas.length && !idAntigo; i++) {
     try {
-      const m = JSON.parse(fs.readFileSync(path.join(revisao, numeradas[i], 'mapa.json'), 'utf8'));
+      const m = JSON.parse(textoLib.semBom(fs.readFileSync(path.join(revisao, numeradas[i], 'mapa.json'), 'utf8')));
       if (m && typeof m.arquivo === 'string' && m.arquivo !== '') {
         arquivoAntigo = m.arquivo;
         idAntigo = cegar.idDoArquivo(m.arquivo);
@@ -288,6 +293,8 @@ try {
   fs.writeFileSync(path.join(dir, 'B.txt'), r.B.conteudo, 'utf8');
   const mapaJson = { arquivo: rel, mapa: r.mapa };
   if (novo) mapaJson.novo = true;
+  // RV-01 (D422): revisar depois de commitar deixa os dois lados iguais; o apurar le este campo.
+  if (identico) mapaJson.identico = true;
   fs.writeFileSync(path.join(dir, 'mapa.json'), JSON.stringify(mapaJson, null, 2), 'utf8');
   fs.mkdirSync(path.join(dir, 'vereditos'), { recursive: true });
   // 0.3.3, item 11: a regua e parte do pacote, gravada aqui dentro: falha = "ficou pela metade".
@@ -321,6 +328,17 @@ if (arquivada) {
 if (novo) {
   aviso += ' E arquivo novo: um dos lados e vazio, a cegueira nao existe; julgue o lado cheio pelo que ele e, ' +
     'e diga isso no fecho.';
+}
+if (identico) {
+  // L2-pre-2 (S7, D426): o identico sai da normalizacao; A.txt e B.txt seguem como estao no disco e no HEAD. Se
+  // diferem em fim de linha ou BOM, "o mesmo texto" seria falso e o inspetor ainda distingue os lados por esse resto.
+  const mesmoTexto = anterior === atual
+    ? 'A e B sao o mesmo texto'
+    : 'A e B tem o mesmo texto, mas diferem so no fim de linha ou no BOM (a diferenca nao e do codigo e pode ' +
+      'denunciar qual lado e o do disco: ignore-a)';
+  aviso += ' O arquivo esta igual ao HEAD (revisar depois de commitar): nao ha lado antigo, ' + mesmoTexto +
+    ' e a cegueira nao existe; o inspetor so pode julgar o arquivo pelo que ele e. O mapa.json leva ' +
+    'identico:true e o apurar conta os achados dos dois rotulos como do lado atual.';
 }
 if (formatoAntigo) {
   aviso += ' A revisao em andamento esta no formato antigo (pastas numeradas soltas em ' +

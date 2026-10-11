@@ -19,13 +19,25 @@ if (decisoes) {
 }
 
 if (abrirEm) {
-  const sessao = arg('sessao') || process.env.CLAUDE_SESSION_ID || 'sem-sessao';
+  const sessao = arg('sessao') || process.env.CLAUDE_CODE_SESSION_ID || process.env.CLAUDE_SESSION_ID || 'sem-sessao';
   const a = planoLib.abrir(cwd, abrirEm, sessao);
   process.stdout.write('plano ativo: ' + a.arquivo + ' (dono: ' + a.sessionId + ')\n');
   process.exit(0);
 }
 
 const ativo = planoLib.lerAtivo(cwd);
+
+// Bloco M / M2: o painel em texto, para o comando do mod. Saida 0 sempre: ler mal nao derruba nada.
+if (process.argv.indexOf('--texto') !== -1) {
+  let tarefasDoPainel = [];
+  if (ativo && ativo.arquivo) {
+    try { tarefasDoPainel = planoLib.parseTarefas(fs.readFileSync(path.join(cwd, ativo.arquivo), 'utf8')); }
+    catch (e) { process.stdout.write('painel do plano\nnao consegui ler ' + ativo.arquivo + '\n'); process.exit(0); }
+  }
+  process.stdout.write(planoLib.painelTexto(ativo, tarefasDoPainel) + '\n');
+  process.exit(0);
+}
+
 if (!ativo) {
   process.stdout.write('nenhum plano ativo. Use --abrir <caminho do plano>\n');
   process.exit(0);

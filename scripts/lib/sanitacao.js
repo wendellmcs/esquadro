@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const texto = require('./texto.js');
 
 /**
  * Detector de sanitacao para repositorio publico (D79, ampliado pelas D132 e D133).
@@ -48,17 +49,24 @@ const CLASSES_GENERICAS = [
     nome: 'caminho absoluto de pasta pessoal',
     // Pasta pessoal nas quatro formas: unidade + Users + <nome> no Windows, a
     // mesma sob /<letra>/Users/<nome> no Git Bash, /home/<nome> no Linux e
-    // /Users/<nome> no macOS. Caminho generico como /tmp ou a pasta do sistema
+    // /Users/<nome> no macOS (D420/IN-05: em qualquer contexto, menos colado a
+    // um nome de pasta - assim `api/Users/` de rota segue de fora). Caminho generico como /tmp ou a pasta do sistema
     // NAO entra: nao identifica ninguem, e a suite de comandos destrutivos e
     // cheia deles.
-    padrao: /(?:[A-Za-z]:[\\/]+Users[\\/]+|\/[a-z]\/Users\/|\/home\/|(?:^|[\s"'(])\/Users\/)[A-Za-z0-9._-]+/g,
+    // L1-14: so a forma do Windows ignora a caixa (o sistema de arquivos ignora:
+    // c:/users e C:/USERS sao a mesma pasta). As outras seguem sensiveis, senao
+    // a rota /users/42 de documentacao viraria falso positivo. D430: a letra de
+    // unidade nao vem colada em outra letra (o `p:` de `http://users/42` nao e disco).
+    padrao: /(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/]+[Uu][Ss][Ee][Rr][Ss][\\/]+|\/[a-z]\/Users\/|\/home\/|(?<![A-Za-z0-9_.-])\/Users\/)[A-Za-z0-9._-]+/g,
     isca: 'C:' + '\\Users\\' + 'fulano\\Desktop',
     controle: 'rm -rf /tmp/build && del C:' + '\\Windows\\temp'
   },
   {
     chave: 'email',
     nome: 'endereco de e-mail',
-    padrao: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
+    // L1-11: o lookbehind so deixa a busca comecar na borda da corrida. Sem ele,
+    // linha longa de [a-z.] sem '@' era O(n^2): cada posicao varria a corrida inteira.
+    padrao: /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
     reservados: DOMINIOS_RESERVADOS,
     isca: 'fulano' + '@empresa.com.br',
     controle: 'teste' + '@exemplo.com'
@@ -127,22 +135,74 @@ function excecaoVale(classe, arquivo) {
  * Le o vocabulario privado, se existir. Formato:
  *   { "termos": [ { "chave":"...", "nome":"...", "padrao":"...", "flags":"gi",
  *                   "isca":"...", "controle":"...", "excecaoEm":[...] } ] }
- * Devolve [] quando nao ha arquivo - e quem chama tem de DIZER que rodou assim.
+ *
+ * D420/IN-04: tres estados, e nao dois. AUSENTE e legitimo (roda so com as
+ * genericas, e quem chama DIZ isso). PRESENTE E INVALIDO - JSON quebrado, sem
+ * lista de termos, regex que nao compila - NAO e legitimo: o dono escreveu um
+ * vocabulario e ele nao esta sendo procurado, e devolver [] calado fazia o
+ * veredito sair LIMPO sobre o que nunca foi procurado. O autoteste reprova isso.
+ *
+ * Devolve { estado: 'ausente'|'ok'|'invalido', motivo, termos, descartados }.
  */
-function termosLocais(raiz) {
+function lerVocabularioLocal(raiz) {
+  const vazio = { termos: [], descartados: [] };
   let bruto;
-  try { bruto = fs.readFileSync(path.join(raiz, ARQUIVO_LOCAL), 'utf8'); } catch (e) { return []; }
+  try { bruto = fs.readFileSync(path.join(raiz, ARQUIVO_LOCAL), 'utf8'); } catch (e) {
+    if (e && e.code === 'ENOENT') return Object.assign({ estado: 'ausente', motivo: '' }, vazio);
+    return Object.assign({ estado: 'invalido', motivo: 'nao consegui ler: ' + texto.causaDoErro(e) }, vazio);
+  }
   let dados;
-  try { dados = JSON.parse(bruto); } catch (e) { return []; }
-  if (!dados || !Array.isArray(dados.termos)) return [];
-  return dados.termos.map(function (t) {
+  try { dados = JSON.parse(texto.semBom(bruto)); } catch (e) {
+    return Object.assign({ estado: 'invalido', motivo: 'JSON invalido' }, vazio);
+  }
+  if (!dados || !Array.isArray(dados.termos)) {
+    return Object.assign({ estado: 'invalido', motivo: 'falta a lista "termos"' }, vazio);
+  }
+  const termos = [];
+  const descartados = [];
+  dados.termos.forEach(function (t, i) {
+    const chave = t && typeof t === 'object' && t.chave ? String(t.chave) : '(termo ' + (i + 1) + ')';
+    if (!t || typeof t !== 'object' || typeof t.padrao !== 'string' || t.padrao === '') {
+      descartados.push({ chave: chave, porQue: 'sem "padrao"' });
+      return;
+    }
+    // D420/IN-03: sem o g o laco de varrerTexto nunca termina - exec() devolve
+    // sempre o mesmo primeiro achado. O g nao e opcao do termo: e do instrumento.
+    let flags = typeof t.flags === 'string' && t.flags !== '' ? t.flags : 'gi';
+    if (flags.indexOf('g') === -1) flags += 'g';
     let re;
-    try { re = new RegExp(t.padrao, t.flags || 'gi'); } catch (e) { return null; }
-    return {
-      chave: t.chave, nome: t.nome || t.chave, padrao: re,
+    try { re = new RegExp(t.padrao, flags); } catch (e) {
+      descartados.push({ chave: chave, porQue: 'regex invalida' });
+      return;
+    }
+    // L1-16: padrao que casa texto vazio acusaria toda linha do repositorio (e
+    // o laco de varrerTexto avancaria um caractere por vez). Testado em '' e em
+    // um texto qualquer, para pegar tambem x* e (?=a).
+    if (['', 'a b'].some(function (s) { re.lastIndex = 0; const m = re.exec(s); return m !== null && m[0] === ''; })) {
+      descartados.push({ chave: chave, porQue: 'padrao casa texto vazio' });
+      return;
+    }
+    re.lastIndex = 0;
+    // L1-16: excecaoEm tem de ser lista de caminhos; string solta quebrava
+    // excecaoVale (some nao e funcao de string) em toda varredura.
+    if (t.excecaoEm != null && (!Array.isArray(t.excecaoEm) ||
+        t.excecaoEm.some(function (e) { return typeof e !== 'string' || e === ''; }))) {
+      descartados.push({ chave: chave, porQue: '"excecaoEm" precisa ser uma lista de caminhos (texto nao vazio)' });
+      return;
+    }
+    // T-1a/#15: `chave` (do topo da funcao) ja traz o "(termo N)" quando o termo nao tem chave; usar
+    // `t.chave` aqui deixava a classe `undefined` nos achados e no placar por classe.
+    termos.push({
+      chave: chave, nome: t.nome || chave, padrao: re,
       isca: t.isca, controle: t.controle, excecaoEm: t.excecaoEm || undefined, local: true
-    };
-  }).filter(Boolean);
+    });
+  });
+  return { estado: 'ok', motivo: '', termos: termos, descartados: descartados };
+}
+
+/** Os termos validos do vocabulario local. Quem precisa saber do resto usa lerVocabularioLocal. */
+function termosLocais(raiz) {
+  return lerVocabularioLocal(raiz).termos;
 }
 
 function classes(raiz) {
@@ -153,10 +213,10 @@ function classes(raiz) {
  * Varre UM texto e devolve os achados, com linha. Achado sem `arquivo:linha` nao
  * serve para conferir, e a regra anti-teatro do projeto vale aqui tambem.
  */
-function varrerTexto(texto, arquivo, listaClasses) {
+function varrerTexto(conteudo, arquivo, listaClasses) {
   const lista = listaClasses || CLASSES_GENERICAS;
   const achados = [];
-  const linhas = String(texto == null ? '' : texto).split(/\r?\n/);
+  const linhas = String(conteudo == null ? '' : conteudo).split(/\r?\n/);
   for (let i = 0; i < linhas.length; i++) {
     for (let c = 0; c < lista.length; c++) {
       const classe = lista[c];
@@ -180,7 +240,10 @@ function correrGit(raiz, args) {
   let r;
   try {
     r = spawnSync('git', args, {
-      cwd: raiz, encoding: 'utf8', shell: false, timeout: 20000, windowsHide: true
+      cwd: raiz, encoding: 'utf8', shell: false, timeout: 20000, windowsHide: true,
+      // L1-12: o padrao (1 MiB) estoura em historico grande e a auditoria virava
+      // null ("o git nao respondeu"). Mesmo teto do scripts/lib/git.js.
+      maxBuffer: 32 * 1024 * 1024
     });
   } catch (e) {
     return null;
@@ -204,9 +267,11 @@ function correrGit(raiz, args) {
  * privado se acusaria inteiro.
  */
 function superficiePublicavel(raiz) {
-  const bruto = correrGit(raiz, ['ls-files', '--cached', '--others', '--exclude-standard']);
+  // D420/IN-01: `-z`. Sem ele o git devolve nome com acento entre aspas e com
+  // escape octal, o arquivo nao abre e some da varredura sem ninguem saber.
+  const bruto = correrGit(raiz, ['ls-files', '-z', '--cached', '--others', '--exclude-standard']);
   if (bruto === null) return null;
-  return bruto.split(/\r?\n/).filter(function (a) {
+  return bruto.split('\0').filter(function (a) {
     if (!a) return false;
     return !FORA_DO_PUBLICO.some(function (p) {
       return a === p.replace(/\/$/, '') || a.indexOf(p) === 0;
@@ -214,12 +279,54 @@ function superficiePublicavel(raiz) {
   });
 }
 
-function varrerArquivos(raiz, arquivos, listaClasses) {
+/**
+ * Decodifica o arquivo pelo BOM. D420/IN-02: o PowerShell 5.1 grava `>` em
+ * UTF-16LE com BOM, e ler isso como utf8 deixa cada letra separada por um NUL -
+ * nenhum padrao casa e o arquivo passa limpo sem ter sido lido.
+ */
+function decodificar(buf) {
+  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) return buf.toString('utf16le');
+  if (buf.length >= 2 && buf[0] === 0xFE && buf[1] === 0xFF) {
+    const par = Buffer.from(buf.length % 2 === 0 ? buf : buf.subarray(0, buf.length - 1));
+    return par.swap16().toString('utf16le');
+  }
+  return buf.toString('utf8');
+}
+
+/**
+ * T-1a/#20: as duas listas sao opcionais, mas SEM `ilegiveis` o arquivo que nao abriu e pulado
+ * sem nenhum aviso (e sem `naoConferidos` o binario e varrido como texto). So o `auditar` passa
+ * as duas e por isso so ele garante veredito; quem chama `varrerArquivos` direto e quer saber o que
+ * ficou sem leitura tem de passar as listas.
+ *
+ * `ilegiveis` (opcional) recebe { arquivo, porQue } de cada arquivo da superficie
+ * que NAO abriu (D420/IN-01): pular calado e dizer LIMPO sobre o que nao foi lido.
+ * ENOENT e EISDIR nao contam - arquivo apagado do disco mas ainda no indice, ou
+ * subrepositorio, nao tem conteudo a publicar.
+ * `naoConferidos` (opcional, D429/2) recebe { arquivo, porQue } dos que abriram mas
+ * tem NUL (binario): sao pulados, nao varridos, e nao travam o veredito.
+ */
+function varrerArquivos(raiz, arquivos, listaClasses, ilegiveis, naoConferidos) {
   const achados = [];
   (arquivos || []).forEach(function (rel) {
-    let texto;
-    try { texto = fs.readFileSync(path.join(raiz, rel), 'utf8'); } catch (e) { return; }
-    varrerTexto(texto, rel, listaClasses).forEach(function (a) {
+    let conteudo;
+    try { conteudo = texto.semBom(decodificar(fs.readFileSync(path.join(raiz, rel)))); } catch (e) {
+      const codigo = e && e.code;
+      if (ilegiveis && codigo !== 'ENOENT' && codigo !== 'EISDIR') {
+        ilegiveis.push({ arquivo: rel, porQue: texto.causaDoErro(e) });
+      }
+      return;
+    }
+    // L1-17: so o BOM e reconhecido. UTF-16 sem BOM e UTF-32 decodificam como
+    // utf8 com um NUL entre as letras - nenhum padrao casa e o arquivo sairia
+    // limpo sem ter sido lido. Nao e detector de encoding: so nao deixa passar calado.
+    // D429/2: o dono decidiu que binario PULA com aviso "nao conferido" em vez de
+    // travar o veredito (antes ia a `ilegiveis`, saida 2). So pula quem pediu a lista.
+    if (naoConferidos && conteudo.indexOf('\0') !== -1) {
+      naoConferidos.push({ arquivo: rel, porQue: 'contem NUL sem decodificar: binario, UTF-16 sem BOM ou UTF-32' });
+      return;
+    }
+    varrerTexto(conteudo, rel, listaClasses).forEach(function (a) {
       a.superficie = 1;
       achados.push(a);
     });
@@ -311,6 +418,14 @@ function mensagensDoHistorico(raiz) {
 function autoteste(raiz) {
   const lista = classes(raiz);
   const falhas = [];
+  // D420/IN-04: vocabulario presente e quebrado nao pode terminar em veredito.
+  const vocab = raiz ? lerVocabularioLocal(raiz) : { estado: 'ausente', descartados: [] };
+  if (vocab.estado === 'invalido') {
+    falhas.push({ classe: 'vocabulario_local', tipo: 'arquivo local', porQue: ARQUIVO_LOCAL + ' presente mas invalido (' + vocab.motivo + '): o vocabulario privado NAO esta sendo procurado' });
+  }
+  vocab.descartados.forEach(function (d) {
+    falhas.push({ classe: d.chave, tipo: 'termo descartado', porQue: d.porQue + ' em ' + ARQUIVO_LOCAL + ': esse termo NAO esta sendo procurado' });
+  });
   lista.forEach(function (classe) {
     if (!classe.isca || !classe.controle) {
       falhas.push({ classe: classe.chave, tipo: 'estrutura', porQue: 'classe sem isca ou sem controle' });
@@ -341,6 +456,11 @@ function autoteste(raiz) {
 
   return {
     ok: falhas.length === 0,
+    // T-1a/#18: `testadas` = as classes (genericas + locais, cada uma com isca e controle) MAIS as duas
+    // superficies fora de classe: a autoria do historico e a mensagem de commit. Por isso o numero
+    // passa de `genericas + locais` em 2 (conferido em `sanitar.js`, que imprime os tres). As
+    // checagens do vocabulario local (arquivo invalido, termo descartado) nao entram na conta: so
+    // geram falha, nao tem isca nem controle proprios.
     testadas: lista.length + 2,
     genericas: CLASSES_GENERICAS.length,
     locais: lista.length - CLASSES_GENERICAS.length,
@@ -350,7 +470,12 @@ function autoteste(raiz) {
 
 /** Varredura completa das TRES superficies. Devolve null se o git nao respondeu. */
 function auditar(raiz) {
-  const lista = classes(raiz);
+  // T-1a/#13: o vocabulario local invalido (ou com termo descartado) NAO foi procurado, entao o
+  // veredito nao pode sair limpo mesmo quando quem chama nao rodou o `autoteste` antes (o `sanitar.js`
+  // roda; API e teste direto nao).
+  const vocab = lerVocabularioLocal(raiz);
+  const vocabularioOk = vocab.estado !== 'invalido' && vocab.descartados.length === 0;
+  const lista = CLASSES_GENERICAS.concat(vocab.termos);
   const arquivos = superficiePublicavel(raiz);
   if (arquivos === null) return null;
   const autores = autoresDoHistorico(raiz);
@@ -358,7 +483,9 @@ function auditar(raiz) {
   const mensagens = mensagensDoHistorico(raiz);
   if (mensagens === null) return null;
 
-  const achados = varrerArquivos(raiz, arquivos, lista)
+  const ilegiveis = [];
+  const naoConferidos = [];
+  const achados = varrerArquivos(raiz, arquivos, lista, ilegiveis, naoConferidos)
     .concat(varrerAutores(autores))
     .concat(varrerMensagens(mensagens, lista));
 
@@ -377,13 +504,16 @@ function auditar(raiz) {
     classesGenericas: CLASSES_GENERICAS.length,
     classesLocais: lista.length - CLASSES_GENERICAS.length,
     comVocabularioLocal: lista.length > CLASSES_GENERICAS.length,
+    ilegiveis: ilegiveis,
+    naoConferidos: naoConferidos,
     achados: achados, porClasse: porClasse, porSuperficie: porSuperficie,
-    limpo: achados.length === 0
+    vocabulario: { estado: vocab.estado, motivo: vocab.motivo, descartados: vocab.descartados },
+    limpo: achados.length === 0 && ilegiveis.length === 0 && vocabularioOk
   };
 }
 
 module.exports = {
   CLASSES_GENERICAS, DOMINIOS_RESERVADOS, FORA_DO_PUBLICO, ARQUIVO_LOCAL,
-  termosLocais, classes, varrerTexto, varrerArquivos, varrerAutores, varrerMensagens,
+  termosLocais, lerVocabularioLocal, classes, varrerTexto, varrerArquivos, varrerAutores, varrerMensagens,
   superficiePublicavel, semCommits, autoresDoHistorico, mensagensDoHistorico, auditar, autoteste
 };

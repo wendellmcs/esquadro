@@ -662,3 +662,259 @@ test('D417: portaoHandoff false, handoff gravado sem bloco e a saude dispara -> 
     assert.ok(/Cole o prompt/.test(t) && !/nao cole/.test(t), 'sem bloco na resposta, o aviso tem de mandar colar: ' + t);
   });
 });
+
+// PT-01 (lote 2, D422): o subitem aberto cobrado e o da tarefa que o agente DISSE ter concluido,
+// nao o da primeira tarefa com caixa aberta do plano.
+const SAIDA = '\n```text\n3 passed\n```';
+
+function planoComTarefas(tmp, nome, texto, ativoExtra) {
+  const dir = projetoCom(tmp, nome);
+  fs.writeFileSync(path.join(dir, 'plano.md'), texto, 'utf8');
+  fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'plano-ativo.json'),
+    JSON.stringify(Object.assign({ arquivo: 'plano.md', sessionId: nome, tarefa: null }, ativoExtra || {})), 'utf8');
+  gravar(tmp, nome, dir, 'Write', 'a.js');
+  return dir;
+}
+
+const DUAS = '## Tarefa 1: primeira\n- [x] a\n- [x] b\n\n## Tarefa 2: segunda (futura)\n- [ ] c\n- [ ] d\n- [ ] e\n';
+
+test('PT-01: alegar a Tarefa 1 concluida com a Tarefa 2 futura aberta NAO cobra a Tarefa 2', () => {
+  comTmp((tmp) => {
+    const dir = planoComTarefas(tmp, 'pt1a', DUAS);
+    const r = fecho(tmp, 'pt1a', dir, 'A Tarefa 1 esta concluida.' + SAIDA);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(!r.json || r.json.decision !== 'block', 'cobrou a tarefa futura: ' + r.stdout);
+  });
+});
+
+test('PT-01: alegacao acentuada ("A Tarefa 1 está concluída.") tambem nao cobra a Tarefa 2 futura', () => {
+  comTmp((tmp) => {
+    const dir = planoComTarefas(tmp, 'pt1c', DUAS);
+    const r = fecho(tmp, 'pt1c', dir, 'A Tarefa 1 está concluída.' + SAIDA);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(!r.json || r.json.decision !== 'block', 'cobrou a tarefa futura: ' + r.stdout);
+  });
+});
+
+test('PT-01: alegacao acentuada ("A Tarefa 1 está concluída.") com caixa aberta NA Tarefa 1 bloqueia', () => {
+  comTmp((tmp) => {
+    const texto = '## Tarefa 1: primeira\n- [x] a\n- [ ] b\n\n## Tarefa 2: segunda\n- [ ] c\n';
+    const dir = planoComTarefas(tmp, 'pt1f', texto);
+    const r = fecho(tmp, 'pt1f', dir, 'A Tarefa 1 está concluída.' + SAIDA);
+    assert.ok(r.json && r.json.decision === 'block', r.stdout);
+    assert.ok(/Tarefa 1 \("primeira"\)/.test(r.json.reason), r.json.reason);
+  });
+});
+
+test('PT-01: alegar a Tarefa 1 concluida com caixa aberta NA Tarefa 1 continua bloqueando', () => {
+  comTmp((tmp) => {
+    const texto = '## Tarefa 1: primeira\n- [x] a\n- [ ] b\n\n## Tarefa 2: segunda\n- [ ] c\n';
+    const dir = planoComTarefas(tmp, 'pt1b', texto);
+    const r = fecho(tmp, 'pt1b', dir, 'A Tarefa 1 esta concluida.' + SAIDA);
+    assert.ok(r.json && r.json.decision === 'block', r.stdout);
+    assert.ok(/Tarefa 1 \("primeira"\)/.test(r.json.reason), r.json.reason);
+    assert.ok(/1 de 2 passos/.test(r.json.reason), r.json.reason);
+  });
+});
+
+test('PT-01: alegar a Tarefa 2 concluida cobra a Tarefa 2, mesmo com a 1 aberta antes dela', () => {
+  comTmp((tmp) => {
+    const texto = '## Tarefa 1: primeira\n- [ ] a\n\n## Tarefa 2: segunda\n- [x] b\n- [ ] c\n';
+    const dir = planoComTarefas(tmp, 'pt1c', texto);
+    const r = fecho(tmp, 'pt1c', dir, 'Fechei a etapa 2.' + SAIDA);
+    assert.ok(r.json && r.json.decision === 'block', r.stdout);
+    assert.ok(/Tarefa 2 \("segunda"\)/.test(r.json.reason), r.json.reason);
+  });
+});
+
+test('PT-01: sem numero na alegacao, a tarefa em andamento (ultima com caixa marcada) e a cobrada, nao a primeira aberta', () => {
+  comTmp((tmp) => {
+    const texto = '## Tarefa 1: primeira\n- [x] a\n- [x] b\n\n## Tarefa 2: segunda (futura)\n- [ ] c\n- [ ] d\n';
+    const dir = planoComTarefas(tmp, 'pt1d', texto);
+    const r = fecho(tmp, 'pt1d', dir, 'A etapa esta concluida.' + SAIDA);
+    assert.ok(!r.json || r.json.decision !== 'block', 'cobrou a tarefa futura sem numero: ' + r.stdout);
+    // controle: com a Tarefa 2 em andamento (caixa marcada), ela e a cobrada
+    const dir2 = planoComTarefas(tmp, 'pt1e', texto.replace('- [ ] c', '- [x] c'));
+    const r2 = fecho(tmp, 'pt1e', dir2, 'A etapa esta concluida.' + SAIDA);
+    assert.ok(r2.json && r2.json.decision === 'block' && /Tarefa 2 \("segunda/.test(r2.json.reason), r2.stdout);
+  });
+});
+
+test('PT-01: sem numero na alegacao, o campo tarefa do plano-ativo.json diz qual cobrar', () => {
+  comTmp((tmp) => {
+    const texto = '## Tarefa 1: primeira\n- [x] a\n\n## Tarefa 2: segunda\n- [x] b\n- [ ] c\n';
+    const dir = planoComTarefas(tmp, 'pt1f', texto, { tarefa: 1 });
+    const r = fecho(tmp, 'pt1f', dir, 'A etapa esta concluida.' + SAIDA);
+    assert.ok(!r.json || r.json.decision !== 'block', 'ignorou ativo.tarefa: ' + r.stdout);
+  });
+});
+
+// PT-01 (ronda 2 da revisao cega): a tarefa em andamento toda fechada nao esconde um subitem esquecido
+// numa tarefa ANTERIOR; a futura intocada (depois do andamento) segue sem ser cobrada.
+test('PT-01 R2: sem numero, andamento todo fechado cobra a tarefa anterior com caixa esquecida (e nao a futura)', () => {
+  comTmp((tmp) => {
+    const texto = '## Tarefa 1: primeira\n- [x] a\n- [x] b\n- [ ] esquecido\n\n## Tarefa 2: segunda\n- [x] c\n- [x] d\n\n## Tarefa 3: terceira (futura)\n- [ ] e\n';
+    const dir = planoComTarefas(tmp, 'pt1j', texto);
+    const r = fecho(tmp, 'pt1j', dir, 'Fechei a etapa.' + SAIDA);
+    assert.ok(r.json && r.json.decision === 'block', 'passou com subitem esquecido na Tarefa 1: ' + r.stdout);
+    assert.ok(/Tarefa 1 \("primeira"\)/.test(r.json.reason), r.json.reason);
+    // controle: sem o subitem esquecido, so a futura esta aberta e nada e cobrado
+    const dir2 = planoComTarefas(tmp, 'pt1k', texto.replace('- [ ] esquecido', '- [x] esquecido'));
+    const r2 = fecho(tmp, 'pt1k', dir2, 'Fechei a etapa.' + SAIDA);
+    assert.ok(!r2.json || r2.json.decision !== 'block', 'cobrou a tarefa futura: ' + r2.stdout);
+  });
+});
+
+// PT-01 (ronda 1 da revisao cega, F1): numero citado que NAO existe no plano nao e conferivel; a
+// alegacao cai como sem numero (ativo.tarefa -> andamento -> primeira aberta) em vez de passar.
+const TRES = '## Tarefa 1: primeira\n- [x] a\n\n## Tarefa 2: segunda\n- [x] b\n- [ ] c\n\n## Tarefa 3: terceira\n- [ ] d\n';
+
+test('PT-01 F1: alegar uma etapa que nao existe no plano cobra a tarefa em andamento', () => {
+  comTmp((tmp) => {
+    const dir = planoComTarefas(tmp, 'pt1g', TRES);
+    const r = fecho(tmp, 'pt1g', dir, 'Fechei a etapa 7.' + SAIDA);
+    assert.ok(r.json && r.json.decision === 'block', 'passou com numero inexistente: ' + r.stdout);
+    assert.ok(/Tarefa 2 \("segunda"\)/.test(r.json.reason), r.json.reason);
+  });
+});
+
+test('PT-01 F1: numero citado que EXISTE e esta fechado continua sem cobrar, mesmo citado junto de um inexistente', () => {
+  comTmp((tmp) => {
+    const dir = planoComTarefas(tmp, 'pt1h', TRES);
+    const r = fecho(tmp, 'pt1h', dir, 'A Tarefa 1 esta concluida.' + SAIDA);
+    assert.ok(!r.json || r.json.decision !== 'block', 'cobrou alegacao verdadeira: ' + r.stdout);
+    const dir2 = planoComTarefas(tmp, 'pt1i', TRES);
+    const r2 = fecho(tmp, 'pt1i', dir2, 'Fechei a etapa 7. A Tarefa 1 esta concluida.' + SAIDA);
+    assert.ok(!r2.json || r2.json.decision !== 'block', 'cobrou com um numero existente e fechado: ' + r2.stdout);
+  });
+});
+
+// Bloco S6 (fase P2, D426). `RE_ALEGA_N` mora num script que le stdin ao ser carregado e nao exporta
+// nada: o teste le a fonte e avalia so o literal do array.
+function reAlegaN() {
+  const fonte = fs.readFileSync(path.join(RAIZ, 'scripts', 'portao-fecho.js'), 'utf8');
+  const achou = fonte.match(/const RE_ALEGA_N = (\[[\s\S]*?\n\]);/);
+  assert.ok(achou, 'RE_ALEGA_N nao encontrada em scripts/portao-fecho.js');
+  return new Function('return ' + achou[1])();
+}
+
+function numerosCitados(texto) {
+  const out = [];
+  for (const re of reAlegaN()) {
+    const r = new RegExp(re.source, re.flags);
+    let m;
+    while ((m = r.exec(texto)) !== null) (m[1].match(/\d+/g) || []).forEach((d) => out.push(parseInt(d, 10)));
+  }
+  return out;
+}
+
+test('L2-fec-1: RE_ALEGA_N concorda com plano.alegaEtapaConcluida (paridade) e extrai o numero certo', () => {
+  const plano = require('../scripts/lib/plano.js');
+  const nomes = ['tarefa', 'etapa', 'onda', 'fase'];
+  const casos = [];
+  for (const nome of nomes) {
+    for (const aux of ['', 'esta ', 'está ', 'foi ']) {
+      for (const p of ['concluida', 'concluído', 'fechada', 'finalizado', 'pronta', 'completa']) {
+        casos.push({ texto: 'A ' + nome + ' 3 ' + aux + p + '.', n: 3 });
+        casos.push({ texto: 'A ' + nome + ' ' + aux + p + '.', n: null });
+      }
+    }
+    for (const verbo of ['concluí', 'conclui', 'fechei', 'fechou', 'finalizei', 'completamos']) {
+      casos.push({ texto: 'Eu ' + verbo + ' a ' + nome + ' 3.', n: 3 });
+      casos.push({ texto: 'Eu ' + verbo + ' o ' + nome + '.', n: null });
+    }
+  }
+  // N2 (D426): plural e lista, nas duas formas e com os auxiliares plurais.
+  casos.push(
+    { texto: 'Tarefas 1 e 2 concluidas.', n: [1, 2] },
+    { texto: 'As etapas 3, 4 e 5 fechadas.', n: [3, 4, 5] },
+    { texto: 'As tarefas 1 e 2 estão concluídas.', n: [1, 2] },
+    { texto: 'As tarefas 1 e 2 foram concluídas.', n: [1, 2] },
+    { texto: 'As fases 6 e 7 estao prontas.', n: [6, 7] },
+    { texto: 'Concluí as tarefas 1 e 2.', n: [1, 2] },
+    { texto: 'Fechamos as etapas 3, 4 e 5.', n: [3, 4, 5] },
+    { texto: 'Finalizei as fases 8 e 9.', n: [8, 9] },
+    { texto: 'As fases concluídas.', n: null },
+    { texto: 'Concluí as ondas.', n: null }
+  );
+  assert.ok(casos.length > 200, 'corpus pequeno demais: ' + casos.length);
+  for (const c of casos) {
+    assert.strictEqual(plano.alegaEtapaConcluida(c.texto), true, 'o corpus supoe que alega: ' + c.texto);
+    const esperado = c.n === null ? [] : Array.isArray(c.n) ? c.n : [c.n];
+    assert.deepStrictEqual(numerosCitados(c.texto), esperado, 'numero extraido: ' + c.texto);
+  }
+  // controles: o que nao alega nao pode render numero
+  for (const t of ['A tarefa 3 esta pendente.', 'Abri a tarefa 3.', 'O chamado 3 foi fechado.', 'Tarefa 3 em andamento.',
+    'As tarefas 1 e 2 ainda não foram concluídas.', 'Tarefas 1 e 2 pendentes.', 'Abri as tarefas 1 e 2.']) {
+    assert.strictEqual(plano.alegaEtapaConcluida(t), false, t);
+    assert.deepStrictEqual(numerosCitados(t), [], t);
+  }
+});
+
+test('L2-fec-2: alegacao com mais de um numero ("tarefa 1 e 2") cobra todos, nao so o primeiro ou o ultimo', () => {
+  comTmp((tmp) => {
+    const texto = '## Tarefa 1: primeira\n- [x] a\n\n## Tarefa 2: segunda\n- [x] b\n- [ ] c\n';
+    const frases = ['Fechei a tarefa 1 e 2.', 'Fechei a tarefa 1, 2.', 'A Tarefa 1 e Tarefa 2 concluidas.'];
+    frases.forEach((frase, i) => {
+      const id = 'lf2-' + i;
+      const dir = planoComTarefas(tmp, id, texto);
+      const r = fecho(tmp, id, dir, frase + SAIDA);
+      assert.ok(r.json && r.json.decision === 'block', frase + ' passou com a Tarefa 2 aberta: ' + r.stdout);
+      assert.ok(/Tarefa 2 \("segunda"\)/.test(r.json.reason), r.json.reason);
+    });
+    // controle: citar so a tarefa fechada continua sem cobrar a outra
+    const dir = planoComTarefas(tmp, 'lf2-c', texto);
+    const r = fecho(tmp, 'lf2-c', dir, 'Fechei a tarefa 1.' + SAIDA);
+    assert.ok(!r.json || r.json.decision !== 'block', 'cobrou tarefa nao citada: ' + r.stdout);
+  });
+});
+
+test('L2-fec-7: RE_ALEGA_N nao degrada com uma sequencia longa de espacos (tempo linear)', () => {
+  const sp = ' '.repeat(50000);
+  const entradas = ['fechei' + sp + 'x', 'fechei' + sp + 'a' + sp + 'x', 'tarefa' + sp + '1' + sp + 'x', 'tarefa 1' + sp + 'x'];
+  for (const re of reAlegaN()) {
+    for (const t of entradas) {
+      const r = new RegExp(re.source, re.flags);
+      const ini = process.hrtime.bigint();
+      r.exec(t);
+      const ms = Number(process.hrtime.bigint() - ini) / 1e6;
+      assert.ok(ms < 500, 'backtracking: ' + ms.toFixed(0) + ' ms em ' + re.source.slice(0, 30));
+    }
+  }
+});
+
+test('L2-fec-8: os ramos de tarefaACobrar que nenhum teste tocava - nada andou, ativo.tarefa aberta, ativo.tarefa inexistente', () => {
+  comTmp((tmp) => {
+    // nada andou (nenhuma caixa marcada): a primeira aberta e a cobrada
+    const nada = '## Tarefa 1: primeira\n- [ ] a\n\n## Tarefa 2: segunda\n- [ ] b\n';
+    const d1 = planoComTarefas(tmp, 'lf8a', nada);
+    const r1 = fecho(tmp, 'lf8a', d1, 'A etapa esta concluida.' + SAIDA);
+    assert.ok(r1.json && r1.json.decision === 'block' && /Tarefa 1 \("primeira"\)/.test(r1.json.reason), r1.stdout);
+    // ativo.tarefa aponta para uma tarefa aberta: ela manda, mesmo com outra aberta antes
+    const d2 = planoComTarefas(tmp, 'lf8b', nada, { tarefa: 2 });
+    const r2 = fecho(tmp, 'lf8b', d2, 'A etapa esta concluida.' + SAIDA);
+    assert.ok(r2.json && r2.json.decision === 'block' && /Tarefa 2 \("segunda"\)/.test(r2.json.reason), r2.stdout);
+    // ativo.tarefa que nao existe no plano e ignorado: cai na tarefa em andamento
+    const d3 = planoComTarefas(tmp, 'lf8c', TRES, { tarefa: 9 });
+    const r3 = fecho(tmp, 'lf8c', d3, 'A etapa esta concluida.' + SAIDA);
+    assert.ok(r3.json && r3.json.decision === 'block' && /Tarefa 2 \("segunda"\)/.test(r3.json.reason), r3.stdout);
+  });
+});
+
+test('S52-fec-1: plano ativo que nao pode ser lido nao passa calado - o fecho avisa que nao conferiu', () => {
+  comTmp((tmp) => {
+    const dir = planoComTarefas(tmp, 'sf1a', DUAS, { arquivo: 'plano-que-sumiu.md' });
+    const r = fecho(tmp, 'sf1a', dir, 'A Tarefa 2 esta concluida.' + SAIDA);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(r.json && /nao pode ser lido/.test(r.json.systemMessage || ''), 'passou calado: ' + r.stdout);
+    assert.ok(r.json.decision !== 'block', 'plano ilegivel nao pode barrar: ' + r.stdout);
+    // quando o fecho barra por outro motivo (sem evidencia), o aviso viaja no mesmo bloqueio
+    const dir2 = planoComTarefas(tmp, 'sf1b', DUAS, { arquivo: 'plano-que-sumiu.md' });
+    const r2 = fecho(tmp, 'sf1b', dir2, 'A Tarefa 2 esta concluida.');
+    assert.ok(r2.json && r2.json.decision === 'block' && /nao pode ser lido/.test(r2.json.reason), r2.stdout);
+    // controle: plano legivel nao emite o aviso
+    const dir3 = planoComTarefas(tmp, 'sf1c', DUAS);
+    const r3 = fecho(tmp, 'sf1c', dir3, 'A Tarefa 1 esta concluida.' + SAIDA);
+    assert.ok(!r3.json || !/nao pode ser lido/.test(r3.json.systemMessage || ''), 'avisou com plano legivel: ' + r3.stdout);
+  });
+});

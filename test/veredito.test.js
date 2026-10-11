@@ -597,3 +597,126 @@ test('D396 n. 41: par autorreferente com resposta invalida recebe a mensagem da 
   // resposta valida: segue a mensagem da mesma chave
   assert.throws(() => v.conferirMesmos([{ novo: 'k1', outro: 'k1', resposta: 'sim' }], existentes), /mesma chave/);
 });
+
+// Lote 2 da D422. RV-03: a linha em texto ("42") ou em intervalo ("40-45") era descartada calada.
+test('RV-03: linha em texto ou intervalo vira o numero da 1a linha; sem numero segue descartada', () => {
+  for (const [bruta, esperada] of [['42', 42], [' 42 ', 42], ['40-45', 40], ['40\u201345', 40], ['40 - 45', 40]]) {
+    const r = v.validarVeredito(veredito('correcao', [achado('P0', 'B.txt', bruta)]));
+    assert.deepStrictEqual(r.erros, [], JSON.stringify(bruta));
+    assert.strictEqual(r.achadosValidos.length, 1, JSON.stringify(bruta));
+    assert.strictEqual(r.achadosValidos[0].linha, esperada, JSON.stringify(bruta));
+  }
+  for (const ruim of ['', 'abc', '0', '-3', '4.5', 4.5, 0, null, undefined, true]) {
+    const r = v.validarVeredito(veredito('correcao', [achado('P0', 'B.txt', ruim)]));
+    assert.strictEqual(r.achadosValidos.length, 0, JSON.stringify(ruim));
+    assert.strictEqual(r.erros.length, 1, JSON.stringify(ruim));
+  }
+  const inteiro = achado('P1', 'B.txt', 7);
+  assert.strictEqual(v.validarVeredito(veredito('correcao', [inteiro])).achadosValidos[0], inteiro, 'linha ja inteira passa o mesmo objeto');
+});
+
+test('RV-03: o P0 com linha em texto molha a ronda e o intervalo e refutavel pela 1a linha', () => {
+  const ap = v.apurar([[veredito('correcao', [achado('P0', 'B.txt', '42')])], [veredito('correcao', [achado('P0', 'B.txt', '40-45')])]]);
+  assert.strictEqual(ap.secas, 0);
+  assert.strictEqual(ap.encerrar, false);
+  assert.strictEqual(ap.novos.length, 1);
+  const ref = v.apurar([[veredito('correcao', [achado('P0', 'B.txt', '40-45')])]],
+    { refutados: [{ ronda: 1, lente: 'correcao', arquivo: 'B.txt', linha: 40, severidade: 'P0', prova: 'src/a.js:40' }] });
+  assert.strictEqual(ref.novos.length, 0, 'refutado pela linha 40');
+});
+
+// RV-02: o mesmo defeito, com a lente em outra grafia (chave, titulo, caixa), contava como NOVO e a ronda nunca secava.
+test('RV-02: a lente em outra grafia (chave, titulo, caixa) e a mesma chave de repeticao', () => {
+  const grafias = ['correcao', 'Correcao', 'Correcao e regressao', ' CORRECAO '];
+  const rondas = grafias.map((g) => [veredito(g, [achado('P1', 'B.txt', 10)])]);
+  const ap2 = v.apurar(rondas.slice(0, 2));
+  assert.strictEqual(ap2.secas, 1, 'a repeticao com outra grafia nao e achado novo');
+  assert.strictEqual(ap2.novos.length, 0);
+  const ap3 = v.apurar(rondas.slice(0, 3));
+  assert.strictEqual(ap3.motivo, 'duas rondas secas seguidas: aprovado');
+  // sem familia ambigua: o titulo de tela e o de codigo nao se confundem
+  const dois = v.apurar([[veredito('Estados obrigatorios (codigo)', [achado('P1', 'B.txt', 10)])],
+    [veredito('Estados obrigatorios (tela)', [achado('P1', 'B.txt', 10)])]]);
+  assert.strictEqual(dois.novos.length, 1, 'lentes de familias diferentes seguem sendo achados diferentes');
+  // a chave da saida e a canonica
+  assert.strictEqual(ap2.paresCandidatos.length, 0);
+  assert.strictEqual(v.chaveDaLente('Correcao e regressao'), 'correcao');
+});
+
+test('RV-02: a refutacao casa a lente por chave ou titulo, qualquer um dos dois', () => {
+  for (const g of ['correcao', 'Correcao e regressao']) {
+    const ap = v.apurar([[veredito('correcao', [achado('P1', 'B.txt', 10)])]],
+      { refutados: [{ ronda: 1, lente: g, arquivo: 'B.txt', linha: 10, severidade: 'P1', prova: 'x' }] });
+    assert.strictEqual(ap.novos.length, 0, g);
+  }
+});
+
+// S7 da P2 (D426), L2-ver-1: o inspetor escreve o titulo com acento e o titulo canonico nao tem.
+// Escapes \u para o arquivo seguir ASCII; a forma decomposta (NFD) tambem vale.
+test('L2-ver-1: titulo com acento (composto ou decomposto) e a mesma lente do titulo sem acento', () => {
+  assert.strictEqual(v.chaveDaLente('Corre\u00e7\u00e3o e regress\u00e3o'), 'correcao');
+  assert.strictEqual(v.chaveDaLente('Corre\u0063\u0327\u0061\u0303o e regress\u0061\u0303o'), 'correcao');
+  assert.strictEqual(v.chaveDaLente('Estados obrigat\u00f3rios (c\u00f3digo)'), 'estados');
+  assert.strictEqual(v.chaveDaLente('Seguran\u00e7a e dado sens\u00edvel'), 'seguranca');
+  // a chave de repeticao e a mesma: o acento nao faz o mesmo defeito virar achado novo
+  const ap = v.apurar([[veredito('correcao', [achado('P1', 'B.txt', 10)])],
+    [veredito('Corre\u00e7\u00e3o e regress\u00e3o', [achado('P1', 'B.txt', 10)])]]);
+  assert.strictEqual(ap.secas, 1, 'a repeticao com acento nao e achado novo');
+  // CONTROLE: lente desconhecida segue desconhecida, com ou sem acento
+  assert.strictEqual(v.chaveDaLente('Corre\u00e7\u00e3o geral'), null);
+});
+
+// L2-ver-2: o intervalo vale pelo MENOR numero, em qualquer ordem. "45-40" valia 45 e "40-45" valia 40.
+test('L2-ver-2: intervalo de linha vale pelo menor numero, escrito em qualquer ordem', () => {
+  for (const [bruta, esperada] of [['40-45', 40], ['45-40', 40], ['45 \u2013 40', 40], ['45\u201440', 40], ['7-7', 7]]) {
+    const r = v.validarVeredito(veredito('correcao', [achado('P1', 'B.txt', bruta)]));
+    assert.deepStrictEqual(r.erros, [], JSON.stringify(bruta));
+    assert.strictEqual(r.achadosValidos[0].linha, esperada, JSON.stringify(bruta));
+  }
+  // o menor tem de ser linha valida (>= 1): "0-5" nao vira 5 calado
+  for (const ruim of ['0-5', '5-0']) {
+    const r = v.validarVeredito(veredito('correcao', [achado('P1', 'B.txt', ruim)]));
+    assert.strictEqual(r.achadosValidos.length, 0, ruim);
+    assert.strictEqual(r.erros.length, 1, ruim);
+  }
+  // o intervalo escrito ao contrario e refutavel pela mesma linha do escrito em ordem
+  const ref = v.apurar([[veredito('correcao', [achado('P0', 'B.txt', '45-40')])]],
+    { refutados: [{ ronda: 1, lente: 'correcao', arquivo: 'B.txt', linha: 40, severidade: 'P0', prova: 'src/a.js:40' }] });
+  assert.strictEqual(ref.novos.length, 0);
+});
+
+// L2-ver-3: meta.lente (o que o juiz le) e o texto do aviso usam a chave canonica, nao o que o inspetor escreveu.
+test('L2-ver-3: meta.lente e provaveisMesmos levam a chave canonica da lente, nao a grafia do inspetor', () => {
+  const mapa = { A: 'trabalho', B: 'HEAD' };
+  const r1 = [veredito('Correcao e regressao', [achado('P1', 'A.txt', 5, 'um')])];
+  const r2 = [veredito('Entrada e borda', [achado('P1', 'A.txt', 8, 'dois')])];
+  const ap = v.apurar([r1, r2], { mapas: [mapa, mapa] });
+  assert.deepStrictEqual(ap.paresCandidatos.map((p) => [p.novo.lente, p.outro.lente]), [['borda', 'correcao']]);
+  const K_NOVO = 'P1|trabalho|8|borda';
+  const K_VELHO = 'P1|trabalho|5|correcao';
+  const com = v.apurar([r1, r2], { mapas: [mapa, mapa], mesmos: [{ novo: K_NOVO, outro: K_VELHO, resposta: 'sim' }] });
+  assert.strictEqual(com.provaveisMesmos.length, 1);
+  assert.strictEqual(com.provaveisMesmos[0].lente, 'correcao');
+  assert.strictEqual(com.provaveisMesmos[0].texto, 'provavel mesmo defeito que ' + K_VELHO + ' (lente correcao, ronda 1)');
+  // lente desconhecida: o texto normalizado, como na chave
+  const desc = v.apurar([[veredito('  Lente Nova ', [achado('P1', 'A.txt', 5)])]], { mapas: [mapa] });
+  assert.strictEqual(desc.novos.length, 1);
+});
+
+// L2-ver-4: "Microcopy" e o TITULO da lente de tela (ui-microcopy) e a CHAVE da de codigo (microcopy).
+test('L2-ver-4: "Microcopy" (titulo da tela) nao vira a lente de codigo `microcopy`', () => {
+  assert.strictEqual(v.chaveDaLente('microcopy'), 'microcopy', 'a chave exata e a lente de codigo');
+  assert.strictEqual(v.chaveDaLente(' microcopy '), 'microcopy');
+  assert.strictEqual(v.chaveDaLente('Microcopy'), 'ui-microcopy', 'o titulo exato e a lente de tela');
+  assert.strictEqual(v.chaveDaLente(' Microcopy '), 'ui-microcopy');
+  assert.strictEqual(v.chaveDaLente('ui-microcopy'), 'ui-microcopy');
+  assert.strictEqual(v.chaveDaLente('Texto que o usuario le'), 'microcopy', 'o titulo da lente de codigo segue valendo');
+  // caixa diferente das duas formas exatas: nao ha como saber a familia, e nao se adivinha
+  assert.strictEqual(v.chaveDaLente('MICROCOPY'), null);
+  // no apurar, as duas familias sao achados diferentes e a refutacao de uma nao apaga a outra
+  const dois = v.apurar([[veredito('microcopy', [achado('P1', 'B.txt', 10)]), veredito('Microcopy', [achado('P1', 'B.txt', 10)])]]);
+  assert.strictEqual(dois.novos.length, 2, 'codigo e tela na mesma linha sao dois achados');
+  const ref = v.apurar([[veredito('microcopy', [achado('P1', 'B.txt', 10)]), veredito('Microcopy', [achado('P1', 'B.txt', 10)])]],
+    { refutados: [{ ronda: 1, lente: 'Microcopy', arquivo: 'B.txt', linha: 10, severidade: 'P1', prova: 'src/a.js:10' }] });
+  assert.strictEqual(ref.novos.length, 1, 'refutou so a de tela');
+});

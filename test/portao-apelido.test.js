@@ -337,3 +337,61 @@ test('portao-apelido: registrar o portao novo nao desligou o portao de custo', (
   const args = JSON.stringify(hooks.hooks.PreToolUse || []);
   assert.ok(args.indexOf('portao-agente.js') !== -1, 'a trava 6 sumiu do hooks.json');
 });
+
+// DC-02 (D422): texto emitido por gancho nao passa pela expansao de ${CLAUDE_PLUGIN_ROOT}
+// (so SKILL.md e hooks.json passam); no Bash do agente a variavel esta vazia.
+test('portao-apelido: o comando do conserto cita caminho REAL, nao a variavel nao expandida (DC-02)', () => {
+  comTmp((tmp) => {
+    const dir = projeto(DOIS);
+    agente(dir, 'busca', '---\nname: busca\nmodel: caro\n---\n');
+    agente(dir, 'arquiteto', '---\nname: arquiteto\nmodel: caro\n---\n');
+    const r = hook(dir, tmp, 'p11');
+    const ctx = r.json.hookSpecificOutput.additionalContext;
+    assert.ok(!ctx.includes('${CLAUDE_PLUGIN_ROOT}'), 'variavel nao expandida na saida do gancho: ' + ctx);
+    const m = /node "([^"]+portao-apelido\.js)" --corrigir/.exec(ctx);
+    assert.ok(m, 'sem caminho entre aspas: ' + ctx);
+    assert.ok(path.isAbsolute(m[1]) && fs.existsSync(m[1]), 'o caminho citado nao existe: ' + m[1]);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+// S8 L2-ape-2 (D426): o caminho do plugin entra no texto que o AGENTE copia para o shell. Com `$` ou
+// crase no caminho, aspas duplas deixariam o shell expandir/executar o pedaco: ai vai entre aspas simples.
+test('portao-apelido: caminho de instalacao com $ ou crase vai entre aspas simples; o normal segue entre duplas (L2-ape-2)', () => {
+  const copias = [];
+  function pluginEm(nome) {
+    const base = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-ap-copia-')), nome);
+    fs.cpSync(path.join(RAIZ, 'scripts'), path.join(base, 'scripts'), { recursive: true });
+    fs.cpSync(path.join(RAIZ, 'modelos'), path.join(base, 'modelos'), { recursive: true });
+    copias.push(path.dirname(base));
+    return base;
+  }
+  function contexto(plugin, dir, tmp, id) {
+    const r = spawnSync(process.execPath, [path.join(plugin, 'scripts', 'portao-apelido.js')], {
+      cwd: dir, encoding: 'utf8',
+      input: JSON.stringify({ session_id: id, cwd: dir, hook_event_name: 'PreToolUse', tool_name: 'Task', tool_input: { subagent_type: 'busca' } }),
+      env: Object.assign({}, process.env, { ESQUADRO_TMP: tmp })
+    });
+    assert.strictEqual(r.status, 0, r.stderr);
+    return JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+  }
+  comTmp((tmp) => {
+    const dir = projeto(DOIS);
+    try {
+      agente(dir, 'busca', '---\nname: busca\nmodel: caro\n---\n');
+      agente(dir, 'arquiteto', '---\nname: arquiteto\nmodel: caro\n---\n');
+      const esquisito = pluginEm('a$b`c');
+      const ctx = contexto(esquisito, dir, tmp, 'p12');
+      const alvo = path.join(esquisito, 'scripts', 'portao-apelido.js');
+      assert.ok(ctx.includes("a) node '" + alvo + "' --corrigir"), ctx);
+      assert.ok(ctx.includes("b) node '" + alvo + "' --corrigir"), ctx);
+      // controle: caminho comum (com espaco) nao muda
+      const normal = pluginEm('instalacao normal');
+      const ctxN = contexto(normal, dir, tmp, 'p13');
+      assert.ok(ctxN.includes('a) node "' + path.join(normal, 'scripts', 'portao-apelido.js') + '" --corrigir'), ctxN);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      for (const c of copias) fs.rmSync(c, { recursive: true, force: true });
+    }
+  });
+});

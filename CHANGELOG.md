@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.6.0 — os numeros na tela, e a correcao que vira regra
+
+Uma revisao completa do plugin (scripts, ganchos, skills, agentes e testes) e o que ela trouxe de
+novo. Cada falha confirmada foi corrigida com teste escrito antes; o comportamento novo vem com teste;
+a suite inteira roda com `npm test`.
+
+**Novo**
+
+- **Medidor da sessao e painel do plano, dentro do Claude Code.** Dois comandos que vem com o plugin,
+  como *mods* (extensoes que o proprio Claude Code roda na sessao; exigem o Claude Code 2.1.287 ou mais
+  novo). `/esquadro-sessao` mostra o contexto usado, as janelas de limite (5h e semana) com a hora em
+  que renovam, o custo, a previsao em turnos e cada gatilho de troca de chat com o valor e o limiar.
+  `/esquadro-plano` mostra o plano ativo: tarefas feitas, abertas e a proxima. No terminal e no app
+  Desktop o medidor tambem fica na linha de status, e quando um gatilho cruza aparece uma faixa acima
+  do prompt com o botao "gerar handoff". Nada disso abre rede.
+- **Correcao vira sugestao de regra.** Quando a sua mensagem parece uma correcao ao jeito de o Claude
+  trabalhar ("eu ja te disse", "da proxima vez..."), ele atende o pedido e oferece, em uma linha, virar
+  regra com `/esquadro:aprender`. O gancho nunca grava: quem grava e a skill, depois do seu sim. No
+  maximo uma sugestao a cada cinco turnos. Desliga com `"sugerirAprender": false` no `projeto.json`.
+- **A auditoria roda sozinha.** Na abertura da sessao, no maximo uma vez a cada 7 dias, o plugin roda
+  a auditoria do `/esquadro:auditar` e so fala se algo passou do limite: peso de instrucao, skills que
+  se sobrepoem, regras que se contradizem, skill do projeto parada ha 90 dias ou mais. Os prazos ficam
+  em `limiares` (`diasEntreAuditorias`, `diasSkillParada`); desliga com `"auditarNaAbertura": false`.
+- **Para quem mantem o plugin: a novidade da semana na abertura.** Com `"vigia": true` no
+  `projeto.json` (desligado por padrao), a abertura mostra uma vez o arquivo semanal que o
+  `scripts/vigia-puxar.js` trouxe para `~/.claude/esquadro/vigia`, marcado como dado, nao instrucao.
+  Quem busca o arquivo e uma tarefa agendada; gancho nenhum abre rede.
+- **Ferramentas de linha de comando:** o README mostra como rodar cada script a partir da pasta do
+  plugin instalado (`node "<plugin>/scripts/uso.js"`), e os avisos que mandam rodar um script citam o
+  caminho real, nunca uma variavel nao expandida.
+
+**Corrigido**
+
+- **Comando destrutivo.** Passam a ser barrados: `push` forcado com `-f` agrupado a outras opcoes,
+  `clean` com o `-f` depois de outra opcao, `checkout`, `restore` e `switch` que descartam a arvore
+  inteira, e escrita direta em disco. Opcao global do git com valor entre aspas nao escapa mais.
+  `checkout -- <arquivo>` e `restore --staged .` seguem liberados. Padrao invalido em
+  `comandosLiberados` nao libera nada.
+- **Estado que nao grava nao abre portao.** Se a pasta de estado do plugin nao aceita escrita, nada
+  que estaria barrado passa por isso. Um `projeto.json` invalido e dito como invalido, nao como
+  ausente, tambem na abertura.
+- **O fecho com plano ativo cobra a etapa certa:** a tarefa citada (todas, quando sao varias), a que
+  esta em andamento quando nao ha numero, nunca uma tarefa futura. Plano ativo que nao pode ser lido e
+  avisado.
+- **Catraca.** `max-width`, `min()`, `maxWidth` e variavel local `max`/`min` deixam de ser regua;
+  constante em caixa alta, nome com sufixo e numero com unidade seguem sendo. Anotacao de tipo entre o
+  nome e o numero nao esconde a regua.
+- **Token fora do design system.** Seletor de id com letras hexadecimais nao e mais cor; cor em valor
+  de varias linhas, em argumento de mixin e em fallback de `var()` passa a ser achada; comentarios de
+  bloco sao respeitados.
+- **`sanitar` nao diz LIMPO sem ter lido.** Arquivo que nao abre, vocabulario local quebrado e
+  `excecaoEm` invalido saem com 2. Arquivo com acento no nome, UTF-16 com BOM e pasta pessoal do macOS
+  e do Windows em qualquer caixa entram na conferencia; binario sai como "nao conferido", com o motivo.
+- **`/esquadro:init` na reconfiguracao** preserva o que a entrevista nao perguntou de novo (limiares,
+  chaves postas a mao, subchaves de agentes) e declara o escopo antes de gravar a configuracao. Valor
+  com `: ` no cabecalho de um agente gerado sai entre aspas, e quebra de linha ali e recusada.
+- **`/esquadro:aprender`** recusa gatilho ou acao com quebra de linha: a regra e uma linha so.
+- **`cicatriz.js`** aceita um arquivo, e nao so uma pasta, em `--manual` e `--corpus`.
+
 ## 0.5.4 — o portao do handoff erra menos
 
 Ajustes que a revisao cega da 0.5.3 deixou registrados. O comportamento novo vem com teste; a suite

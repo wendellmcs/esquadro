@@ -13,6 +13,14 @@ Motivo do portão, dito sem rodeio: **eu leio correção errado com frequência.
 entendida gravada sozinha vira lei permanente que passa a me guiar todo dia — e o próprio agente
 passaria a escrever o arquivo que o governa.
 
+**Quando esta skill é oferecida sem pedido.** O gancho `abrir-turno.js` (um script que o Claude Code
+roda sozinho a cada mensagem do usuário) avisa o agente quando a mensagem parece uma correção ao
+comportamento dele. O agente atende o pedido primeiro e, no fim da resposta, oferece em uma linha rodar
+esta skill; é essa linha, no fim da resposta, que o usuário vê. O gancho nunca grava: gravar continua
+exigindo os passos abaixo. No máximo uma oferta a cada 5 turnos; desliga com
+`"sugerirAprender": false` em `.claude/esquadro/projeto.json`. Se a mensagem era relato de bug ou
+resposta a uma pergunta, a oferta se ignora: siga sem rodar a skill, e nada é gravado.
+
 ## Passo 1 — separar o que foi corrigido do que eu entendi
 
 Escreva as duas coisas, lado a lado, para o usuário conferir:
@@ -31,11 +39,34 @@ Proibição solta decai com contexto longo; gatilho é convocado pela própria a
 | "não faça hardening não solicitado" | "ao encontrar problema de segurança fora do escopo → registrar e avisar, nunca corrigir" |
 | "cuidado com Windows" | "ao escrever comando de shell → usar o shell declarado em `projeto.json`" |
 
-Nada de fato volátil: versão, flag, preço, nome de modelo, nome de evento. O validador recusa.
+Nada de fato volátil: versão, flag, preço, nome de modelo, nome de evento. O validador recusa. Se
+recusar, a saída diz o motivo e nada foi gravado: tire o dado volátil do texto (aponte para onde ele
+vive, por exemplo o campo do `projeto.json`) e proponha de novo.
 
 ## Passo 3 — propor, sem gravar
 
-    node "${CLAUDE_PLUGIN_ROOT}/scripts/propor-regra.js" --gatilho "<quando>" --acao "<o que fazer>"
+    node "${CLAUDE_PLUGIN_ROOT}/scripts/propor-regra.js" --gatilho '<quando>' --acao '<o que fazer>'
+
+O texto da regra vai entre **aspas simples**, nos dois shells: com aspas duplas, uma crase ou um
+`$(...)` dentro dele executa como comando e a regra sai mutilada (e é gravada assim). Dentro do
+texto, cada caso tem o seu cuidado:
+
+- **Apóstrofo** (`'`): escreva `'\''` no bash e `''` no PowerShell.
+- **Aspas duplas retas** (`"`), no Windows PowerShell 5.1: não use. Elas somem ao chegar ao `node`
+  (medido; crase, `$` e apóstrofo chegam íntegros). Troque por aspas tipográficas “ ” ou reescreva
+  sem elas.
+- **Apóstrofos tipográficos** (‘ ’), no PowerShell: eles **fecham** a string de aspas simples e o
+  comando nem chega a rodar. Troque cada um por `'` dobrado (`''`) ou reescreva sem eles.
+- **Barra invertida no fim** (`\`), no Windows PowerShell 5.1: um texto com espaço que acaba assim
+  engole o argumento seguinte (medido). Não termine o texto com ela.
+- **Quebra de linha:** não ponha. A regra é **uma linha só** (`gatilho -> ação`). O script não
+  recusa texto com duas linhas: ele propõe e grava assim mesmo, mas só a primeira linha fica com o
+  marcador `-`, e a regra gravada nunca é lida (medido: `Total de regras agora: 0`). Escreva o
+  gatilho e a ação em uma frase cada, sem Enter no meio.
+
+Confira na saída do `propor-regra.js` que o texto saiu igual ao que você quis antes de seguir para o
+Passo 4. O `${CLAUDE_PLUGIN_ROOT}` chega já trocado pelo caminho real e fica entre aspas duplas
+porque esse caminho pode ter espaço.
 
 Cole a saída. Ela diz, com todas as letras, que **não gravou nada**.
 
@@ -49,7 +80,8 @@ Use `AskUserQuestion`, com a recomendada em primeiro lugar e marcada:
 
 ## Passo 5 — gravar, só depois do OK
 
-    node "${CLAUDE_PLUGIN_ROOT}/scripts/propor-regra.js" --gatilho "…" --acao "…" --gravar
+    node "${CLAUDE_PLUGIN_ROOT}/scripts/propor-regra.js" --gatilho '…' --acao '…' --gravar
 
-Cole a saída, que traz o total de regras. **Se o número de regras passar de ~40, avise o usuário:**
+Cole a saída, que traz o total de regras. Se o total não subiu em 1, a
+linha não foi lida como regra: abra `.claude/esquadro/regras.md` e confira o texto. **Se o número de regras passar de ~40, avise o usuário:**
 arquivo de regra grande dilui a atenção e acelera exatamente a doença que veio curar.

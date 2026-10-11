@@ -50,8 +50,10 @@ Se a raiz não existir ou não for pasta, **pare e pergunte**. Não tente adivin
 
 ## Passo 0b — já existe configuração aqui?
 
-Leia `<raiz absoluta>/.claude/esquadro/projeto.json`. **Se existir, isto é um re-init, e o roteiro
-muda:** você não está configurando um projeto novo, está atualizando o de alguém.
+Leia `<raiz absoluta>/.claude/esquadro/projeto.json`. **Se existir, isto é um re-init** (uma
+reconfiguração: o `/esquadro:init` rodando num projeto que já foi configurado) **e o roteiro muda:**
+você não está configurando um projeto novo, está atualizando o de alguém. Ao falar com o dono, diga
+"reconfiguração"; "re-init" é só o nome que este roteiro usa.
 
 Diga ao usuário, em duas linhas: que já há configuração, de quando ela é (o campo `geradoEm`), e o
 que vai acontecer.
@@ -60,11 +62,60 @@ que vai acontecer.
 
 - **Pergunte só o que faz sentido reperguntar.** O que ele não responder de novo **fica como está**.
   Não releia a lista inteira das seis perguntas para ele: isso é pedir que refaça o trabalho.
-- **Mostre o que mudou antes de gravar.** O comparador devolve a lista de campos alterados e a lista
-  de respostas que ele **descartou** por não reconhecer o nome. **Mostre as duas.** Resposta
-  descartada em silêncio é a falha que este plugin existe para barrar.
+- **Mostre o que mudou antes de gravar.** Não há script que compare: quem compara é você. Antes do
+  `Write`, ponha lado a lado o `projeto.json` atual e o que vai gravar, e mostre **duas listas**: os
+  campos que mudaram de valor e as respostas que **não couberam em campo nenhum** (o nome da resposta
+  não é uma chave do `projeto.json`). **Preserve o que a entrevista não perguntou de novo:** chaves
+  postas à mão que o `projeto.json` já tem, os `limiares`, as `travas`, as `marchas` e os `agentes`
+  não repetidos (o init só escreve `agentes.escada`, a lista dos agentes do mais barato ao mais caro, e
+  `agentes.degraus`, o nome e o apelido do modelo de cada degrau dessa escada; outras subchaves postas à mão
+  sobrevivem; resposta parcial se funde por chave, não troca o objeto inteiro) e qualquer outro campo
+  que ficou sem resposta. **Mostre as duas listas.** Resposta descartada em silêncio é a falha que este plugin
+  existe para barrar.
 - **O `regras.md` do Passo 6 não se sobrescreve.** Ele pode ter sido editado à mão desde então.
   Se já existir, diga e siga.
+
+**Antes de qualquer `Write` em `.claude/esquadro/` (o `projeto.json` do Passo 7, o `design.json` do
+5b se for gravá-lo, o `regras.md` do Passo 6 se ele não existir mais), declare o escopo.** Três
+termos, em palavras simples: o **portão de escopo** (a "trava 4") é a proteção que só deixa gravar
+arquivo que o escopo declarado da tarefa cobre; o **escopo** é o arquivo `.claude/esquadro/escopo.md`,
+a lista do que esta tarefa pode editar; e a **marcha** é o nível de rigor que o `projeto.json` dá a
+cada caminho (`padrao` exige escopo declarado, `rapida` não; o Passo 5 detalha). No re-init o
+`projeto.json` já está no disco, então o portão está de pé — e em marcha `padrao`, sem escopo, ele
+**nega** esses `Write` (medido; é a mesma armadilha que o Passo 7e descreve mais adiante).
+**Diga ao dono, em palavras simples, que você vai criar ou ampliar o `.claude/esquadro/escopo.md`, só
+para poder gravar a configuração, e que tirará de volta o que acrescentar a um escopo que já era de
+outra tarefa.**
+
+Ponha antes `.claude/esquadro/projeto.json` e `.claude/esquadro/regras.md` na seção "Dentro" do escopo
+— e `.claude/esquadro/design.json` **só se o 5b for gravá-lo** (o 5b é opcional) — pois o mapa de
+marchas que este roteiro recomenda (`rapida`: `**/*.md`, `docs/**`) **não** cobre `.json`, e o mapa
+pode nem existir. O `escopo.md` e o arquivo da frente (abaixo) o portão libera sempre, sem exigir
+escopo: dá para editá-los antes de qualquer outro `Write`. Se o
+`.claude/esquadro/escopo.md` já existe (é de outra tarefa em uso), **acrescente** essas linhas à seção
+"Dentro" dele com `Edit`, sem apagar o resto; só crie o arquivo se ele não existir — e, se foi o init
+que o criou, ele é só um andaime para poder gravar a configuração: **o Passo 8 o remove** (arquivo de
+escopo que sobra passa a restringir a marcha `padrao` depois do init). Se ele existe mas
+não tem a seção "Dentro", crie a seção. Se a sessão está vinculada a uma frente (o escopo próprio de
+uma linha de trabalho paralela, em `.claude/esquadro/escopos/<frente>.md`, ver "Com mais de uma
+frente"), é nesse arquivo que se acrescenta.
+
+**No Passo 8, antes de fechar, remova de volta as linhas que você acrescentou** (com `Edit`; o arquivo
+é de outra tarefa, e deixá-las ali alarga o escopo dela para sempre). **Init interrompido antes do
+Passo 8** (o dono desistiu, a sessão fechou, você parou sem `OK` no Passo 7) deixa essas linhas no
+escopo da outra tarefa. Por isso: diga ao dono, na hora de acrescentar, quais linhas foram; se você
+mesmo vai parar antes do Passo 8, remova-as antes de parar; e **ao retomar um init interrompido**, o
+primeiro passo é abrir o escopo em vigor e remover (com `Edit`, só elas) as linhas que o init
+acrescentou — `.claude/esquadro/projeto.json`, `.claude/esquadro/regras.md` e, se foi o caso,
+`.claude/esquadro/design.json` na seção "Dentro". Se houver dúvida sobre alguma já ser da outra
+tarefa, pergunte ao dono antes de remover. **Se foi o init que criou o próprio `escopo.md`** (ele não
+existia antes), um init interrompido o deixa no disco: ao retomar, se o arquivo só tem as linhas do
+init, remova o **arquivo** inteiro (como o Passo 8 descreve); se tem mais do que isso, pergunte ao
+dono.
+
+O portão só enxerga o `Write` e o `Edit` que **você** faz. Os geradores dos Passos 7b, 7c e 7d gravam
+por script (`--gravar`), fora dele, então este escopo não precisa cobrir `.claude/agents/`, a skill do
+projeto nem o `AGENTS.md`.
 
 Depois de gravar, **rode o validador do Passo 7 do mesmo jeito** — e cole a saída. Re-init que
 reprova é configuração que protege menos do que aparenta, exatamente como no primeiro init.
@@ -74,12 +125,17 @@ reprova é configuração que protege menos do que aparenta, exatamente como no 
 Diga ao usuário, em uma linha, o que vai acontecer e qual é o limite. Não varra antes de dizer.
 
 > Vou listar os caminhos do repositório, com teto de 4000 arquivos e 8 níveis de profundidade,
-> pulando `node_modules`, `.git`, `dist` e afins. De arquivo, só leio o `package.json`, para achar
-> o comando de teste — nenhum outro conteúdo é aberto.
+> pulando `node_modules`, `.git`, `dist` e afins. Nesta varredura, de conteúdo, só abro o `package.json`, para achar
+> o comando de teste; os `.claude/settings.json`, `.claude/settings.local.json` e `.mcp.json`, para
+> ver o que o ambiente já tem; e os arquivos de instrução do projeto, apenas para contar linhas.
 
 O texto acima é o que o comando do Passo 2 realmente faz, e é o que ele mesmo declara no campo
-`teto.observacao`. Prometer "nenhum conteúdo de arquivo" e colar em seguida uma saída que diz o
-contrário é a família de defeito que este plugin existe para barrar.
+`teto.observacao` (lá, a leitura do `package.json` só aparece se ele existir). Prometer "só leio o
+`package.json`" ou "nenhum conteúdo de arquivo" e colar em seguida uma saída que diz o contrário é a
+família de defeito que este plugin existe para barrar. O limite vale **só para a varredura**, não para o
+roteiro inteiro: o Passo 5b lê os arquivos de token que o dono confirmar, e o Passo 7 lê
+`scripts/lib/projeto.js` do plugin. Não prometa "só isto" para o init todo; avise quando chegar a esses
+passos.
 
 ## Passo 2 — varrer
 
@@ -256,7 +312,8 @@ achando que você viu.
    resposta por conta própria.
 
    Grave em `agentes.escada` **e** em `agentes.degraus`, **na mesma ordem e no mesmo ato**. Gravar
-   um sem o outro não dá erro nenhum na hora: deixa o portão de custo julgando por uma lista e a
+   um sem o outro não dá erro nenhum na hora: deixa o portão de custo (a trava que barra despachar um agente caro para
+   trabalho simples) julgando por uma lista e a
    conferência de apelidos por outra, em silêncio.
 
    Se o projeto não tiver agentes, **deixe a lista vazia** — é resposta legítima, e o portão de
@@ -274,8 +331,8 @@ Use `AskUserQuestion`, **uma pergunta por lugar** (os três lugares abaixo não 
 pergunta tem as suas 3 opções, como nas outras perguntas), e peça **um arquivo para cada**, para a
 decisão não se perder dentro de uma lista de pendências:
 
-1. o **registro das decisões** do dono (o log de decisões: o arquivo onde cada decisão fica com a
-   data);
+1. o **registro das decisões** do dono (o arquivo onde cada decisão fica com a data; em inglês, o
+   log de decisões);
 2. as **dúvidas ainda abertas**;
 3. o **registro de progresso** do plano em execução (o ledger: o arquivo onde cada tarefa do plano
    anota o que foi feito).
@@ -341,8 +398,17 @@ Proponha o conteúdo a partir da listagem de primeiro nível e peça confirmaç�
 
 ## Passo 5b — design system, quando houver
 
-Se a varredura marcou `temDesignSystem: true`, leia os arquivos de token que ela apontou e grave
-`.claude/esquadro/design.json` com `cores`, `raios`, `espacos`, `sombras` e `antiReferencias`.
+Se a varredura marcou `temDesignSystem: true`, ela só diz que achou **sinal**: um arquivo ou pasta
+cujo **nome** casa o padrão dela (`DESIGN.md`, `tokens.*` ou `_tokens.*`, `design.tokens.*`, `design-tokens.*`,
+`design-system-*`, `theme.css|ts|js`, `variables.css|scss`, ou uma pasta `design-system`). Ela **não
+devolve caminho nenhum.** Localize você mesmo os arquivos que casam esse padrão — sem entrar nas
+pastas que o Passo 1 pula (`node_modules`, `.git`, `dist`, `build` e afins) —, leia-os e **confirme
+com o dono** que são mesmo os tokens do projeto (um `tokens.ts` de autenticação também casa). **Só
+depois de perguntar as anti-referências** (parágrafo abaixo) grave `.claude/esquadro/design.json` com
+`cores`, `raios`, `espacos`, `sombras` e `antiReferencias`.
+**Em re-init, o `Write` aqui é negado pelo portão de escopo** se o `escopo.md` não cobrir esse arquivo:
+declare-o antes, como manda o Passo 0b. **Se o `design.json` já existe, não o sobrescreva sem
+pedir:** mostre ao dono o que muda (campo a campo) e só grave com o OK dele.
 
 **Quando o projeto não tiver design system, extraia um dos componentes que já existem** — nunca
 importe um gosto médio. Se não der para extrair, **não crie o arquivo**: o módulo é opcional e
@@ -392,11 +458,14 @@ código é o que vale. Seis valores exigidos lá **não saem de pergunta nenhuma
   vazio. **É a que mais escapa**, porque ela apareceu na tela lá no Passo 3 e não veio de pergunta
   nenhuma — esquecê-la faz o `validar.js` reprovar com `falta a chave plataforma`;
 - `comandosBloqueados` e `comandosLiberados`: listas vazias — nenhuma pergunta deste roteiro as
-  preenche;
-- `travas`: as quatro, `true` por padrão.
+  preenche. **No re-init, mantenha os valores do `projeto.json` atual** (Passo 0b);
+- `travas`: as quatro, `true` por padrão. No re-init, também mantenha as do `projeto.json` atual.
 
 **Onde gravar.** `<raiz absoluta>/.claude/esquadro/projeto.json` — a raiz do Passo 0, nunca a pasta
 atual. Esta linha é a mais importante deste passo; o parágrafo seguinte é sobre outra coisa.
+
+**Em re-init, antes do `Write`:** o portão de escopo nega a gravação do `projeto.json` sem o
+escopo do Passo 0b no lugar — confira que o `escopo.md` (ou o arquivo da frente) cobre o `projeto.json`.
 
 **Com que ferramenta.** `Write`, sempre. **Nunca `Out-File`, `Set-Content` nem `>`**: a codificação
 que eles produzem depende do perfil do PowerShell, e já houve caso de sair UTF-16LE, que nasce
@@ -509,7 +578,7 @@ grava por cima (item 6), e o que faltar na fatia `decisoes` segue o caminho do P
 | `dataGeracao` | A data de hoje |
 | `portoes` | *"Que verificação este projeto exige e que nenhum outro exigiria?"* — contrato, gate visual, catraca, suíte por área |
 | `intocaveis` | O que não se toca **além** do que já está em `projeto.json` — e por quê |
-| `decisoes` | Decisões já validadas, na forma "não perguntar de novo", com a data — e **onde cada coisa se registra** (a fatia `ondeRegistrar` da skill de execução): use a resposta do **Passo 4b**, **sem perguntar de novo** — o log de decisões do dono, as dúvidas ainda abertas e o ledger do plano em execução, **um arquivo para cada** |
+| `decisoes` | Decisões já validadas, na forma "não perguntar de novo", com a data — e **onde cada coisa se registra** (a fatia `ondeRegistrar` da skill de execução): use a resposta do **Passo 4b**, **sem perguntar de novo** — o registro de decisões do dono, as dúvidas ainda abertas e o registro de progresso do plano em execução (o ledger), **um arquivo para cada** |
 | `naoPromete` | O que este projeto **não** garante, dito agora para não virar promessa quebrada |
 
 **Regra dura ao preencher:** nunca crave versão, flag, preço, nome de modelo ou nome de evento. Se
@@ -605,6 +674,16 @@ de que ele foi atualizado, e o README declara isso como limite. Depois de atuali
 
 ## Passo 8 — fechar dizendo o que ligou
 
+**Se no re-init você acrescentou linhas ao `escopo.md` (ou ao arquivo da frente) de outra tarefa
+(Passo 0b), remova-as agora**, depois do último `Write` em `.claude/esquadro/`, e diga que removeu.
+**Se o `.claude/esquadro/escopo.md` não existia e foi o init que o criou, remova o arquivo inteiro**,
+também depois do último `Write`, e diga ao dono que removeu: sobrando, ele passa a restringir a marcha
+`padrao` para a próxima tarefa. Apagar arquivo é comando, não `Write`/`Edit`; use
+`rm .claude/esquadro/escopo.md` (no PowerShell, `Remove-Item .claude\esquadro\escopo.md`), **sem `-f`,
+`-r` ou `-Force`** — o portão destrutivo barra essas opções, e `rm` simples de um arquivo passa (medido
+com `classificar` de `scripts/lib/destrutivo.js`). Se o portão barrar mesmo assim, não insista e não
+esvazie o arquivo (arquivo vazio ainda existe): diga ao dono o caminho e peça que ele apague.
+
 Termine com uma tabela curta: qual trava ficou ligada, o que ela bloqueia, e como desligá-la
 (`travas.<nome>: false` em `projeto.json`). O número entre parênteses é o que aparece na mensagem
 quando o portão nega. **Avise que ele não é único:** `destrutivo` e `outraFrente` imprimem as duas
@@ -628,7 +707,7 @@ nunca viu e não sabe como criar.
 arquivo em `.claude/esquadro/escopos/<frente>.md` (mesmo formato do `escopo.md`). Editar esse arquivo
 vincula a sessão àquela frente; sem vínculo, continua valendo o `escopo.md` geral.
 
-**A última linha não é uma trava, e diga isso.** Não existe `travas.custo`: o portao de custo se cala
+**A última linha não é uma trava, e diga isso.** Não existe `travas.custo`: o portão de custo se cala
 sozinho quando a escada tem menos de dois nomes. E ele não barra só o agente do topo — barra a
 metade de cima da escada, arredondada para cima. Numa escada de cinco, os dois últimos; numa de
 quatro, também os dois últimos. Diga em qual posição começa o corte **na escada que ele acabou de

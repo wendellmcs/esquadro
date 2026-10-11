@@ -23,7 +23,8 @@ io.blindar(function () {
     const alvos = design.alvosDeEstiloNoShell(comando, projeto, { ferramenta: e.tool_name, cwd: cwd });
     if (!alvos.length) return io.permitir();
 
-    estado.incrementar(e.session_id, 'estilo_por_shell');
+    // D420/SH-02: o contador e acessorio; estado fora do ar lancava aqui e `io.blindar` liberava a escrita.
+    try { estado.incrementar(e.session_id, 'estilo_por_shell'); } catch (err) { /* o balde vale menos que a negacao */ }
     io.negarFerramenta(design.motivoShell(alvos));
   });
 });

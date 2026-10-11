@@ -337,3 +337,69 @@ test('cicatriz: nenhum modulo do caminho abre conexao de rede', () => {
     }
   }
 });
+
+// IN-10 (D422): --corpus/--manual apontando um ARQUIVO passava no existsSync, a listagem
+// devolvia [] e o relatorio saia "corpus lido, 0 passagens, tudo SEM cicatriz" sem o
+// aviso de cego. O historico deste projeto E um arquivo unico.
+test('cicatriz: corpus que e um ARQUIVO e lido - nao vira "lido, vazio, tudo sem cicatriz"', () => {
+  const dir = pasta();
+  try {
+    const manual = manualDeTeste(dir);
+    const arquivo = path.join(corpusDeTeste(dir), 'decisoes.md');
+    assert.ok(fs.statSync(arquivo).isFile());
+    const r = cicatriz.varrer(manual, arquivo, { fracao: 0.5 });
+    assert.strictEqual(r.corpusLido, true);
+    assert.ok(r.passagensComMarca > 0, 'o arquivo do corpus nao foi lido: ' + r.passagensComMarca);
+    assert.strictEqual(r.resumo.comCicatriz, 1, JSON.stringify(r.resumo));
+    // e igual ao resultado de apontar a pasta que o contem
+    const viaPasta = cicatriz.varrer(manual, path.dirname(arquivo), { fracao: 0.5 });
+    assert.strictEqual(r.resumo.comCicatriz, viaPasta.resumo.comCicatriz);
+    assert.strictEqual(r.passagensComMarca, viaPasta.passagensComMarca);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('cicatriz: manual que e um ARQUIVO tem os itens lidos', () => {
+  const dir = pasta();
+  try {
+    const arquivo = path.join(manualDeTeste(dir), 'SKILL.md');
+    const r = cicatriz.varrer(arquivo, corpusDeTeste(dir), { fracao: 0.5 });
+    assert.strictEqual(r.resumo.total, 2, 'o manual-arquivo nao foi lido: ' + JSON.stringify(r.resumo));
+    assert.strictEqual(r.resumo.comCicatriz, 1);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('cicatriz: o script aceita --corpus apontando um arquivo', () => {
+  const dir = pasta();
+  try {
+    const manual = manualDeTeste(dir);
+    const arquivo = path.join(corpusDeTeste(dir), 'decisoes.md');
+    const s = spawnSync(process.execPath, [SCRIPT, '--manual', manual, '--corpus', arquivo, '--fracao', '0.5', '--json'], { encoding: 'utf8' });
+    assert.strictEqual(s.status, 0, s.stderr);
+    const j = JSON.parse(s.stdout);
+    assert.strictEqual(j.corpusLido, true);
+    assert.strictEqual(j.resumo.comCicatriz, 1, s.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// S8 L2-cic-1 (D426): pasta que existe mas nao tem NENHUM .md nao e corpus lido. Dizer
+// `corpusLido: true` com indice vazio e a mentira que o modo degradado existe para evitar:
+// a lista de poda sairia inteira, parecendo verdadeira.
+test('cicatriz: pasta de corpus sem nenhum .md cai no modo degradado, como pasta inexistente', () => {
+  const dir = pasta();
+  try {
+    const vazia = path.join(dir, 'vazia');
+    fs.mkdirSync(vazia, { recursive: true });
+    escrever(dir, path.join('so-texto', 'notas.txt'), 'D42 quebrou tudo\n');
+    for (const corpus of [vazia, path.join(dir, 'so-texto')]) {
+      const r = cicatriz.varrer(manualDeTeste(dir), corpus);
+      assert.strictEqual(r.corpusLido, false, corpus);
+      assert.strictEqual(r.resumo.comCicatriz, 0);
+      assert.ok(/CORPUS NAO LIDO/.test(cicatriz.texto(r)), 'tem de se declarar cego');
+    }
+    // controle: pasta COM .md, mas sem nenhuma marca, foi lida (zero cicatriz ali e resposta, nao cegueira)
+    escrever(dir, path.join('prosa', 'a.md'), '# so prosa\n\nescreva com clareza e cuidado\n');
+    const lida = cicatriz.varrer(manualDeTeste(dir), path.join(dir, 'prosa'));
+    assert.strictEqual(lida.corpusLido, true);
+    assert.strictEqual(lida.passagensComMarca, 0);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

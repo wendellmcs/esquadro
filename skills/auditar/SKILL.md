@@ -9,6 +9,21 @@ Ninguém tira nada de um arquivo de instrução. Em seis meses o projeto tem ski
 regra que se contradiz, e item que ninguém invoca — e cada um continua **competindo por atenção com
 os que importam**. Esta skill não acrescenta: ela poda.
 
+**Uma parte desta auditoria roda sozinha.** Na abertura da sessão, a cada 7 dias por padrão (contados
+da última rodada automática; rodar esta skill à mão não mexe na contagem), o plugin confere quatro
+coisas e só fala se alguma passou do limite: peso de instrução acima do teto, skills que se sobrepõem,
+regras que se contradizem e skills sem mudança há 90 dias ou mais (também por padrão). O aviso aparece no contexto da
+abertura, com a lista do que passou. Para peso, sobreposição e contradição, rode esta skill: o
+relatório traz o detalhe e a proposta de corte. Skill parada **não** aparece no relatório desta
+skill (ela não mede idade): abra a skill apontada e decida se ainda vale como está; "parada" quer
+dizer sem mudança, não sem uso. A rodada automática **não** mede o `MEMORY.md`, os itens fora da
+rubrica nem o catálogo de modelos: esses só esta skill confere. Três chaves de
+`.claude/esquadro/projeto.json` mudam a rodada automática: `limiares.diasEntreAuditorias`
+(intervalo), `limiares.diasSkillParada` (prazo da skill parada) e `"auditarNaAbertura": false`
+(desliga). O teto do peso e o critério de sobreposição não são do projeto: vêm do plugin, e não há
+chave no `projeto.json` para mudá-los. Se o teto incomoda, o caminho é cortar ou fundir instrução
+(é o que o Passo 3 propõe), não subir o teto; mexer no próprio teto é mudança no plugin e decisão do dono.
+
 ## Passo 1 — medir
 
     node "${CLAUDE_PLUGIN_ROOT}/scripts/auditar.js" --memoria "<pasta de memória>/MEMORY.md"
@@ -51,7 +66,8 @@ desfecho `ok` consome a janela.
     node "${CLAUDE_PLUGIN_ROOT}/scripts/catalogo.js" --registrar ok '<fonte>'
 
 Depois do desfecho vêm as fontes que você leu, cada uma entre aspas simples. **Pelo comando, nunca
-pelo `Write`:** com o `projeto.json` no disco, o portão de escopo nega o `Write` em
+pelo `Write`:** com o `projeto.json` no disco, o portão de escopo (a trava, chamada de "trava 4" nas
+mensagens, que só deixa gravar o que o escopo declarado da tarefa cobre) nega o `Write` em
 `.claude/esquadro/catalogo.json` sem escopo declarado.
 
 **5. O que a consulta NÃO resolve**, e é para dizer isso ao dono em vez de arbitrar: qual degrau
@@ -71,7 +87,10 @@ serve para qual papel, e quanto ele aceita pagar. Com os fatos na mão, a pergun
    Dois pontos que costumam surpreender, e que valem dizer com todas as letras:
 
    - **Escada com menos de dois nomes deixa o portão de custo mudo** — e ele não avisa que se calou.
-     Parece ligado e não está.
+     Parece ligado e não está. (A escada é a lista de agentes do projeto, do mais barato ao mais caro,
+     em `agentes.escada` do `projeto.json`; cada agente nela é um degrau. O portão de custo é a trava
+     que barra despachar um agente caro, da metade de cima da escada, para trabalho que só toca
+     arquivo de marcha `rapida`, a de menor rigor.)
    - **A comparação com o catálogo nunca aparece como garantida**, por mais atualizada que esteja.
      Ela vive numa skill, e skill é instrução, que pode ser pulada. A guarda garantida é o portão
      que compara arquivo com arquivo.

@@ -64,7 +64,8 @@ function causaDoProjetoIlegivel(cwd) {
   const corrija = 'Corrija o JSON ou rode /esquadro:init de novo (o init regrava o projeto.json com as respostas dadas).';
   let obj;
   try { obj = JSON.parse(textoLib.semBom(bruto)); } catch (e) { return { causa: 'JSON quebrado', fazer: corrija }; }
-  if (!obj || typeof obj !== 'object') return { causa: 'nao e um objeto JSON', fazer: corrija };
+  // H-3/H-4: concorda com config.lerJson, que tambem recusa lista; senao o config devolve null e o aviso calava.
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { causa: 'nao e um objeto JSON', fazer: corrija };
   return null;
 }
 

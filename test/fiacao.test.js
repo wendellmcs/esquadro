@@ -1122,3 +1122,330 @@ test('T10-4/T10-5: a pergunta funciona sem /esquadro:init (pasta sem .claude)', 
     assert.ok(j && j.hookSpecificOutput && j.hookSpecificOutput.additionalContext.indexOf('/esquadro:handoff') !== -1);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// ------------------------------- Bloco A1 (D426): corrigir o agente sugere virar regra (/esquadro:aprender)
+
+test('A1: prompt que corrige o agente devolve additionalContext oferecendo /esquadro:aprender, sem gravar nada', () => {
+  const dir = temp('correcao');
+  try {
+    assert.ok(!fs.existsSync(path.join(dir, '.claude')), 'controle: a pasta nao tem .claude (vale sem init)');
+    const j = abrirComPrompt(dir, 'co1', 'eu já te disse para não usar sed -i');
+    assert.ok(j && j.hookSpecificOutput, 'nao disparou');
+    assert.strictEqual(j.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
+    const t = j.hookSpecificOutput.additionalContext;
+    assert.ok(t.indexOf('/esquadro:aprender') !== -1 && /uma linha/.test(t) && /relato de bug/.test(t), t);
+    assert.ok(/^[\x20-\x7E\n]+$/.test(t), 'additionalContext tem de ser ASCII: ' + JSON.stringify(t));
+    assert.ok(!fs.existsSync(path.join(dir, '.claude')), 'o gancho nao pode criar nada no projeto');
+    // relato de bug e resposta a pergunta seguem calados (e nao gastam a janela da sugestao)
+    assert.strictEqual(abrirComPrompt(dir, 'co2', 'o botão para de funcionar'), null);
+    assert.strictEqual(abrirComPrompt(dir, 'co3', 'não, pode seguir'), null);
+    assert.strictEqual(lerSessao(dir, 'co2').esperaAprender, undefined);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('A1: no maximo 1 sugestao a cada 5 turnos por sessao - todo prompt conta como turno', () => {
+  const dir = temp('correcao-limite');
+  try {
+    const quando = [];
+    // turno: [prompt, deveSugerir]. Sugeriu no 1: o 2 ao 5 ficam calados; o 6 pode; o 7 ao 10 calados; o 11 pode.
+    const roteiro = [
+      ['já te disse isso', true],          // 1: sugere
+      ['nunca mais faça isso', false],     // 2: janela
+      ['adicione um teste', false],        // 3: nao e correcao, mas conta como turno
+      ['você errou', false],               // 4
+      ['pare de inventar teste', false],   // 5: ainda dentro dos 5 turnos
+      ['não foi isso que eu pedi', true],  // 6: janela passou, sugere de novo
+      ['rode os testes', false],           // 7
+      ['rode os testes de novo', false],   // 8
+      ['segue', false],                    // 9
+      ['segue', false],                    // 10
+      ['eu já te falei', true],            // 11: 5 turnos depois do 6
+      ['eu já te falei', false]            // 12: janela de novo
+    ];
+    roteiro.forEach(function (par, i) {
+      const j = abrirComPrompt(dir, 'col', par[0]);
+      quando.push(j ? i + 1 : 0);
+      assert.strictEqual(!!j, par[1], 'turno ' + (i + 1) + ' (' + par[0] + '): ' + JSON.stringify(j));
+    });
+    assert.deepStrictEqual(quando.filter(Boolean), [1, 6, 11]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('A1: a janela da sugestao sobrevive ao fecho do turno (e campo da sessao, nao do turno)', () => {
+  const dir = temp('correcao-fecho');
+  try {
+    assert.ok(abrirComPrompt(dir, 'cof', 'já te disse'), 'nao disparou');
+    const f = rodar('portao-fecho.js', dir, { session_id: 'cof', cwd: dir, hook_event_name: 'Stop',
+      last_assistant_message: 'Anotado.' });
+    assert.strictEqual(f.status, 0, f.stderr);
+    assert.ok(lerSessao(dir, 'cof').esperaAprender > 0, 'o fecho apagou a janela: ' + JSON.stringify(lerSessao(dir, 'cof')));
+    assert.strictEqual(abrirComPrompt(dir, 'cof', 'você errou'), null, 'sugeriu dentro da janela');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('A1: sugerirAprender: false desliga; ausente ou outro valor segue ligado', () => {
+  const dir = temp('correcao-chave');
+  try {
+    escrever(dir, '.claude/esquadro/projeto.json', JSON.stringify({ sugerirAprender: false }));
+    assert.strictEqual(abrirComPrompt(dir, 'cc1', 'já te disse'), null, 'disparou com a chave desligada');
+    assert.strictEqual(lerSessao(dir, 'cc1').esperaAprender, undefined, 'desligado nao abre janela');
+    escrever(dir, '.claude/esquadro/projeto.json', JSON.stringify({}));
+    assert.ok(abrirComPrompt(dir, 'cc2', 'já te disse'), 'sem a chave tem de estar ligado');
+    escrever(dir, '.claude/esquadro/projeto.json', JSON.stringify({ sugerirAprender: 'nao' }));
+    assert.ok(abrirComPrompt(dir, 'cc3', 'já te disse'), 'so false desliga');
+    // projeto.json ilegivel: ligado (falha aberta), nao estoura
+    escrever(dir, '.claude/esquadro/projeto.json', '{ quebrado');
+    assert.ok(abrirComPrompt(dir, 'cc4', 'já te disse'), 'projeto.json ilegivel tem de seguir ligado');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('A1: saude e correcao no mesmo prompt viram UM additionalContext com os dois textos; a janela so segura a correcao', () => {
+  const dir = temp('correcao-e-saude');
+  try {
+    const j = abrirComPrompt(dir, 'cs', 'o contexto está bom? eu já te disse para colar o prompt');
+    const t = j.hookSpecificOutput.additionalContext;
+    assert.ok(t.indexOf('/esquadro:handoff') !== -1 && t.indexOf('/esquadro:aprender') !== -1, t);
+    // dentro da janela a pergunta de saude segue respondendo sozinha, sem o texto da correcao
+    const k = abrirComPrompt(dir, 'cs', 'o contexto está bom? você errou');
+    const u = k.hookSpecificOutput.additionalContext;
+    assert.ok(u.indexOf('/esquadro:handoff') !== -1 && u.indexOf('/esquadro:aprender') === -1, u);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ------------------------------- Bloco A2 (D426): a auditoria roda sozinha na abertura, de N em N dias
+
+/** Projeto com a fonte canonica estourando o teto de 200 itens (205), para a auditoria ter o que avisar. */
+function projetoComPesoEstourado(dir, extra) {
+  const itens = [];
+  for (let i = 0; i < 205; i++) itens.push('- item ' + i);
+  escrever(dir, 'DOC.md', itens.join('\n') + '\n');
+  escrever(dir, '.claude/esquadro/projeto.json', JSON.stringify(Object.assign({ fontesCanonicas: ['DOC.md'] }, extra || {})));
+}
+
+function abrirA2(dir, id) {
+  return rodar('abertura.js', dir, { session_id: id, cwd: dir, source: 'startup' });
+}
+
+const MARCA_A2 = path.join('.claude', 'esquadro', 'auditoria.json');
+
+test('A2: a abertura avisa o peso estourado quando a auditoria esta vencida, e a 2a abertura dentro do prazo fica calada', () => {
+  const dir = temp('a2-vencida');
+  try {
+    projetoComPesoEstourado(dir);
+    assert.ok(!fs.existsSync(path.join(dir, MARCA_A2)), 'controle: sem marca no comeco');
+    const r1 = abrirA2(dir, 'a2-1');
+    assert.strictEqual(r1.status, 0, r1.stderr);
+    assert.ok(/esquadro: auditoria automatica \(a cada 7 dias\):/.test(r1.stdout), r1.stdout);
+    assert.ok(/peso de instrucao 205 acima do teto 200/.test(r1.stdout), r1.stdout);
+    assert.ok(/\/esquadro:auditar/.test(r1.stdout) && r1.stdout.indexOf('"auditarNaAbertura": false') !== -1, r1.stdout);
+    assert.ok(/qualidade de resposta/.test(r1.stdout), 'o resto da abertura sumiu: ' + r1.stdout);
+    const marca = JSON.parse(fs.readFileSync(path.join(dir, MARCA_A2), 'utf8'));
+    assert.ok(Math.abs(Date.now() - Date.parse(marca.ultima)) < 60000, JSON.stringify(marca));
+    const r2 = abrirA2(dir, 'a2-2');
+    assert.strictEqual(r2.status, 0, r2.stderr);
+    assert.strictEqual(r2.stdout.indexOf('auditoria automatica'), -1, 'avisou dentro do prazo: ' + r2.stdout);
+    assert.ok(/qualidade de resposta/.test(r2.stdout), 'o resto da abertura sumiu');
+    // marca de 8 dias atras: vence de novo
+    fs.writeFileSync(path.join(dir, MARCA_A2), JSON.stringify({ ultima: new Date(Date.now() - 8 * 86400000).toISOString() }));
+    assert.ok(/auditoria automatica/.test(abrirA2(dir, 'a2-3').stdout), 'marca velha nao reabriu a auditoria');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('A2: abertura com tudo dentro do teto fica calada e mesmo assim grava a marca', () => {
+  const dir = temp('a2-ok');
+  try {
+    escrever(dir, '.claude/esquadro/projeto.json', JSON.stringify({}));
+    const r = abrirA2(dir, 'a2ok');
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(r.stdout.indexOf('auditoria automatica'), -1, r.stdout);
+    assert.ok(fs.existsSync(path.join(dir, MARCA_A2)), 'nao gravou a marca');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('A2: auditarNaAbertura: false desliga (sem aviso, sem marca); sem projeto.json nao audita nem cria .claude', () => {
+  const dir = temp('a2-off');
+  const sem = temp('a2-sem');
+  try {
+    projetoComPesoEstourado(dir, { auditarNaAbertura: false });
+    const r = abrirA2(dir, 'a2off');
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(r.stdout.indexOf('auditoria automatica'), -1, r.stdout);
+    assert.ok(!fs.existsSync(path.join(dir, MARCA_A2)), 'desligado nao grava marca');
+    const s = abrirA2(sem, 'a2sem');
+    assert.strictEqual(s.status, 0, s.stderr);
+    assert.strictEqual(s.stdout.indexOf('auditoria automatica'), -1, s.stdout);
+    assert.ok(!fs.existsSync(path.join(sem, '.claude')), 'a abertura criou .claude num projeto sem configuracao');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(sem, { recursive: true, force: true });
+  }
+});
+
+test('A2: auditoria que lanca nao derruba a abertura - o resto do stdout sai, 1 linha de aviso, marca gravada', () => {
+  const dir = temp('a2-lanca');
+  try {
+    // fonte canonica que nao e texto: path.resolve lanca TypeError dentro de instrucoes.contar, so na auditoria
+    escrever(dir, '.claude/esquadro/projeto.json', JSON.stringify({ fontesCanonicas: [123] }));
+    const r = abrirA2(dir, 'a2lanca');
+    assert.strictEqual(r.status, 0, r.stderr);
+    const linhas = r.stdout.split('\n').filter(function (l) { return l.indexOf('auditoria automatica falhou') !== -1; });
+    assert.strictEqual(linhas.length, 1, r.stdout);
+    assert.ok(/rode \/esquadro:auditar/.test(linhas[0]), linhas[0]);
+    assert.ok(/qualidade de resposta/.test(r.stdout), 'o resto da abertura sumiu: ' + r.stdout);
+    assert.ok(fs.existsSync(path.join(dir, MARCA_A2)), 'falha nao gravou a marca (repetiria a cada abertura)');
+    assert.strictEqual(abrirA2(dir, 'a2lanca2').stdout.indexOf('auditoria automatica'), -1, 'repetiu a falha dentro do prazo');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ----------------------------------------------- S8 (D426): abertura em copia do plugin
+
+/** Copia scripts/ e modelos/ para <pasta temporaria>/<nome>; `nome` pode ter `$` e crase (caminho de instalacao esquisito). */
+function pluginCopia(nome) {
+  const base = path.join(temp('plugin-copia'), nome);
+  fs.cpSync(path.join(RAIZ, 'scripts'), path.join(base, 'scripts'), { recursive: true });
+  fs.cpSync(path.join(RAIZ, 'modelos'), path.join(base, 'modelos'), { recursive: true });
+  return base;
+}
+
+function limparCopia(base) { fs.rmSync(path.dirname(base), { recursive: true, force: true }); }
+
+function projetoComPlanoDeOutro(dir) {
+  escrever(dir, path.join('.claude', 'esquadro', 'plano-ativo.json'),
+    JSON.stringify({ arquivo: 'docs/plano-v9.md', sessionId: 'sessao-do-outro', tarefa: null }));
+}
+
+/** O comando `node ... --proxima-decisao` que a abertura entrega ao agente: tudo entre `node ` e ` --proxima-decisao`. */
+function comandoDoPlano(stdout) {
+  const m = /^ {2}node (.+) --proxima-decisao/m.exec(stdout);
+  assert.ok(m, 'faltou o comando do numero de decisao: ' + stdout);
+  return m[1];
+}
+
+test('S8 L2-abe-1: o caminho de plano.js que a abertura entrega ao agente vai entre aspas que o shell nao reinterpreta', () => {
+  const esquisito = pluginCopia('a$b`c');
+  const normal = pluginCopia('instalacao normal');
+  const dir = temp('abe1');
+  try {
+    projetoComPlanoDeOutro(dir);
+    const e = rodarNoPlugin(esquisito, 'abertura.js', dir, { session_id: 'abe1e', cwd: dir, source: 'startup' });
+    // `$b` e a crase dentro de aspas duplas o shell expandiria/executaria: aspas simples nao
+    assert.strictEqual(comandoDoPlano(e.stdout), "'" + path.join(esquisito, 'scripts', 'plano.js') + "'", e.stdout);
+    // controle: caminho comum segue entre aspas duplas, como sempre (o caso normal nao muda)
+    const n = rodarNoPlugin(normal, 'abertura.js', dir, { session_id: 'abe1n', cwd: dir, source: 'startup' });
+    assert.strictEqual(comandoDoPlano(n.stdout), '"' + path.join(normal, 'scripts', 'plano.js') + '"', n.stdout);
+  } finally {
+    limparCopia(esquisito); limparCopia(normal);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('S8 A2-3: falha do require da auditoria nao calada: 1 linha diz que nao rodou, e o resto da abertura sai', () => {
+  const plugin = pluginCopia('plugin');
+  const dir = temp('a23');
+  try {
+    fs.writeFileSync(path.join(plugin, 'scripts', 'lib', 'auditoria-periodica.js'), 'module.exports = {{ ;\n', 'utf8');
+    projetoComRegras(dir);
+    projetoComPlanoDeOutro(dir);
+    const r = rodarNoPlugin(plugin, 'abertura.js', dir, { session_id: 'a23', cwd: dir, source: 'startup' });
+    const linhas = r.stdout.split('\n').filter(function (l) { return l.indexOf('auditoria automatica nao rodou') !== -1; });
+    assert.strictEqual(linhas.length, 1, r.stdout);
+    assert.ok(/SyntaxError/.test(linhas[0]), 'a linha diz a causa: ' + linhas[0]);
+    assert.ok(r.stdout.includes(qualidade.BLOCO), 'o resto da abertura sumiu: ' + r.stdout);
+    assert.ok(/outra sessao detem o plano ativo/i.test(r.stdout), 'o plano (depois da auditoria) sumiu: ' + r.stdout);
+    // controle: com a auditoria sem defeito (plugin inteiro) essa linha nao sai
+    const ok = rodar('abertura.js', dir, { session_id: 'a23ok', cwd: dir, source: 'startup' });
+    assert.ok(!/nao rodou/.test(ok.stdout), 'aviso indevido com a auditoria sem defeito: ' + ok.stdout);
+  } finally { limparCopia(plugin); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('S8 A2-4: o aviso de projeto.json ilegivel sai uma vez so, mesmo se a reinjecao mudar a frase dela', () => {
+  const plugin = pluginCopia('plugin');
+  const dir = temp('a24');
+  try {
+    const arq = path.join(plugin, 'scripts', 'lib', 'reinjecao.js');
+    const original = fs.readFileSync(arq, 'utf8');
+    const reescrito = original.replace('existe mas nao se le (', 'ficou ilegivel (');
+    assert.notStrictEqual(reescrito, original, 'a frase da reinjecao mudou de lugar: ajuste o teste');
+    fs.writeFileSync(arq, reescrito, 'utf8');
+    const avisos = function (stdout) { return (stdout.match(/projeto\.json (existe mas nao se le|ficou ilegivel)/g) || []).length; };
+    escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'), '{isso nao fecha');
+
+    // com regras: a reinjecao ja avisou (com a frase reescrita); a abertura nao dobra
+    escrever(dir, path.join('.claude', 'esquadro', 'regras.md'), '# Regras\n\n- ' + REGRA_Q + '\n');
+    const com = rodarNoPlugin(plugin, 'abertura.js', dir, { session_id: 'a24c', cwd: dir, source: 'startup' });
+    assert.ok(/ficou ilegivel/.test(com.stdout), 'controle: a reinjecao tinha de avisar: ' + com.stdout);
+    assert.strictEqual(avisos(com.stdout), 1, com.stdout);
+
+    // controle positivo: regras.md sem nenhuma regra -> a reinjecao nao avisa, a abertura avisa (nunca calado)
+    escrever(dir, path.join('.claude', 'esquadro', 'regras.md'), '# Regras\n\nsem itens aqui\n');
+    const vazio = rodarNoPlugin(plugin, 'abertura.js', dir, { session_id: 'a24v', cwd: dir, source: 'startup' });
+    assert.strictEqual(avisos(vazio.stdout), 1, vazio.stdout);
+    assert.ok(/DESLIGADOS/.test(vazio.stdout), vazio.stdout);
+
+    // e sem regras.md nenhum
+    fs.rmSync(path.join(dir, '.claude', 'esquadro', 'regras.md'));
+    const sem = rodarNoPlugin(plugin, 'abertura.js', dir, { session_id: 'a24s', cwd: dir, source: 'startup' });
+    assert.strictEqual(avisos(sem.stdout), 1, sem.stdout);
+  } finally { limparCopia(plugin); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ------------------------------------------------ Bloco V (D426/D437): a novidade do vigia na abertura
+
+/** Abertura com a pasta do vigia injetada por ESQUADRO_VIGIA (o `rodar` comum nao passa env extra). */
+function abrirVigia(dir, id, pastaVigia) {
+  return spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'abertura.js')], {
+    cwd: dir,
+    encoding: 'utf8',
+    input: JSON.stringify({ session_id: id, cwd: dir, source: 'startup' }),
+    env: Object.assign({}, process.env, { ESQUADRO_TMP: path.join(dir, '_sessoes'), ESQUADRO_VIGIA: pastaVigia })
+  });
+}
+
+test('V: com "vigia": true a abertura mostra a novidade da semana uma vez, e o resto da abertura segue', () => {
+  const dir = temp('vigia-liga');
+  const pastaVigia = temp('vigia-pasta');
+  try {
+    escrever(dir, '.claude/esquadro/projeto.json', JSON.stringify({ vigia: true }));
+    escrever(pastaVigia, 'novidades.md', 'semana: 2026-10-05\n\n- Cart\u00e3o novo da semana\n');
+    const r1 = abrirVigia(dir, 'v1', pastaVigia);
+    assert.strictEqual(r1.status, 0, r1.stderr);
+    assert.ok(r1.stdout.indexOf('novidade da semana de 2026-10-05') !== -1, r1.stdout);
+    assert.ok(r1.stdout.indexOf('- Cartao novo da semana') !== -1, r1.stdout);
+    assert.ok(/qualidade de resposta/.test(r1.stdout), 'o resto da abertura sumiu: ' + r1.stdout);
+    assert.ok(fs.existsSync(path.join(pastaVigia, 'visto.json')), 'nao marcou como vista');
+    const r2 = abrirVigia(dir, 'v2', pastaVigia);
+    assert.strictEqual(r2.status, 0, r2.stderr);
+    assert.strictEqual(r2.stdout.indexOf('novidade da semana de'), -1, 'mostrou a mesma semana duas vezes: ' + r2.stdout);
+    assert.ok(/qualidade de resposta/.test(r2.stdout), 'o resto da abertura sumiu');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(pastaVigia, { recursive: true, force: true });
+  }
+});
+
+test('V: sem a chave (ou com vigia: false) a abertura nao fala do vigia e nao cria a pasta', () => {
+  const dir = temp('vigia-desliga');
+  const base = temp('vigia-base');
+  const pastaVigia = path.join(base, 'ainda-nao-existe');
+  try {
+    escrever(dir, '.claude/esquadro/projeto.json', JSON.stringify({}));
+    const r = abrirVigia(dir, 'v-off', pastaVigia);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(r.stdout.indexOf('vigia'), -1, r.stdout);
+    assert.ok(!fs.existsSync(pastaVigia), 'a abertura criou a pasta do vigia sem opt-in');
+    escrever(dir, '.claude/esquadro/projeto.json', JSON.stringify({ vigia: false }));
+    const f = abrirVigia(dir, 'v-false', pastaVigia);
+    assert.strictEqual(f.stdout.indexOf('vigia'), -1, f.stdout);
+    assert.ok(!fs.existsSync(pastaVigia));
+    // sem projeto.json nenhum: o mesmo
+    const sem = temp('vigia-sem-projeto');
+    try {
+      const s = abrirVigia(sem, 'v-sem', pastaVigia);
+      assert.strictEqual(s.stdout.indexOf('vigia'), -1, s.stdout);
+      assert.ok(!fs.existsSync(pastaVigia));
+    } finally { fs.rmSync(sem, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});

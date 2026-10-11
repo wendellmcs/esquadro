@@ -67,3 +67,26 @@ test('propor: regra duplicada nao e gravada duas vezes', () => {
     assert.strictEqual(ocorrencias, 1);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('propor: D434 quebra de linha no gatilho ou na acao e recusada e nada e gravado', () => {
+  for (const [g, a] of [['linha1\nlinha2', 'x'], ['ao fechar', 'passo1\r\npasso2'], ['ao fechar', 'x\ry']]) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-aprende-'));
+    try {
+      const alvo = path.join(dir, '.claude', 'esquadro', 'regras.md');
+      const r = rodar(['--gatilho', g, '--acao', a, '--gravar'], dir);
+      assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+      assert.ok(r.stdout.includes('RECUSADA'), r.stdout);
+      assert.ok(r.stdout.includes('uma linha so'), r.stdout);
+      assert.strictEqual(fs.existsSync(alvo), false, 'nao pode criar regras.md');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+  // e, com regras.md ja existente, ele fica intacto
+  const dir = projeto();
+  try {
+    const alvo = path.join(dir, '.claude', 'esquadro', 'regras.md');
+    const antes = fs.readFileSync(alvo, 'utf8');
+    const r = rodar(['--gatilho', 'a\nb', '--acao', 'x', '--gravar'], dir);
+    assert.strictEqual(r.status, 1);
+    assert.strictEqual(fs.readFileSync(alvo, 'utf8'), antes);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

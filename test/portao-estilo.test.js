@@ -665,3 +665,22 @@ test('saude.js: estilo_por_shell e balde de bloqueio (nega), como o token_fora_d
   assert.ok(saude.BALDES_DE_BLOQUEIO.indexOf('estilo_por_shell') !== -1);
   assert.ok(saude.BALDES_DE_BLOQUEIO.indexOf('token_fora_do_sistema') !== -1);
 });
+
+// D420/SH-02: o contador `estilo_por_shell` rodava ANTES da negacao sem protecao. Com o diretorio de
+// estado nao gravavel (ESQUADRO_TMP apontando para um ARQUIVO) o incrementar lancava, `io.blindar`
+// liberava e a escrita de estilo por shell PASSAVA. O contador e acessorio: a negacao vem primeiro.
+test('D420/SH-02: estado nao gravavel nao libera a escrita de estilo por shell', () => {
+  const dir = montar();
+  const arquivo = path.join(dir, 'e-um-arquivo');
+  fs.writeFileSync(arquivo, 'x');
+  try {
+    const r = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'portao-estilo.js')], {
+      cwd: dir,
+      encoding: 'utf8',
+      input: JSON.stringify({ session_id: 'pe-sh02', cwd: dir, hook_event_name: 'PreToolUse', tool_name: 'Bash',
+        tool_input: { command: "cat > src/a.css <<'EOF'\n.x { color: #123456; }\nEOF" } }),
+      env: Object.assign({}, process.env, { ESQUADRO_TMP: arquivo })
+    });
+    assert.ok(motivoDe(r), 'tinha de negar com o estado fora do ar; stdout ' + JSON.stringify(r.stdout) + ' stderr ' + r.stderr);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

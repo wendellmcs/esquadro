@@ -22,6 +22,7 @@ function ehObjeto(v) { return !!v && typeof v === 'object' && !Array.isArray(v);
 // proposito (D101): so campo que muda decisao de portao, e so quando o TIPO
 // esta errado. Chave faltando e assunto de validar(), nunca do aviso.
 const LISTAS_LIDAS = ['comandosLiberados', 'comandosBloqueados', 'intocaveis'];
+const CHAVES_LIGA_DESLIGA = ['sugerirAprender', 'auditarNaAbertura'];
 
 // Padrao que NUNCA casa um alvo relativo: letra de unidade (C: ou C:\) ou esquema
 // (file://). O alvo que chega aos portoes e sempre relativo a raiz do projeto
@@ -103,6 +104,11 @@ function avisosDeTipo(projeto) {
   }
   if ('travas' in projeto && (!projeto.travas || typeof projeto.travas !== 'object' || Array.isArray(projeto.travas))) {
     avisos.push('travas tem de ser objeto');
+  }
+  // PA1-7/A2-2: as duas chaves de liga/desliga (ligadas por padrao; so `false` desliga,
+  // correcao.js e auditoria-periodica.js). "nao" ou 0 nao desliga e o dono nao sabe.
+  for (const chave of CHAVES_LIGA_DESLIGA) {
+    if (chave in projeto && typeof projeto[chave] !== 'boolean') avisos.push(chave + ' tem de ser true ou false');
   }
   const deQualidade = require('./qualidade.js').avisoDeTipo(projeto);
   if (deQualidade) avisos.push(deQualidade);

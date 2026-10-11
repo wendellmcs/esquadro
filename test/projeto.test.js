@@ -497,3 +497,15 @@ test('qualidadeDeResposta: validar aceita, atualizar preserva, avisosDeTipo avis
     .includes('qualidadeDeResposta tem de ser true ou false'));
   assert.ok(!projeto.avisosDeTipo(com).some((a) => /qualidadeDeResposta/.test(a)));
 });
+
+test('PA1-7/A2-2: sugerirAprender e auditarNaAbertura de tipo errado ganham aviso; booleano e ausente, nao', () => {
+  for (const chave of ['sugerirAprender', 'auditarNaAbertura']) {
+    for (const errado of ['nao', 0, null, 'false', [], {}]) {
+      assert.ok(projeto.avisosDeTipo({ [chave]: errado }).includes(chave + ' tem de ser true ou false'),
+        chave + '=' + JSON.stringify(errado) + ' sem aviso');
+    }
+    assert.deepStrictEqual(projeto.avisosDeTipo({ [chave]: false }), [], chave + '=false nao e erro');
+    assert.deepStrictEqual(projeto.avisosDeTipo({ [chave]: true }), [], chave + '=true nao e erro');
+    assert.deepStrictEqual(projeto.avisosDeTipo({}), [], 'ausente nao e erro');
+  }
+});

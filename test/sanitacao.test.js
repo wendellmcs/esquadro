@@ -423,3 +423,429 @@ test('sanitar: pasta que nao e repositorio segue sendo NAO SEI, nao vazio', () =
     'sem isto, qualquer pasta do disco passaria por repositorio limpo');
   assert.strictEqual(sanit.autoresDoHistorico(dir), null);
 });
+
+// == D419/D420: defeitos do detector, achados IN-01 a IN-05 ====================
+// Cada isca abaixo e montada por concatenacao: o detector varre este arquivo.
+
+const CAMINHO_PESSOAL = 'C:' + '\\Users\\' + 'fulano\\x';
+const MAC = '/Us' + 'ers/';
+
+function lerVocabulario(dir, objeto, comBom) {
+  const json = typeof objeto === 'string' ? objeto : JSON.stringify(objeto);
+  fs.writeFileSync(path.join(dir, sanit.ARQUIVO_LOCAL), (comBom ? '﻿' : '') + json, 'utf8');
+}
+
+const TERMO_SINTETICO = {
+  chave: 'sintetica', nome: 'sintetica', padrao: 'MARCA-INTERNA',
+  isca: 'x MARCA-INTERNA y', controle: 'outra coisa'
+};
+
+// ── IN-01: nome com acento nao pode fazer o arquivo sumir da superficie ──
+
+test('IN-01: arquivo com acento no nome entra na superficie e e lido', () => {
+  const dir = repo();
+  const nome = 'instala' + 'ção.md';
+  fs.writeFileSync(path.join(dir, nome), 'veja ' + CAMINHO_PESSOAL + '\n', 'utf8');
+  spawnSync('git', ['add', '-A'], { cwd: dir, encoding: 'utf8', shell: false });
+
+  const s = sanit.superficiePublicavel(dir);
+  assert.ok(s !== null && s.indexOf(nome) !== -1,
+    'sem `-z` o git devolve o nome entre aspas com escape octal e o arquivo some: ' + JSON.stringify(s));
+  const achados = sanit.varrerArquivos(dir, s, sanit.CLASSES_GENERICAS);
+  assert.strictEqual(achados.length, 1);
+  assert.strictEqual(achados[0].arquivo, nome);
+
+  const r = sanitar(dir);
+  assert.strictEqual(r.status, 1, 'o unico arquivo sujo tem acento no nome e o comando disse: ' + r.stdout);
+  assert.ok(r.stdout.indexOf(nome) !== -1, r.stdout);
+});
+
+// ── IN-01: arquivo da superficie que nao abre nao some calado ────────────
+
+test('IN-01: varrerArquivos DIZ o arquivo que nao conseguiu abrir', () => {
+  const dir = repo();
+  const ilegiveis = [];
+  // caminho com NUL: o Node recusa a abertura em qualquer sistema, sem ENOENT
+  const achados = sanit.varrerArquivos(dir, ['a.txt', 'quebrado\0.txt'], sanit.CLASSES_GENERICAS, ilegiveis);
+  assert.strictEqual(achados.length, 0);
+  assert.strictEqual(ilegiveis.length, 1, 'o arquivo que nao abriu tinha de ser declarado');
+  assert.ok(ilegiveis[0].arquivo.indexOf('quebrado') !== -1);
+  // arquivo apagado do disco mas ainda no indice nao e "ilegivel": nao ha o que publicar
+  const apagado = [];
+  sanit.varrerArquivos(dir, ['nao-existe.txt'], sanit.CLASSES_GENERICAS, apagado);
+  assert.strictEqual(apagado.length, 0);
+});
+
+test('IN-01: sanitar com arquivo que nao abre devolve 2, nunca LIMPO', (t) => {
+  const dir = repo();
+  const alvo = path.join(dir, 'fechado.txt');
+  fs.writeFileSync(alvo, 'nada aqui\n', 'utf8');
+  spawnSync('git', ['add', '-A'], { cwd: dir, encoding: 'utf8', shell: false });
+  if (process.platform === 'win32') {
+    spawnSync('icacls', [alvo, '/deny', '*S-1-1-0:(R)'], { encoding: 'utf8' });
+  } else {
+    fs.chmodSync(alvo, 0);
+  }
+  try {
+    let abre = true;
+    try { fs.readFileSync(alvo); } catch (e) { abre = false; }
+    if (abre) { t.skip('este ambiente nao consegue tornar um arquivo ilegivel'); return; }
+    const r = sanitar(dir);
+    assert.strictEqual(r.status, 2, 'arquivo que nao abriu e "nao deu para medir": ' + r.stdout + r.stderr);
+    assert.ok(/NAO DEU PARA MEDIR/.test(r.stdout + r.stderr), r.stdout + r.stderr);
+    assert.ok((r.stdout + r.stderr).indexOf('fechado.txt') !== -1, 'tinha de nomear o arquivo');
+    assert.ok(!/LIMPO/.test(r.stdout), r.stdout);
+  } finally {
+    if (process.platform === 'win32') {
+      spawnSync('icacls', [alvo, '/remove:d', '*S-1-1-0'], { encoding: 'utf8' });
+    } else {
+      try { fs.chmodSync(alvo, 0o644); } catch (e) { /* sem permissao para desfazer */ }
+    }
+  }
+});
+
+// ── IN-02: UTF-16 (o que o PowerShell 5.1 grava com `>`) tambem e lido ───
+
+test('IN-02: arquivo UTF-16 com BOM e acusado como o UTF-8', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro utf16-'));
+  const corpo = 'veja ' + CAMINHO_PESSOAL + '\r\n';
+  const le = Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from(corpo, 'utf16le')]);
+  const be = Buffer.concat([Buffer.from([0xFE, 0xFF]), Buffer.from(corpo, 'utf16le').swap16()]);
+  const u8 = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(MAC + 'fulano/x\n', 'utf8')]);
+  fs.writeFileSync(path.join(dir, 'le.txt'), le);
+  fs.writeFileSync(path.join(dir, 'be.txt'), be);
+  fs.writeFileSync(path.join(dir, 'u8.txt'), u8);
+  const achados = sanit.varrerArquivos(dir, ['le.txt', 'be.txt', 'u8.txt'], sanit.CLASSES_GENERICAS);
+  assert.deepStrictEqual(achados.map((a) => a.arquivo).sort(), ['be.txt', 'le.txt', 'u8.txt']);
+  assert.ok(achados.every((a) => a.linha === 1), JSON.stringify(achados));
+});
+
+// ── IN-03: flag sem `g` num termo local travava o processo ───────────────
+
+test('IN-03: termo local com flags "i" (sem g) nao pendura a varredura', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro flags-'));
+  lerVocabulario(dir, { termos: [Object.assign({}, TERMO_SINTETICO, { flags: 'i' })] });
+  const codigo = 'const s = require(' + JSON.stringify(path.join(RAIZ, 'scripts', 'lib', 'sanitacao.js')) + ');' +
+    'const c = s.classes(' + JSON.stringify(dir) + ');' +
+    'process.stdout.write(String(s.varrerTexto("x marca-interna y", "a.txt", c)' +
+    '.filter((a) => a.classe === "sintetica").length));';
+  const r = spawnSync(process.execPath, ['-e', codigo], { encoding: 'utf8', timeout: 10000 });
+  assert.ifError(r.error);
+  assert.strictEqual(r.stdout, '1', 'o termo sem g tinha de achar UMA vez e terminar');
+});
+
+// ── IN-04: vocabulario privado nao some calado ───────────────────────────
+
+test('IN-04: vocabulario local gravado com BOM e lido', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro bom-'));
+  lerVocabulario(dir, { termos: [TERMO_SINTETICO] }, true);
+  assert.strictEqual(sanit.termosLocais(dir).length, 1, 'o BOM do PowerShell zerava o vocabulario');
+  assert.strictEqual(sanit.lerVocabularioLocal(dir).estado, 'ok');
+});
+
+test('IN-04: ausente, presente e valido, presente e invalido sao tres estados', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro vocab-'));
+  assert.strictEqual(sanit.lerVocabularioLocal(dir).estado, 'ausente');
+  lerVocabulario(dir, { termos: [TERMO_SINTETICO] });
+  assert.strictEqual(sanit.lerVocabularioLocal(dir).estado, 'ok');
+  lerVocabulario(dir, '{ isto nao e json');
+  assert.strictEqual(sanit.lerVocabularioLocal(dir).estado, 'invalido');
+  lerVocabulario(dir, { termos: 'nao e lista' });
+  assert.strictEqual(sanit.lerVocabularioLocal(dir).estado, 'invalido');
+});
+
+test('IN-04: sanitar com vocabulario local quebrado devolve 2, nunca LIMPO', () => {
+  const dir = repo();
+  lerVocabulario(dir, '{ isto nao e json');
+  const r = sanitar(dir);
+  assert.strictEqual(r.status, 2, 'JSON quebrado calava o vocabulario e o veredito saia LIMPO: ' + r.stdout);
+  assert.ok(r.stderr.indexOf(sanit.ARQUIVO_LOCAL) !== -1, r.stderr);
+  assert.ok(!/LIMPO/.test(r.stdout), r.stdout);
+});
+
+test('IN-04: termo descartado por regex invalida e dito, com a chave, e a saida e 2', () => {
+  const dir = repo();
+  lerVocabulario(dir, { termos: [TERMO_SINTETICO,
+    { chave: 'regex_quebrada', nome: 'x', padrao: '(', isca: 'a', controle: 'b' }] });
+  const v = sanit.lerVocabularioLocal(dir);
+  assert.strictEqual(v.termos.length, 1, 'o termo bom segue valendo');
+  assert.strictEqual(v.descartados.length, 1);
+  assert.strictEqual(v.descartados[0].chave, 'regex_quebrada');
+  const r = sanitar(dir);
+  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+  assert.ok(r.stderr.indexOf('regex_quebrada') !== -1, r.stderr);
+});
+
+// ── IN-05: /Users/<nome> do macOS no meio de uma linha ───────────────────
+
+test('IN-05: pasta pessoal do macOS e acusada em qualquer contexto, nao so apos espaco', () => {
+  const deve = [
+    'veja `' + MAC + 'joao/proj` no mac',
+    'PATH=' + MAC + 'joao/bin',
+    '[' + MAC + 'joao/x]',
+    'a,' + MAC + 'joao/x',
+    '<code>' + MAC + 'joao/x</code>',
+    'cd ' + MAC + 'joao/proj',
+    MAC + 'joao/no-comeco'
+  ];
+  deve.forEach((linha) => {
+    const n = sanit.varrerTexto(linha, 'a.md', sanit.CLASSES_GENERICAS)
+      .filter((a) => a.classe === 'caminho_de_maquina').length;
+    assert.strictEqual(n, 1, 'nao acusou: ' + linha);
+  });
+});
+
+test('IN-05: rota /Users/ no meio de outro caminho segue sendo permitida', () => {
+  ['rota src/api' + MAC + 'listar', 'GET https://exemplo.com/api' + MAC + 'listar'].forEach((linha) => {
+    assert.strictEqual(sanit.varrerTexto(linha, 'a.md', sanit.CLASSES_GENERICAS).length, 0,
+      'falso positivo: ' + linha);
+  });
+});
+
+// s62/D430: a letra de unidade nao pode vir colada em outra letra - o `p:` de `http:` nao e disco.
+test('D430: URL com users nao e pasta pessoal; caminho do Windows em qualquer caixa segue acusado', () => {
+  const U = 'sers';
+  ['http://u' + U + '/42', 'veja https://u' + U + '/42 no doc'].forEach((linha) => {
+    assert.strictEqual(sanit.varrerTexto(linha, 'a.md', sanit.CLASSES_GENERICAS).length, 0,
+      'falso positivo: ' + linha);
+  });
+  ['C:' + '\\u' + U + '\\fulano', 'em c:' + '/U' + U + '/fulano', 'file:///C:' + '/U' + U + '/fulano',
+    '"D:' + '\\U' + U + '\\x"'].forEach((linha) => {
+    assert.ok(sanit.varrerTexto(linha, 'a.md', sanit.CLASSES_GENERICAS).length > 0, 'devia acusar: ' + linha);
+  });
+});
+
+// == D419: sub-bloco S3 do esquadro-review-aaa, achados L1-11/12/14/16/17 ======
+
+// ── L1-11: e-mail sem ancora era quadratico em linha longa sem '@' ───────
+
+test('L1-11: linha longa sem arroba nao leva segundos (e-mail sem ancora era O(n^2))', () => {
+  const linhas = ['a.'.repeat(50000), 'a'.repeat(100000), 'a@'.repeat(30000)];
+  linhas.forEach((linha) => {
+    const t0 = Date.now();
+    const achados = sanit.varrerTexto(linha, 'a.txt', sanit.CLASSES_GENERICAS);
+    const ms = Date.now() - t0;
+    assert.ok(ms < 1000, 'varrerTexto levou ' + ms + ' ms numa linha de ' + linha.length + ' caracteres');
+    assert.strictEqual(achados.length, 0);
+  });
+});
+
+test('L1-11: a ancora nao muda o que casa - e-mail no meio, colado e apos falha segue acusado', () => {
+  const dominio = '@empresa.com.br';
+  const deve = [
+    'fala com ana.souza' + dominio + ' ok',
+    '<ana' + dominio + '>',
+    'a@b ana' + dominio,
+    'x@y' + '@zz.com'
+  ];
+  deve.forEach((linha) => {
+    const n = sanit.varrerTexto(linha, 'a.md', sanit.CLASSES_GENERICAS)
+      .filter((a) => a.classe === 'email').length;
+    assert.strictEqual(n, 1, 'nao acusou: ' + linha);
+  });
+});
+
+// ── L1-12: saida grande do git nao pode virar "git mudo" ─────────────────
+
+test('L1-12: indice grande (saida do git > 1 MiB) nao vira null', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro grande-'));
+  const git = (args, entrada) => spawnSync('git', args, { cwd: dir, encoding: 'utf8', shell: false, input: entrada });
+  git(['init', '-q']);
+  const blob = git(['hash-object', '-w', '--stdin'], '').stdout.trim();
+  const linhas = [];
+  for (let i = 0; i < 12000; i++) {
+    linhas.push('100644 ' + blob + ' 0\tpasta-de-nome-comprido-para-encher-a-saida/' + 'x'.repeat(100) + '-' + i);
+  }
+  const r = git(['update-index', '--add', '--index-info'], linhas.join('\n') + '\n');
+  assert.strictEqual(r.status, 0, r.stderr);
+  const s = sanit.superficiePublicavel(dir);
+  assert.ok(s !== null, 'a saida do ls-files passou do maxBuffer padrao e a auditoria virou "nao sei"');
+  assert.strictEqual(s.length, 12000);
+});
+
+// ── L1-14: caminho de maquina nao depende da caixa ───────────────────────
+
+test('L1-14: pasta pessoal do Windows e acusada em qualquer caixa', () => {
+  const deve = [
+    'c:' + '\\users\\' + 'fulano\\x',
+    'C:' + '\\USERS\\' + 'fulano',
+    'd:' + '/uSeRs/' + 'fulano/x'
+  ];
+  deve.forEach((linha) => {
+    const n = sanit.varrerTexto(linha, 'a.md', sanit.CLASSES_GENERICAS)
+      .filter((a) => a.classe === 'caminho_de_maquina').length;
+    assert.strictEqual(n, 1, 'nao acusou: ' + linha);
+  });
+});
+
+test('L1-14: a caixa solta nao cria falso positivo - rota /users/ e /home de documentacao seguem de fora', () => {
+  ['GET /us' + 'ers/42', 'rota /api/us' + 'ers/listar', 'o prefixo /Ho' + 'me/ nao e pasta'].forEach((linha) => {
+    const n = sanit.varrerTexto(linha, 'a.md', sanit.CLASSES_GENERICAS)
+      .filter((a) => a.classe === 'caminho_de_maquina').length;
+    assert.strictEqual(n, 0, 'falso positivo: ' + linha);
+  });
+});
+
+// ── L1-16: excecaoEm e padrao vazio do vocabulario local ─────────────────
+
+test('L1-16: excecaoEm que nao e lista e rejeitado com mensagem, nao lanca em varrerTexto', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro exc-'));
+  lerVocabulario(dir, { termos: [Object.assign({}, TERMO_SINTETICO, { excecaoEm: 'docs/nota.md' })] });
+  const v = sanit.lerVocabularioLocal(dir);
+  assert.strictEqual(v.termos.length, 0);
+  assert.strictEqual(v.descartados.length, 1);
+  assert.ok(/excecaoEm/.test(v.descartados[0].porQue), v.descartados[0].porQue);
+  assert.doesNotThrow(() => sanit.varrerTexto('x MARCA-INTERNA y', 'a.txt', sanit.classes(dir)));
+});
+
+test('L1-16: excecaoEm com item que nao e texto tambem e rejeitado; lista valida segue valendo', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro exc2-'));
+  lerVocabulario(dir, { termos: [
+    Object.assign({}, TERMO_SINTETICO, { chave: 'ruim', excecaoEm: ['ok.md', 7] }),
+    Object.assign({}, TERMO_SINTETICO, { chave: 'boa', excecaoEm: ['ok.md'] })
+  ] });
+  const v = sanit.lerVocabularioLocal(dir);
+  assert.deepStrictEqual(v.descartados.map((d) => d.chave), ['ruim']);
+  assert.deepStrictEqual(v.termos.map((t) => t.chave), ['boa']);
+});
+
+test('L1-16: padrao que casa vazio e rejeitado, nao acusa toda linha', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro vazio-'));
+  lerVocabulario(dir, { termos: [Object.assign({}, TERMO_SINTETICO, { chave: 'casa_vazio', padrao: 'x*' })] });
+  const v = sanit.lerVocabularioLocal(dir);
+  assert.strictEqual(v.termos.length, 0, 'o padrao x* entrou e casa em toda linha');
+  assert.deepStrictEqual(v.descartados.map((d) => d.chave), ['casa_vazio']);
+  assert.ok(/vazio/.test(v.descartados[0].porQue), v.descartados[0].porQue);
+});
+
+test('L1-16: sanitar com excecaoEm invalido devolve 2, nunca LIMPO nem excecao nao tratada', () => {
+  const dir = repo();
+  lerVocabulario(dir, { termos: [Object.assign({}, TERMO_SINTETICO, { excecaoEm: 'docs/nota.md' })] });
+  const r = sanitar(dir);
+  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+  assert.ok(r.stderr.indexOf('excecaoEm') !== -1, r.stderr);
+});
+
+// ── L1-17: arquivo com NUL que nao decodifica nao passa limpo ────────────
+
+// D429/2: o dono decidiu que binario (NUL) PULA com aviso "nao conferido" em vez de
+// travar o sanitizador com saida 2. O que antes ia a `ilegiveis` (L1-17) agora vai
+// a `naoConferidos`; `ilegiveis` fica so para o que nao abriu.
+test('L1-17/D429-2: UTF-16 sem BOM e UTF-32 (NUL) vao a naoConferidos com motivo, nao a ilegiveis', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro nul-'));
+  const corpo = 'veja ' + CAMINHO_PESSOAL + '\r\n';
+  fs.writeFileSync(path.join(dir, 'semBom.txt'), Buffer.from(corpo, 'utf16le'));
+  const u32 = Buffer.alloc(corpo.length * 4);
+  for (let i = 0; i < corpo.length; i++) u32.writeUInt32LE(corpo.charCodeAt(i), i * 4);
+  fs.writeFileSync(path.join(dir, 'u32.txt'), Buffer.concat([Buffer.from([0xFF, 0xFE, 0, 0]), u32]));
+  fs.writeFileSync(path.join(dir, 'limpo.txt'), 'nada aqui\n', 'utf8');
+  const ilegiveis = [];
+  const naoConferidos = [];
+  const achados = sanit.varrerArquivos(dir, ['semBom.txt', 'u32.txt', 'limpo.txt'], sanit.CLASSES_GENERICAS, ilegiveis, naoConferidos);
+  assert.strictEqual(achados.length, 0);
+  assert.strictEqual(ilegiveis.length, 0, 'binario nao e mais ilegivel: ' + JSON.stringify(ilegiveis));
+  assert.deepStrictEqual(naoConferidos.map((i) => i.arquivo).sort(), ['semBom.txt', 'u32.txt']);
+  assert.ok(naoConferidos.every((i) => /NUL/.test(i.porQue)), JSON.stringify(naoConferidos));
+});
+
+test('L1-17: UTF-16 com BOM (o que o PowerShell grava) segue lido e nao e declarado ilegivel', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro nul2-'));
+  fs.writeFileSync(path.join(dir, 'le.txt'),
+    Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from('veja ' + CAMINHO_PESSOAL + '\r\n', 'utf16le')]));
+  const ilegiveis = [];
+  const achados = sanit.varrerArquivos(dir, ['le.txt'], sanit.CLASSES_GENERICAS, ilegiveis);
+  assert.strictEqual(achados.length, 1);
+  assert.strictEqual(ilegiveis.length, 0);
+});
+
+test('L1-17/D429-2: sanitar com UTF-16 sem BOM da LIMPO com o aviso "nao conferido", saida 0', () => {
+  const dir = repo();
+  fs.writeFileSync(path.join(dir, 'ps.txt'), Buffer.from('veja ' + CAMINHO_PESSOAL + '\r\n', 'utf16le'));
+  spawnSync('git', ['add', '-A'], { cwd: dir, encoding: 'utf8', shell: false });
+  const r = sanitar(dir);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.ok(/nao conferido/.test(r.stdout), 'o aviso tinha de sair no relatorio: ' + r.stdout);
+  assert.ok(r.stdout.indexOf('ps.txt') !== -1, 'tinha de nomear o arquivo');
+  assert.ok(!/NAO LI/.test(r.stdout + r.stderr), 'binario nao e mais "NAO LI": ' + r.stdout);
+});
+
+// ── D429/2: binario pula com aviso ───────────────────────────────────────
+
+test('D429/2: binario com NUL nao esta em ilegiveis, esta em naoConferidos com o motivo', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro bin-'));
+  fs.writeFileSync(path.join(dir, 'img.bin'), Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x00, 0x00, 0x1A, 0x0A]));
+  const ilegiveis = [];
+  const naoConferidos = [];
+  sanit.varrerArquivos(dir, ['img.bin'], sanit.CLASSES_GENERICAS, ilegiveis, naoConferidos);
+  assert.deepStrictEqual(ilegiveis, []);
+  assert.strictEqual(naoConferidos.length, 1);
+  assert.strictEqual(naoConferidos[0].arquivo, 'img.bin');
+  assert.ok(/binario/.test(naoConferidos[0].porQue), naoConferidos[0].porQue);
+});
+
+test('D429/2: erro de leitura continua em ilegiveis, nao em naoConferidos', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro bin2-'));
+  const ilegiveis = [];
+  const naoConferidos = [];
+  sanit.varrerArquivos(dir, ['quebrado\0.txt'], sanit.CLASSES_GENERICAS, ilegiveis, naoConferidos);
+  assert.strictEqual(ilegiveis.length, 1);
+  assert.strictEqual(naoConferidos.length, 0);
+});
+
+test('D429/2: auditar devolve naoConferidos e o binario sozinho nao tira o limpo', () => {
+  const dir = repo();
+  fs.writeFileSync(path.join(dir, 'img.bin'), Buffer.from([0x00, 0x01, 0x02, 0x00]));
+  spawnSync('git', ['add', '-A'], { cwd: dir, encoding: 'utf8', shell: false });
+  const r = sanit.auditar(dir);
+  assert.deepStrictEqual(r.naoConferidos.map((i) => i.arquivo), ['img.bin']);
+  assert.strictEqual(r.ilegiveis.length, 0);
+  assert.strictEqual(r.limpo, true);
+});
+
+test('D429/2: vazamento em outro arquivo ainda da 1 mesmo com binario ao lado', () => {
+  const dir = repo();
+  fs.writeFileSync(path.join(dir, 'img.bin'), Buffer.from([0x00, 0x01, 0x02, 0x00]));
+  fs.writeFileSync(path.join(dir, 'vaza.txt'), 'veja ' + CAMINHO_PESSOAL + '\n', 'utf8');
+  spawnSync('git', ['add', '-A'], { cwd: dir, encoding: 'utf8', shell: false });
+  const r = sanitar(dir);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.ok(/nao conferido/.test(r.stdout), r.stdout);
+});
+
+// ── T-1a (lote1 #13): auditar() direto, sem o autoteste na frente ────────
+
+test('T-1a #13: auditar() direto nao diz LIMPO com vocabulario local quebrado', () => {
+  const quebrado = repo();
+  lerVocabulario(quebrado, '{ isto nao e json');
+  const r = sanit.auditar(quebrado);
+  assert.strictEqual(r.vocabulario.estado, 'invalido');
+  assert.strictEqual(r.limpo, false, 'o vocabulario privado nao foi procurado e o veredito saiu LIMPO');
+
+  const descartado = repo();
+  lerVocabulario(descartado, { termos: [{ chave: 'regex_quebrada', nome: 'x', padrao: '(' }] });
+  const d = sanit.auditar(descartado);
+  assert.deepStrictEqual(d.vocabulario.descartados.map((x) => x.chave), ['regex_quebrada']);
+  assert.strictEqual(d.limpo, false, 'termo descartado nao e procurado: o veredito nao pode ser LIMPO');
+
+  // controle: vocabulario valido (e ausente) segue limpo. O .gitignore tira o arquivo local da
+  // superficie, como no repositorio real (senao o vocabulario se acusaria inteiro).
+  const bom = repo();
+  fs.writeFileSync(path.join(bom, '.gitignore'), sanit.ARQUIVO_LOCAL + '\n', 'utf8');
+  lerVocabulario(bom, { termos: [TERMO_SINTETICO] });
+  assert.strictEqual(sanit.auditar(bom).limpo, true);
+  assert.strictEqual(sanit.auditar(repo()).limpo, true);
+});
+
+// ── T-1a (lote1 #15): termo local sem `chave` ────────────────────────────
+
+test('T-1a #15: termo local valido sem chave acusa com a classe "(termo N)", nao "undefined"', () => {
+  const dir = repo();
+  lerVocabulario(dir, { termos: [Object.assign({}, TERMO_SINTETICO, { chave: undefined, nome: undefined })] });
+  const lista = sanit.classes(dir);
+  assert.strictEqual(lista[lista.length - 1].chave, '(termo 1)');
+  const achados = sanit.varrerTexto('x MARCA-INTERNA y', 'a.txt', lista);
+  assert.strictEqual(achados.length, 1);
+  assert.strictEqual(achados[0].classe, '(termo 1)');
+  assert.strictEqual(achados[0].nome, '(termo 1)');
+  assert.ok(sanit.autoteste(dir).ok, 'o termo sem chave tem de se provar com isca e controle como os demais');
+});

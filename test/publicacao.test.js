@@ -584,7 +584,9 @@ test('T11-6: todo script ligado no hooks.json aparece na tabela de ganchos do RE
   }
   const i = README.indexOf('O plugin se pendura em ');
   assert.ok(i !== -1, 'sumiu a tabela de ganchos do README');
-  const f = README.indexOf('\nTr', README.indexOf('| Quando |', i));
+  // A2 (D426): o fim da tabela e a primeira linha em branco depois dela; antes era o "\nTr" de
+  // "Tres coisas acontecem", que virou "Cinco" quando o README passou a listar o aprender e a auditoria.
+  const f = README.indexOf('\n\n', README.indexOf('| Quando |', i));
   const tabela = README.slice(i, f);
   const faltam = ligados.filter((n) => tabela.indexOf('scripts/' + n) === -1);
   assert.deepStrictEqual(faltam, [], 'script ligado no hooks.json e ausente da tabela de ganchos do README');

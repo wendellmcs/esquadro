@@ -44,6 +44,38 @@ const LENTES_UI = [
 
 const FAMILIAS = { codigo: LENTES, ui: LENTES_UI };
 
+// L2-ver-1 (S7, D426): sem acento e sem diferenca entre a forma composta e a decomposta (NFD separa as marcas, e
+// elas saem): o inspetor escreve "Correção e regressão" e o titulo canonico e "Correcao e regressao".
+function grafiaSolta(s) { return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase(); }
+
+/**
+ * A chave da lente a partir do que o inspetor escreveu. Em ordem: a chave exata, o titulo exato (so os espacos
+ * das pontas saem) e, por fim, a grafia solta (caixa e acento nao contam) quando ela aponta uma lente so, entre
+ * as duas familias. null quando nao e nenhuma lente conhecida ou quando a grafia solta serve a duas.
+ * L2-ver-4 (S7, D426): "Microcopy" e o titulo da lente de tela e "microcopy" e a chave da de codigo; as formas
+ * exatas separam as familias, e "MICROCOPY" nao se adivinha.
+ * (Era do gravar-veredito.js; o apurar tambem precisa, RV-02 da D422.)
+ */
+function chaveDaLente(nome) {
+  if (typeof nome !== 'string') return null;
+  const todas = LENTES.concat(LENTES_UI);
+  const exato = nome.trim();
+  const chaveExata = todas.filter(function (l) { return l.chave === exato; });
+  if (chaveExata.length === 1) return chaveExata[0].chave;
+  const tituloExato = todas.filter(function (l) { return l.titulo === exato; });
+  if (tituloExato.length === 1) return tituloExato[0].chave;
+  const solta = new Set();
+  todas.forEach(function (l) {
+    if (grafiaSolta(l.chave) === grafiaSolta(nome) || grafiaSolta(l.titulo) === grafiaSolta(nome)) solta.add(l.chave);
+  });
+  return solta.size === 1 ? solta.values().next().value : null;
+}
+
+/** RV-02: a lente que entra na chave de repeticao e na comparacao da refutacao: a chave canonica, ou o texto normalizado. */
+function lenteCanonica(nome) {
+  return chaveDaLente(nome) || grafiaSolta(nome);
+}
+
 /**
  * A regra de despacho da spec (decisao 8), a mesma da tabela do /esquadro:revisar: so codigo,
  * as 9; so tela, as 8; os dois, as 17. Nada declarado e duvida, e na duvida vao as duas
@@ -76,6 +108,19 @@ function errosDoVeredito(vd) {
   return erros;
 }
 
+/**
+ * RV-03: a linha como inteiro >= 1, ou null. Aceita inteiro, texto "42" e intervalo "40-45" / "40-45 com travessao".
+ * L2-ver-2 (S7, D426): o intervalo vale pelo MENOR numero, escrito em qualquer ordem ("45-40" tambem e 40); o
+ * menor tem de ser linha valida, entao "0-5" e descartado em vez de virar 5 calado.
+ */
+function linhaDoAchado(linha) {
+  if (Number.isInteger(linha)) return linha >= 1 ? linha : null;
+  if (typeof linha !== 'string') return null;
+  const m = /^\s*(\d+)(?:\s*[-\u2013\u2014]\s*(\d+))?\s*$/.exec(linha);
+  const n = m ? Math.min(parseInt(m[1], 10), m[2] === undefined ? Infinity : parseInt(m[2], 10)) : 0;
+  return Number.isSafeInteger(n) && n >= 1 ? n : null;
+}
+
 function validarVeredito(vd) {
   const erros = errosDoVeredito(vd);
   const validos = [];
@@ -88,15 +133,17 @@ function validarVeredito(vd) {
     }
     // Anti-teatro: sem arquivo:linha, o voto nao conta. D396 n. 37/38: linha a partir de 1, como a da
     // refutacao (conferirRefutados); o achado de linha 0 molhava a ronda e nao tinha como ser refutado.
-    if (!a.arquivo || !Number.isInteger(a.linha) || a.linha < 1) {
-      erros.push('achado sem arquivo:linha (linha inteira a partir de 1), descartado: ' + String(a.descricao).slice(0, 60));
+    // RV-03 (D422): "42" e "40-45" tambem sao arquivo:linha - viram 42 e 40 (o menor do intervalo). Sem numero, segue descartado.
+    const linha = linhaDoAchado(a.linha);
+    if (!a.arquivo || linha === null) {
+      erros.push('achado sem arquivo:linha valido (a linha e um numero inteiro a partir de 1; "42" e "40-45" tambem valem; sem numero nenhum, nao conta), descartado: ' +String(a.descricao).slice(0, 60));
       continue;
     }
     if (!a.descricao || String(a.descricao).trim() === '') {
       erros.push('achado sem descricao, descartado');
       continue;
     }
-    validos.push(a);
+    validos.push(linha === a.linha ? a : Object.assign({}, a, { linha: linha }));
   }
   return { ok: erros.length === 0, erros: erros, achadosValidos: validos };
 }
@@ -118,7 +165,7 @@ function rotuloDoArquivo(arquivo) {
 }
 
 function mesmaLente(a, b) {
-  return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+  return lenteCanonica(a) === lenteCanonica(b);
 }
 
 /** D244/defeito 3: refutar tambem exige citar. Refutacao sem prova derruba a apuracao. */
@@ -258,14 +305,17 @@ function apurar(rondas, opcoes) {
       const invalido = errosDoVeredito(vd);
       if (invalido.length) throw new Error('veredito que nao e veredito na ronda ' + (indice + 1) + ': ' + invalido.join('; '));
       const r = validarVeredito(vd);
-      if (indice === rondas.length - 1 && vd && placar[vd.melhor] !== undefined) placar[vd.melhor] += 1;
+      if (indice === rondas.length - 1 && placar[vd.melhor] !== undefined) placar[vd.melhor] += 1;
       for (const a of r.achadosValidos) {
         const rotulo = rotuloDoArquivo(a.arquivo);
         const lado = mapa && rotulo ? mapa[rotulo] : null;
-        const k = lado ? [a.severidade, lado, a.linha, vd.lente].join('|') : chaveAchado(a, vd.lente);
+        // RV-02 (D422): a chave leva a lente CANONICA; "Correcao e regressao" e "correcao" sao a mesma lente.
+        const lenteChave = lenteCanonica(vd.lente);
+        const k = lado ? [a.severidade, lado, a.linha, lenteChave].join('|') : chaveAchado(a, lenteChave);
         if (vistos.has(k)) continue;
         vistos.add(k);
-        const meta = { chave: k, ronda: indice + 1, lente: vd.lente, severidade: a.severidade, linha: a.linha,
+        // L2-ver-3 (S7, D426): o que o juiz le leva a lente canonica, a mesma da chave, e nao a grafia do inspetor.
+        const meta = { chave: k, ronda: indice + 1, lente: lenteChave, severidade: a.severidade, linha: a.linha,
           descricao: a.descricao };
         metas.set(k, meta);
         // Achado do lado HEAD tem linha do arquivo antigo: nao faz par. Sem lado e sem rotulo, nao ha como
@@ -353,5 +403,5 @@ function apurar(rondas, opcoes) {
     novos: novosDaUltima, placar: placar }, extra);
 }
 
-module.exports = { LENTES, LENTES_UI, FAMILIAS, familiasPara, SEVERIDADES, TETO, chaveAchado, errosDoVeredito,
+module.exports = { LENTES, LENTES_UI, FAMILIAS, familiasPara, SEVERIDADES, TETO, chaveAchado, chaveDaLente, errosDoVeredito,
   validarVeredito, apurar, conferirMesmos, DISTANCIA_PAR };

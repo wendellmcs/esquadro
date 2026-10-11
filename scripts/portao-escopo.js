@@ -19,6 +19,59 @@ function existe(cwd, alvo) {
   try { return fs.existsSync(path.join(cwd, alvo)); } catch (err) { return true; }
 }
 
+/*
+ * D420/PT-03: o contador e SECUNDARIO - a negacao nunca pode depender dele. Com o diretorio
+ * de estado nao gravavel o `incrementar` lanca (mkdir ENOTDIR), o `blindar` libera, e o
+ * Write em arquivo intocavel passava. Por isso cada `estado.incrementar` que vem antes de um
+ * `negarFerramenta` esta num try/catch proprio, com a chamada LITERAL (o auxiliar-baldes.js
+ * descobre os baldes por esse texto): falhar em contar so perde o numero.
+ */
+/**
+ * D420/PT-03: o marcador de "avisou uma vez" tambem e so estado. Se nao grava, o aviso sai
+ * mesmo assim (pode repetir) - perder o aviso por causa do estado seria pior que repeti-lo.
+ */
+function marcar(sessionId, fn) {
+  try { estado.alterar(sessionId, fn); } catch (err) { /* idem */ }
+}
+
+/**
+ * S2/L1-8: o contador que nao grava deixa UM rastro por disparo (cada hook e um processo; um
+ * `estado` ingravavel nao guarda "ja avisei", entao nao ha como deduplicar entre disparos sem
+ * o proprio estado). O rastro pega CARONA na saida que o portao ja ia dar - o motivo da
+ * negacao ou o `systemMessage` da liberacao - e nunca muda a decisao.
+ */
+const AVISO_CONTADOR = 'esquadro: o contador desta ocorrencia nao foi gravado (estado da sessao nao gravavel); ' +
+  'os totais do turno podem sair menores que o real. A decisao do portao nao mudou.';
+let contadorFalhou = false;
+
+function contadorNaoGravou() { contadorFalhou = true; }
+
+/** Nega, anexando o rastro do contador quando ele falhou antes. */
+function negar(motivo) {
+  return io.negarFerramenta(contadorFalhou ? motivo + '\n\n' + AVISO_CONTADOR : motivo);
+}
+
+/**
+ * D420/PT-04: o projeto.json existe no disco? `config.carregarProjeto` devolve `null` para
+ * AUSENTE e para PRESENTE-e-ilegivel (JSON quebrado, nao e objeto, pasta, sem permissao); so o
+ * arquivo no disco separa os dois. Ausente e o normal antes do /esquadro:init; presente e
+ * ilegivel e um projeto configurado com os portoes de escopo e intocaveis DESLIGADOS.
+ * (A falha segue aberta de proposito: so a mensagem muda, nunca vira negacao.)
+ *
+ * O que ela mede: so se o ARQUIVO existe no disco (`existsSync`), nao se esta quebrado. O nome diz
+ * "e ilegivel" porque o unico chamador (passo 3 do portao) so a consulta depois que
+ * `carregarProjeto` ja devolveu null: ai "existe" ja significa "existe e nao se le". Fora desse
+ * contexto ela diria apenas "existe" - nao reuse sem repetir essa pre-condicao.
+ */
+function projetoPresenteEIlegivel(cwd) {
+  try { return fs.existsSync(config.caminhoEmEsquadro(cwd, 'projeto.json')); } catch (err) { return false; }
+}
+
+const AVISO_PROJETO_ILEGIVEL = 'esquadro: .claude/esquadro/projeto.json existe mas nao se le: ' +
+  'os portoes de escopo e de intocaveis estao DESLIGADOS ate corrigir. ' +
+  'Corrija o JSON (virgula sobrando, aspas). Rodar /esquadro:init de novo so serve se voce aceitar ' +
+  'refazer a configuracao: o init preserva o que consegue ler do projeto.json, e um arquivo que nao se le nao tem o que preservar.';
+
 /**
  * X2a: o aviso pega CARONA num `permitir` que ja ia acontecer. Um
  * `io.permitir({systemMessage})` novo na "posicao natural" - antes do passo 1 -
@@ -27,7 +80,7 @@ function existe(cwd, alvo) {
  */
 function permitirComAviso(e, s, avisos) {
   if (avisos.length && !s.avisouTipoErrado) {
-    estado.alterar(e.session_id, function (x) { x.avisouTipoErrado = true; return x; });
+    marcar(e.session_id, function (x) { x.avisouTipoErrado = true; return x; });
     return io.permitir({ systemMessage: 'esquadro: projeto.json com campo de tipo errado: ' + avisos.join('; ') });
   }
   return io.permitir();
@@ -47,8 +100,8 @@ io.blindar(function () {
     // vinculada sem estar.
     const frenteAlvo = escopoLib.frenteDoAlvo(alvo);
     if (frenteAlvo && !frenteAlvo.valido) {
-      estado.incrementar(e.session_id, 'frente_invalida');
-      return io.negarFerramenta(escopoLib.motivoNomeDeFrente(alvo));
+      try { estado.incrementar(e.session_id, 'frente_invalida'); } catch (err) { contadorNaoGravou(); }
+      return negar(escopoLib.motivoNomeDeFrente(alvo));
     }
 
     // D35: o passe livre e do ARQUIVO de escopo, nao da pasta. Sem ele nao ha
@@ -63,11 +116,20 @@ io.blindar(function () {
       const depoisTexto = escopoLib.conteudoDepois(atual, entrada);
       const depois = depoisTexto === null ? null : escopoLib.parse(depoisTexto);
       if (escopoLib.ampliou(escopoLib.parse(atual), depois)) {
-        estado.incrementar(e.session_id, 'escopo_ampliado');
+        try { estado.incrementar(e.session_id, 'escopo_ampliado'); } catch (err) { contadorNaoGravou(); }
       }
       // Ultima frente escrita vence: uma sessao so tem um vinculo por vez.
-      if (frenteAlvo) estado.alterar(e.session_id, function (x) { x.frente = frenteAlvo.nome; return x; });
-      return io.permitir();
+      // S2/L1-7: a edicao do arquivo da frente segue LIBERADA se o vinculo nao grava (nao fura
+      // negacao), mas o silencio fazia a sessao achar que estava vinculada sem estar: avisa.
+      const avisosDaFrente = [];
+      if (frenteAlvo) {
+        try { estado.alterar(e.session_id, function (x) { x.frente = frenteAlvo.nome; return x; }); } catch (err) {
+          avisosDaFrente.push('esquadro: o vinculo desta sessao a frente "' + frenteAlvo.nome + '" nao foi gravado ' +
+            '(estado da sessao nao gravavel): a sessao segue regida pelo escopo.md, nao por esta frente.');
+        }
+      }
+      if (contadorFalhou) avisosDaFrente.push(AVISO_CONTADOR);
+      return avisosDaFrente.length ? io.permitir({ systemMessage: avisosDaFrente.join(' ') }) : io.permitir();
     }
 
     const projeto = config.carregarProjeto(cwd);
@@ -81,8 +143,8 @@ io.blindar(function () {
 
     // 1. Intocaveis: nega sempre, e o escopo nao libera.
     if (projeto && glob.casaAlgum(projeto.intocaveis, alvo)) {
-      estado.incrementar(e.session_id, 'intocavel');
-      return io.negarFerramenta(escopoLib.motivoIntocavel(alvo));
+      try { estado.incrementar(e.session_id, 'intocavel'); } catch (err) { contadorNaoGravou(); }
+      return negar(escopoLib.motivoIntocavel(alvo));
     }
 
     // 2. Trava 5b: arquivo que ja estava modificado quando a sessao abriu (D17).
@@ -100,16 +162,19 @@ io.blindar(function () {
       return String(p).toLowerCase() === alvoBaixo;
     });
     if (deOutraFrente && !escopoLib.dentro(alvo, esc)) {
-      estado.incrementar(e.session_id, 'outra_frente');
-      return io.negarFerramenta(escopoLib.motivoOutraFrente(alvo, arquivoEmVigor));
+      try { estado.incrementar(e.session_id, 'outra_frente'); } catch (err) { contadorNaoGravou(); }
+      return negar(escopoLib.motivoOutraFrente(alvo, arquivoEmVigor));
     }
 
     // 3. Sem projeto.json o portao de escopo nao roda. Avisa uma vez por sessao.
     if (!projeto) {
       if (!s.avisouSemConfig) {
-        estado.alterar(e.session_id, function (x) { x.avisouSemConfig = true; return x; });
+        marcar(e.session_id, function (x) { x.avisouSemConfig = true; return x; });
+        // D420/PT-04: ausente e presente-e-ilegivel dizem coisas diferentes.
         return io.permitir({
-          systemMessage: 'esquadro: este projeto nao tem .claude/esquadro/projeto.json. Rode /esquadro:init para ligar o portao de escopo.'
+          systemMessage: projetoPresenteEIlegivel(cwd)
+            ? AVISO_PROJETO_ILEGIVEL
+            : 'esquadro: este projeto nao tem .claude/esquadro/projeto.json. Rode /esquadro:init para ligar o portao de escopo.'
         });
       }
       return io.permitir();
@@ -119,8 +184,8 @@ io.blindar(function () {
     // do "Dentro": a declaracao do "nao vou tocar" e a mais especifica das duas.
     const foraDeclarado = escopoLib.declaradoFora(alvo, esc);
     if (foraDeclarado) {
-      estado.incrementar(e.session_id, 'fora_declarado');
-      return io.negarFerramenta(escopoLib.motivoDeclaradoFora(alvo, foraDeclarado, arquivoEmVigor));
+      try { estado.incrementar(e.session_id, 'fora_declarado'); } catch (err) { contadorNaoGravou(); }
+      return negar(escopoLib.motivoDeclaradoFora(alvo, foraDeclarado, arquivoEmVigor));
     }
 
     // 4. Marcha rapida nao exige escopo. Sem burocracia onde nao ha risco.
@@ -129,20 +194,20 @@ io.blindar(function () {
 
     // 5. Marcha padrao ou AAA: escopo declarado, e o arquivo dentro dele.
     if (!esc) {
-      estado.incrementar(e.session_id, 'sem_escopo');
-      return io.negarFerramenta(escopoLib.motivoSemEscopo(alvo, marcha, arquivoEmVigor));
+      try { estado.incrementar(e.session_id, 'sem_escopo'); } catch (err) { contadorNaoGravou(); }
+      return negar(escopoLib.motivoSemEscopo(alvo, marcha, arquivoEmVigor));
     }
     if (!escopoLib.dentro(alvo, esc)) {
-      estado.incrementar(e.session_id, 'fora_do_escopo');
-      return io.negarFerramenta(escopoLib.motivoFora(alvo, marcha, esc, arquivoEmVigor));
+      try { estado.incrementar(e.session_id, 'fora_do_escopo'); } catch (err) { contadorNaoGravou(); }
+      return negar(escopoLib.motivoFora(alvo, marcha, esc, arquivoEmVigor));
     }
 
     // 6. C9: arquivo NOVO exige ter procurado antes. Editar o que ja existe nao,
     // porque quem edita ja achou. Vem depois do escopo de proposito: "fora do
     // escopo" e a resposta mais especifica, e tem de ganhar quando as duas valem.
     if (!existe(cwd, alvo) && !s.buscouNesteTurno && !buscaLib.nomeadoNoEscopo(alvo, esc)) {
-      estado.incrementar(e.session_id, 'criou_sem_buscar');
-      return io.negarFerramenta(buscaLib.motivo(alvo));
+      try { estado.incrementar(e.session_id, 'criou_sem_buscar'); } catch (err) { contadorNaoGravou(); }
+      return negar(buscaLib.motivo(alvo));
     }
 
     // 7. B7: subir a catraca e decisao humana, nunca efeito colateral de uma
@@ -151,8 +216,8 @@ io.blindar(function () {
     if (typeof entrada.old_string === 'string' && typeof entrada.new_string === 'string') {
       const frouxo = catraca.afrouxou(entrada.old_string, entrada.new_string);
       if (frouxo.length) {
-        estado.incrementar(e.session_id, 'catraca_afrouxada');
-        return io.negarFerramenta(catraca.motivo(alvo, frouxo));
+        try { estado.incrementar(e.session_id, 'catraca_afrouxada'); } catch (err) { contadorNaoGravou(); }
+        return negar(catraca.motivo(alvo, frouxo));
       }
     }
     // Modulo opcional: sem .claude/esquadro/design.json, nada dispara.
@@ -162,8 +227,8 @@ io.blindar(function () {
       if (sistema && typeof conteudo === 'string') {
         const r = design.conferir(conteudo, sistema);
         if (!r.ok) {
-          estado.incrementar(e.session_id, 'token_fora_do_sistema');
-          return io.negarFerramenta(design.motivo(alvo, r.fora, sistema));
+          try { estado.incrementar(e.session_id, 'token_fora_do_sistema'); } catch (err) { contadorNaoGravou(); }
+          return negar(design.motivo(alvo, r.fora, sistema));
         }
       }
     }

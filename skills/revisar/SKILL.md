@@ -68,7 +68,17 @@ tira o JSON da resposta e o grava em `<lente>.json` na pasta `vereditos` que o i
 a de uma ronda. Ele nunca barra e nunca sobrescreve arquivo que já existe. Antes do Passo 3, **confira que há um
 arquivo por lente despachada** em `vereditos/` (lista a pasta e conta). O que o hook avisou que não gravou, ou que
 não está lá, grave à mão, como `<lente>.json` (a chave da lente), com o JSON que o inspetor devolveu, no caminho
-`vereditos` da saída do Passo 1.
+`vereditos` da saída do Passo 1. **Em projeto configurado, o `Write` em `.claude/esquadro/revisao/**.json` pode ser
+negado pelo portão de escopo** (a "trava 4": ela só deixa gravar o que o escopo declarado da tarefa cobre). O
+escopo declarado fica em `.claude/esquadro/escopo.md`; se a sessão trabalha numa frente (uma linha de trabalho
+paralela do mesmo projeto), fica em `.claude/esquadro/escopos/<frente>.md`, o arquivo da frente. Acrescente
+`.claude/esquadro/revisao/**` à seção "Dentro" do que estiver em vigor, com `Edit`, sem apagar o resto, e grave
+de novo (o portão não barra a edição do próprio arquivo de escopo, mas conta a ampliação e a avisa no fecho do
+turno). Se o escopo em vigor é de outra tarefa ou de outra sessão, peça o OK do dono antes de ampliá-lo e tire a
+linha de volta quando a revisão fechar. **Se a edição do escopo também for negada, ou o dono não autorizar a
+ampliação: pare.** Diga ao dono quais vereditos ficaram sem gravar e deixe a decisão com ele; não grave por
+shell nem por outro caminho que contorne o portão. Tudo isto vale também para `refutados.json` e
+`mesmos.json` do Passo 3.
 
 **Declare ao usuário quantos agentes rodaram.** Custo é informação dele, não detalhe seu.
 

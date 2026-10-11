@@ -19,7 +19,8 @@ function lerJson(cwd, nome) {
   try {
     const bruto = fs.readFileSync(caminhoEmEsquadro(cwd, nome), 'utf8');
     const obj = JSON.parse(texto.semBom(bruto));
-    return obj && typeof obj === 'object' ? obj : null;
+    // H-3: lista JSON e valida e `typeof [] === 'object'`, mas nao e o objeto que os dois arquivos sao.
+    return obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : null;
   } catch (e) {
     return null;
   }

@@ -371,7 +371,7 @@ test('destrutivo D47: regra maior nao pode criar falso positivo', () => {
                      // D49: `rebase.autoStash` e configuracao publicada do git, e o `.`
                      // e fronteira de palavra - o subcomando tem de ser token completo.
                      'git -c rebase.autoStash=true pull', 'git -c rebase.autosquash=true log',
-                     'git -c push.default=simple log', 'git -c push.default=simple checkout -f',
+                     'git -c push.default=simple log', 'git -c push.default=simple checkout main',
                      // D49: o `+` fora de refspec
                      'git push origin main # +1', 'git push origin main && echo " +ok"',
                      // D50: nao pode barrar push comum nem refspec normal
@@ -471,6 +471,62 @@ test('D45: a trava 5b nao se escapa trocando a caixa do caminho', () => {
     // Verde pela via errada e a mesma classe de defeito das duas linhas acima.
     assert.match(motivoDe('Guia.MD'), /outra frente/i,
       'a negacao tem de vir da 5b, nao do passo 5 do portao');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// TS-04 (lote 3, D423): o D45 acima so tem a FOTO em minuscula; o lado `p` (a foto) nunca trazia maiuscula,
+// entao tirar o `.toLowerCase()` de `String(p)` na 5b passava despercebido. Aqui o git guarda `Guia.md`.
+test('TS-04 (lote 3, D423): a 5b dobra a caixa tambem do lado da FOTO - foto com Guia.md nega guia.md e GUIA.MD', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-ts04-'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-ts04-tmp-'));
+  try {
+    const g = (args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8', shell: false });
+    g(['init', '-q']);
+    g(['config', 'user.email', 'teste@exemplo.com']);
+    g(['config', 'user.name', 'teste']);
+    fs.mkdirSync(path.join(dir, '.claude', 'esquadro'), { recursive: true });
+    // marcha RAPIDA para `.md`: o passo 5 devolve permitir, e a 5b e a UNICA barreira (mesma razao do D45)
+    fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'projeto.json'), JSON.stringify({
+      versaoConfig: 1, marchaPadrao: 'padrao', intocaveis: ['segredos/**'],
+      marchas: { aaa: ['**/auth/**'], padrao: ['src/**'], rapida: ['**/*.md'] }
+    }), 'utf8');
+    fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'escopo.md'),
+      '# Escopo\n**Objetivo:** exercitar a 5b\n## Dentro\n- src/app.js\n', 'utf8');
+    fs.writeFileSync(path.join(dir, 'Guia.md'), 'um', 'utf8');
+    g(['add', '-A']);
+    g(['commit', '-q', '-m', 'inicial']);
+    fs.writeFileSync(path.join(dir, 'Guia.md'), 'outra frente', 'utf8');
+
+    const env = Object.assign({}, process.env, { ESQUADRO_TMP: tmp });
+    spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'abertura.js')], {
+      input: JSON.stringify({ session_id: 'ts04', cwd: dir, source: 'startup' }),
+      encoding: 'utf8', env: env
+    });
+    const foto = JSON.parse(fs.readFileSync(path.join(tmp, 'esquadro', 'ts04.json'), 'utf8')).gitAbertura;
+    assert.deepStrictEqual(foto, ['Guia.md'], 'pre-condicao: a foto tem de guardar a maiuscula do git');
+    const escrever = (rel) => {
+      const r = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'portao-escopo.js')], {
+        input: JSON.stringify({
+          session_id: 'ts04', cwd: dir, tool_name: 'Write',
+          tool_input: { file_path: path.join(dir, rel), content: 'x' }
+        }),
+        encoding: 'utf8', env: env
+      });
+      try {
+        const h = JSON.parse(r.stdout).hookSpecificOutput;
+        return { decisao: h.permissionDecision, motivo: h.permissionDecisionReason };
+      } catch (e) { return { decisao: 'permitir', motivo: '' }; }
+    };
+    // CONTROLE NEGATIVO: arquivo fora da foto passa (marcha rapida) - um portao que negasse tudo reprovaria aqui
+    assert.strictEqual(escrever('notas.md').decisao, 'permitir');
+    for (const rel of ['guia.md', 'GUIA.MD', 'Guia.md']) {
+      const r = escrever(rel);
+      assert.strictEqual(r.decisao, 'deny', rel + ': a 5b tem de pegar o arquivo de outra frente');
+      assert.match(r.motivo, /outra frente/i, rel + ': a negacao tem de vir da 5b, nao de outra via');
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -783,7 +839,7 @@ test('destrutivo D51: o leitor nao abre burla nova', () => {
     ['remote prune e inofensivo', 'git remote prune origin'],
     ['push normal com refspec', 'git push origin HEAD:refs/for/main'],
     ['push com upstream', 'git push -u origin feature'],
-    ['config com push. no nome', 'git -c push.default=simple checkout -f'],
+    ['config com push. no nome', 'git -c push.default=simple checkout main'],
     ['grep da frase entre aspas (D48)', 'grep -rn "rm -rf" .'],
     ['ajuda do cmdlet', 'Get-Help Remove-Item -Full'],
     ['npm com --force em outro segmento', 'rm log.txt && npm run build -- --force'],
@@ -2603,5 +2659,287 @@ test('D244/defeito 12: Remove-Item e apelido com -Confirm:$false sao destrutivos
 test('D244/defeito 12: sem -Confirm:$false, ou em outro cmdlet, nada muda', () => {
   for (const cmd of ['Remove-Item x', 'Get-Item x -Confirm:$false', 'Remove-Item x -Confirm', 'Remove-Item x -WhatIf']) {
     assert.strictEqual(destrutivo.classificar(cmd).destrutivo, false, JSON.stringify(cmd));
+  }
+});
+
+// D420/SH-01: opcao global do git com valor ENTRE ASPAS COM ESPACO (ou o executavel citado) escapava
+// de todas as regras do git: o GIT lia o valor como `\S*` e o espaco quebrava a cadeia. O controle
+// sem espaco ja barrava.
+test('D420/SH-01: opcao global do git com valor citado com espaco nao escapa', () => {
+  for (const cmd of [
+    'git -C "C:/dev/meu projeto/x" reset --hard',
+    "git -C 'C:/dev/meu projeto/x' reset --hard",
+    'git -C "C:/dev/meu projeto/x" push --force origin main',
+    'git -C "C:/dev/meu projeto/x" clean -fd',
+    "git -C 'a b' branch -D feat",
+    'git -c user.name="A B" push --force origin main',
+    'git -c user.name="A B" -C "x y" reset --hard',
+    String.raw`"C:\Program Files\Git\cmd\git.exe" reset --hard`,
+    String.raw`& "C:\Program Files\Git\cmd\git.exe" reset --hard`,
+    String.raw`& 'C:\Program Files\Git\cmd\git.exe' -C "C:/dev/meu projeto" push -f`
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, true, 'devia barrar: ' + cmd);
+  }
+  // controles: mesma forma de prefixo, subcomando inofensivo
+  for (const cmd of [
+    'git -C "C:/dev/meu projeto/x" status',
+    "git -C 'a b' log --oneline",
+    'git -c user.name="A B" commit -m "msg"',
+    String.raw`"C:\Program Files\Git\cmd\git.exe" status`,
+    String.raw`& "C:\Program Files\Git\cmd\git.exe" log -5`,
+    'git -C "C:/dev/meu projeto/x" push origin main'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, false, 'devia passar: ' + cmd);
+  }
+});
+
+// D420/SH-03: flag curta de push colada a outras (`-fu`, `-uf`, `-vf`) e `clean --force` passavam.
+test('D420/SH-03: push com -f agrupado e clean --force barram; push sem f passa', () => {
+  for (const cmd of [
+    'git push -fu origin main', 'git push -uf origin main', 'git push -vf origin main',
+    'git push -fv', 'git push origin main -fu', 'git push --force-with-lease origin main',
+    'git clean --force', 'git clean --force -d', 'git -C x clean --force'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, true, 'devia barrar: ' + cmd);
+  }
+  for (const cmd of [
+    'git push -u origin main', 'git push -v origin main', 'git push origin main',
+    'git push --set-upstream origin feat', 'git push origin feat-fix', 'git push origin fix-f',
+    'git clean -n', 'git clean --dry-run'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, false, 'devia passar: ' + cmd);
+  }
+});
+
+// D420/SH-04 e TS-07: as formas que descartam a arvore inteira de trabalho.
+test('D420/SH-04: checkout, restore e switch que descartam a arvore inteira barram', () => {
+  for (const cmd of [
+    'git checkout -- .', 'git -C x checkout -- .', 'git checkout .', 'git checkout HEAD -- .',
+    'git checkout main -- .', 'git restore -- .', 'git restore .', 'git restore --worktree .',
+    'git restore --staged --worktree .', 'git restore --source=HEAD .', 'git restore --source HEAD .',
+    'git switch -f x', 'git switch --force x', 'git switch x -f',
+    'git switch --discard-changes x', 'git -C x switch -f y'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, true, 'devia barrar: ' + cmd);
+  }
+  for (const cmd of [
+    'git checkout -- arquivo.txt', 'git checkout -- src/a.js', 'git checkout -b nova', 'git checkout main',
+    'git restore arquivo.txt', 'git restore --staged arquivo.txt', 'git restore -- arquivo.txt',
+    'git restore --source=HEAD arquivo.txt', 'git switch main', 'git switch -c nova',
+    'git switch feature-f', 'git checkout feature -- src/a.js'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, false, 'devia passar: ' + cmd);
+  }
+});
+
+// S1/L1-1 e H-1: `checkout` com flag antes do `.`, `restore` com flag agrupada (`-SW`) ou com valor
+// citado (`--source "a b"`) descartavam a arvore e passavam; `restore --staged .` (so o indice, sem
+// `--worktree`/`-W`) NAO perde trabalho e estava barrado - saiu da lista de barrados acima.
+test('S1/L1-1: checkout -f/--ours/--theirs e restore -SW/--source "a b" barram; restore so --staged passa', () => {
+  for (const cmd of [
+    'git checkout -f .', 'git checkout --force .', 'git checkout --ours .', 'git checkout --theirs .',
+    'git checkout -f -- .', 'git checkout --ours -- .', 'git -C x checkout -f .', 'git checkout -f HEAD -- .',
+    'git restore -SW .', 'git restore -S -W .', 'git restore --staged -W .', 'git restore . --worktree',
+    'git restore --source "a b" .', 'git restore --source="a b" .', 'git restore -s "a b" .',
+    'git restore --staged --source "a b" --worktree .', 'git restore --source "a b" --staged --worktree .',
+    // o `-S` de wrapper (sudo/ssh) vem antes do `restore` e nao e o `--staged` do git
+    'sudo -S git restore .', 'ssh -S sock h git restore .'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, true, 'devia barrar: ' + cmd);
+  }
+  for (const cmd of [
+    // D429/1: `checkout -f <ref>` e `checkout -f <arquivo>` agora barram (ver o teste D429/1 abaixo)
+    'git checkout --ours arquivo.txt',
+    'git checkout --ours .gitignore', 'git checkout -b nova'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, false, 'devia passar: ' + cmd);
+  }
+});
+
+// D433: `checkout -- .gitignore` (restaurar UM arquivo cujo nome comeca com ponto) era barrado como
+// "descarta todas as mudancas": a forma `-- .` nao exigia fronteira de token depois do ponto.
+test('D433: checkout -- <arquivo com ponto> passa; a arvore inteira (`.` como token) segue barrada', () => {
+  for (const cmd of [
+    'git checkout -- .', 'git checkout .', 'git checkout HEAD -- .', 'git checkout -f .', 'git checkout --ours .',
+    'git checkout -- . ; ls', 'git checkout -- .&& x', 'git checkout -- .|cat', 'git -C x checkout -- .'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, true, 'devia barrar: ' + cmd);
+  }
+  for (const cmd of [
+    'git checkout -- .gitignore', 'git checkout -- .env', 'git checkout -- ./src/a.js',
+    'git checkout HEAD -- .gitignore', 'git -C x checkout -- .gitignore'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, false, 'devia passar: ' + cmd);
+  }
+});
+
+// D429/1: `git clean` com outra opcao ANTES do -f/-d/-x (so a 1a flag era lida) e `git checkout -f <ramo>`
+// (so `-f .` barrava) escapavam. `clean -n`/`--dry-run` nao apaga e segue liberado, mesmo com -fd junto (H-2).
+test('D429/1: clean com opcao antes do -f e checkout -f <ramo> barram; dry-run e checkout comum passam', () => {
+  const g = 'git';
+  const juntar = (...p) => [g, ...p].join(' ');
+  for (const cmd of [
+    juntar('clean', '-q', '-fd'), juntar('clean', '-e', 'x', '-fd'), juntar('clean', '-x', '-f'),
+    juntar('clean', '--quiet', '--force'), juntar('clean', '-q', '-d', '-f'), juntar('-C', 'x', 'clean', '-q', '-fd'),
+    juntar('clean', '-en', '-fd'), // -en: o `n` e o valor do -e (padrao a excluir), nao dry-run
+    juntar('clean', '-q', '-n', ';', 'git', 'clean', '-q', '-fd'),
+    juntar('checkout', '-f', 'main'), juntar('checkout', '--force', 'main'), juntar('checkout', 'main', '-f'),
+    juntar('checkout', '-qf', 'main'), juntar('checkout', '-f', 'arquivo.txt'), juntar('-C', 'x', 'checkout', '-f', 'main'),
+    juntar('checkout', '-b', 'nova', '-f')
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, true, 'devia barrar: ' + cmd);
+  }
+  for (const cmd of [
+    juntar('clean', '-n', '-fd'), juntar('clean', '--dry-run', '-fd'), juntar('clean', '-nfd'),
+    juntar('clean', '-q', '-n', '-fd'), juntar('clean', '-e', 'x', '--dry-run', '-fd'), juntar('clean', '-dn'),
+    juntar('clean', '-n'), juntar('clean', '--dry-run'), juntar('clean', '-q'),
+    juntar('checkout', 'main'), juntar('checkout', '-b', 'x'), juntar('checkout', '-q', 'main'),
+    juntar('checkout', 'feat-f'), juntar('checkout', '--', '-f'), juntar('checkout', '--ours', 'arquivo.txt')
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, false, 'devia passar: ' + cmd);
+  }
+});
+
+// s62 (revisao cega da D429/1, lente borda): o dry-run so conta como OPCAO do clean - nao dentro de aspas, nao
+// depois do `--` (pathspec) e nao como valor do `-e`. E `switch` com `-f` agrupado (`-fq`, `-fc`) tambem forca.
+test('s62: clean com -n citado, depois do -- ou como valor do -e barra; switch -f agrupado barra', () => {
+  const g = 'git';
+  const juntar = (...p) => [g, ...p].join(' ');
+  for (const cmd of [
+    juntar('clean', '-fdx', '--', '"a -n"'), juntar('clean', '-fd', '--', '-notes'),
+    juntar('clean', '-fd', "'x -n'"), juntar('clean', '-e', '-n', '-fd'), juntar('clean', '--exclude', '-n', '-fd'),
+    // o git aceita abreviacao unica de opcao longa: `--exc`/`--e` sao o `--exclude` e consomem o token seguinte
+    juntar('clean', '-fd', '--exc', '--dry-run'), juntar('clean', '-fd', '--e', '-n'),
+    // D431: a ultima opcao vale (`--no-dry-run` depois do `-n` volta a apagar) e `--force` abreviado tambem apaga
+    juntar('clean', '-n', '--no-dry-run', '-fd'), juntar('clean', '--dry-run', '-fd', '--no-dry-run'),
+    juntar('clean', '-n', '-fd', '--no-d'), juntar('clean', '--forc'), juntar('clean', '--fo', '-d'), juntar('clean', '-q', '--f'),
+    juntar('switch', '-fq', 'main'), juntar('switch', '-fc', 'nova'), juntar('switch', '-qf', 'main')
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, true, 'devia barrar: ' + cmd);
+  }
+  for (const cmd of [
+    juntar('clean', '-n', '-fd', '--', 'x'), juntar('clean', '-e', 'x', '-n', '-fd'), juntar('clean', '-e', 'x', '-nfd'),
+    juntar('clean', '--exclude=x', '-n', '-fd'), juntar('clean', '--dry', '-fd'), juntar('clean', '--d', '-fd'),
+    juntar('clean', '--no-dry-run', '-n', '-fd'),
+    juntar('switch', '-c', 'nova'), juntar('switch', 'main'), juntar('switch', '-q', 'main'), juntar('switch', 'fix-f')
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, false, 'devia passar: ' + cmd);
+  }
+});
+
+// D428: `soIndice` e uma regra ESTRITA, ancorada no subcomando do git. So libera quando o `git` abre o
+// segmento (opcoes globais `-C <dir>`/`-c k=v` aceitas), vem `restore`, depois UMA OU MAIS `--staged`/`-S`,
+// um `--` isolado opcional e o `.` final, sem mais nada. Qualquer outra coisa barra - inclusive `restore`
+// como valor de opcao do wrapper (`sudo -u restore`), `-S` de wrapper (`sudo -S`, `ssh -S`), `-S`/`--staged`
+// depois de `--` (pathspec), `--source=`, `-W`, `restore` repetido, `.` antes das opcoes.
+test('D428: restore . so libera a forma estrita (git [-C d] restore (--staged|-S)+ [--] .)', () => {
+  for (const cmd of [
+    'git restore --staged .', 'git restore -S .', 'git restore --staged -- .', 'git restore -S -- .',
+    'git -C "a b" restore --staged .', 'git -c k=v restore -S .', 'git restore --staged -S .'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, false, 'devia passar: ' + cmd);
+  }
+  for (const cmd of [
+    'git restore .', 'git restore -SW .', 'git restore --staged --worktree .',
+    'git restore -W . restore -S', 'git restore --worktree . restore --staged',
+    'sudo -S git restore .', 'ssh -S sock h git restore .',
+    'sudo -u restore -S git restore .', 'ssh -l restore -S /tmp/c h git restore .',
+    'git restore -- -S .', 'git restore -- --staged .', 'git restore -S restore .',
+    'git restore --source=HEAD --staged .', 'git restore --source=HEAD~1 --staged .',
+    'git restore --staged --source "a b" .', 'git restore . --staged', 'git restore -S -W .'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, true, 'devia barrar: ' + cmd);
+  }
+});
+
+// S1/L1-2: `-[a-z]*f` com flag `i` pegava `-F` e `-fix` (nao sao flags de push) e tinha duas corridas em
+// volta do `f`. Agora o aglomerado so pode ter letras de flag curta do push e a leitura e linear.
+test('S1/L1-2: push forcado barra por -f/--force; -F e argumento -fix passam; aglomerado enorme e linear', () => {
+  for (const cmd of [
+    'git push -f', 'git push --force', 'git push -uf', 'git push -fu origin main', 'git push -vf origin main',
+    'git push --force-with-lease origin main', 'git push origin main -f', 'git push -fo ci.skip origin main',
+    'git push -nf', 'git push -f4'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, true, 'devia barrar: ' + cmd);
+  }
+  for (const cmd of [
+    'git push -F', 'git push -o -fix origin main', 'git push origin main -fix', 'git push -u origin fix',
+    'git push --follow-tags', 'git push -n'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, false, 'devia passar: ' + cmd);
+  }
+  const ini = Date.now();
+  const r = destrutivo.classificar('git push -' + 'f'.repeat(30000) + '-');
+  const ms = Date.now() - ini;
+  assert.strictEqual(r.destrutivo, false);
+  assert.ok(ms < 500, 'aglomerado de 30000 letras devia ser linear, levou ' + ms + ' ms');
+});
+
+// D420/TS-08: a regra "escrita direta de disco" nao tinha nenhum teste que a citasse.
+test('D420/TS-08: escrita direta de disco barra com o motivo certo; citar o nome em echo passa', () => {
+  for (const cmd of ['dd if=/dev/zero of=/dev/sda', 'mkfs.ext4 /dev/sdb1']) {
+    const r = destrutivo.classificar(cmd);
+    assert.strictEqual(r.destrutivo, true, 'devia barrar: ' + cmd);
+    assert.strictEqual(r.motivo, 'escrita direta de disco', cmd);
+  }
+  assert.strictEqual(destrutivo.classificar('echo dd').destrutivo, false);
+});
+
+// D420/SH-02 e TS-06: o portao e chamado como processo, como o gancho real.
+function chamarPortaoDestrutivo(comando, tmpEstado, projetoJson, ferramenta) {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-dest-cwd-'));
+  try {
+    if (projetoJson) {
+      fs.mkdirSync(path.join(cwd, '.claude', 'esquadro'), { recursive: true });
+      fs.writeFileSync(path.join(cwd, '.claude', 'esquadro', 'projeto.json'), JSON.stringify(projetoJson));
+    }
+    const r = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'portao-destrutivo.js')], {
+      input: JSON.stringify({ session_id: 's-d420', cwd: cwd, tool_name: ferramenta || 'Bash', tool_input: { command: comando } }),
+      encoding: 'utf8',
+      env: Object.assign({}, process.env, { ESQUADRO_TMP: tmpEstado })
+    });
+    let saida = null;
+    try { saida = JSON.parse(r.stdout); } catch (e) { /* stdout vazio = permitiu */ }
+    return saida;
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+}
+
+test('D420/TS-06: padrao de regex INVALIDO em comandosLiberados nao libera nada (rm -rf segue negado)', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-dest-ts06-'));
+  try {
+    const projeto = { comandosLiberados: ['(erro', 'nada-a-ver'] };
+    const negado = chamarPortaoDestrutivo('rm -rf ./build', tmp, projeto);
+    assert.ok(negado && negado.hookSpecificOutput, 'devia negar: ' + JSON.stringify(negado));
+    assert.strictEqual(negado.hookSpecificOutput.permissionDecision, 'deny');
+    // controle: um padrao valido na mesma lista continua liberando
+    const livre = chamarPortaoDestrutivo('rm -rf ./build', tmp, { comandosLiberados: ['(erro', 'rm -rf \\./build'] });
+    assert.strictEqual(livre, null, 'padrao valido devia liberar: ' + JSON.stringify(livre));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('D420/SH-02: estado nao gravavel nao libera o comando destrutivo (o contador e acessorio)', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-dest-sh02-'));
+  const arquivo = path.join(tmp, 'e-um-arquivo');
+  fs.writeFileSync(arquivo, 'x');
+  try {
+    // ESQUADRO_TMP aponta para um ARQUIVO: o mkdir do diretorio de estado lanca ENOTDIR
+    for (const cmd of ['rm -rf ./build', 'git push --force origin main', 'cd ..']) {
+      const saida = chamarPortaoDestrutivo(cmd, arquivo);
+      assert.ok(saida && saida.hookSpecificOutput, 'devia negar com o estado fora do ar: ' + cmd + ' -> ' + JSON.stringify(saida));
+      assert.strictEqual(saida.hookSpecificOutput.permissionDecision, 'deny', cmd);
+    }
+    // o terceiro ramo com contador: idioma de shell errado (tabela do PowerShell, plataforma win32)
+    const win = { plataforma: { so: 'win32', shell: 'powershell' } };
+    const idioma = chamarPortaoDestrutivo('head -5 notas.txt', arquivo, win, 'PowerShell');
+    assert.ok(idioma && idioma.hookSpecificOutput, 'idioma errado devia negar com o estado fora do ar: ' + JSON.stringify(idioma));
+    assert.strictEqual(idioma.hookSpecificOutput.permissionDecision, 'deny');
+    // controle: comando inofensivo segue livre com o estado fora do ar
+    assert.strictEqual(chamarPortaoDestrutivo('npm test', arquivo), null);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

@@ -128,9 +128,10 @@ const PONTOS = [
     chave: 'pasta_pessoal',
     classe: INJETAVEL,
     titulo: 'Onde o claude grava a transcricao da sessao',
-    arquivos: ['scripts/medir-qualidade.js'],
+    arquivos: ['scripts/lib/vigia-local.js', 'scripts/medir-qualidade.js'],
     comoSeProva: 'CLAUDE_CONFIG_DIR sobrepoe a pasta pessoal, e a pasta pessoal entra por parametro ' +
-                 'em acharTranscricao: os dois caminhos rodam daqui',
+                 'em acharTranscricao: os dois caminhos rodam daqui. A pasta do vigia (Bloco V) idem: ' +
+                 'ESQUADRO_VIGIA a sobrepoe, e o teste roda por ela',
     ressalva: 'o nome da pasta de config padrao (.claude na pasta pessoal) so se confere naquele sistema ' +
               'com o claude de verdade; aqui se prova que a busca olha onde mandam.'
   },
@@ -139,7 +140,7 @@ const PONTOS = [
     classe: SO_NO_SISTEMA,
     titulo: 'Chamada do git como processo, sem shell',
     arquivos: ['scripts/exportar.js', 'scripts/lib/git.js', 'scripts/lib/sanitacao.js',
-               'scripts/medir-qualidade.js', 'scripts/preparar-revisao.js'],
+               'scripts/medir-qualidade.js', 'scripts/preparar-revisao.js', 'scripts/vigia-puxar.js'],
     comoSeProva: 'rodando naquele sistema com git instalado',
     ressalva: 'com shell:false o Node nao consulta PATHEXT: um git empacotado como .cmd ou .bat ' +
               'nao seria achado no Windows. Aqui ele e .exe e e achado. Fora do Windows o ' +
@@ -160,7 +161,7 @@ const PONTOS = [
     titulo: 'Caminho do Windows normalizado para barra normal',
     arquivos: [
       'scripts/apurar-ronda.js', 'scripts/lib/busca.js', 'scripts/lib/git.js', 'scripts/lib/glob.js',
-      'scripts/lib/instrucoes.js', 'scripts/lib/plano.js', 'scripts/lib/plataforma.js',
+      'scripts/lib/instrucoes.js', 'scripts/lib/molde.js', 'scripts/lib/plano.js', 'scripts/lib/plataforma.js',
       'scripts/lib/sanitacao.js', 'scripts/lib/saude.js', 'scripts/preparar-revisao.js'
     ],
     comoSeProva: 'e trabalho de string puro: a entrada com barra invertida se passa de qualquer maquina',

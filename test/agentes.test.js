@@ -421,3 +421,17 @@ test('agentes: validarFatias recusa esforco e maxTurns de tipo errado, citando o
     assert.ok(erros[0].startsWith(campo), erros[0]);
   }
 });
+
+test('H-5: frontmatter desfaz o escape do valor citado (aspas duplas e simples); sem aspas segue cru', () => {
+  const B = String.fromCharCode(92); // a barra invertida, sem depender de escape no fonte
+  const f = agentes.frontmatter('---\nname: busca\n' +
+    'description: "Use quando: o gatilho for ' + B + '"busca' + B + '" ou C:' + B + B + 'x"\n' +
+    "a: 'Use quando: it''s ok'\n" +
+    'b: Use quando: cru\n' +
+    'c: "meio' + B + '"\n---\n');
+  assert.strictEqual(f.ok, true);
+  assert.strictEqual(f.campos.description, 'Use quando: o gatilho for "busca" ou C:' + B + 'x');
+  assert.strictEqual(f.campos.a, "Use quando: it's ok");
+  assert.strictEqual(f.campos.b, 'Use quando: cru');
+  assert.strictEqual(f.campos.c, 'meio' + B, 'aspa que fecha escapada nao e valor citado: so tira as pontas, como antes');
+});
