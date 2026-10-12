@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.6.1 — onze ajustes de uso
+
+Os itens que a revisao da 0.6.0 deixou registrados e que se esbarram no uso normal. Cada um com teste
+escrito antes; o portao de fecho tambem passou por revisao cega.
+
+**Corrigido**
+
+- **Comando destrutivo.** `git restore` com opcao que nao muda o descarte antes do `.` (`-q`, `--ours`,
+  `--theirs`, `--merge`, `--conflict=`, a abreviacao `--work` do `--worktree`...) apagava a arvore e
+  passava; agora e barrado como o `git restore .`. `restore --staged -q .` (so o indice) e `-p .`
+  (interativo) seguem liberados.
+- **Portao de fecho.** Intencao nao e mais lida como alegacao: "vou concluir a tarefa", "antes de fechar
+  a etapa", "concluindo a fase". E passam a ser lidas: "Tarefa 3: concluida", "tarefa nº 3", "a tarefa 3
+  ja esta concluida", "onda 7b concluida", "tarefa 1.2 concluida". Id que o plano nao tem como cabecalho
+  `Tarefa N` (7b, 1.2) e cobrado pela tarefa em andamento, nunca pela Tarefa 7 ou 1 por engano.
+- **Medidor da sessao.** A medida que chega enquanto outra mede nao se perde mais; se a leitura de uso
+  travar, a linha de status diz isso e mede de novo em vez de congelar no ultimo numero. Percentual sai
+  inteiro; janela sem nome, gatilho incompleto e previsao infinita sao omitidos em vez de virar
+  "undefined" ou "Infinity". No painel do VS Code, o "o que fazer" nao emenda mais no ultimo item.
+- **Painel do plano.** `plano-ativo.json` gravado com BOM (comum no Windows) vale de novo, inclusive no
+  portao de fecho; o que existe mas nao se le diz isso em vez de "nenhum plano ativo"; sem plano, o
+  painel mostra o caminho real do `plano.js` para abrir um. A saida JSON do `plano.js` nao conta
+  tarefa sem caixa de passo como concluida (`semCaixas`).
+- **Chave de liga/desliga com valor torto.** `"sugerirAprender": "false"` (entre aspas) nao desliga, e
+  agora a abertura da sessao avisa; a conferencia final do `/esquadro:init` (`validar.js`) reprova; o
+  re-init aceita as
+  seis chaves (`sugerirAprender`, `auditarNaAbertura`, `qualidadeDeResposta`, `portaoDecisao`,
+  `portaoHandoff`, `vigia`).
+- **`/esquadro:aprender`.** Regra que e so o comeco de outra ja gravada era recusada como "JA EXISTE";
+  a duplicata agora e a linha inteira.
+- **Novidade da semana do vigia.** Linha longa quebra em ate tres linhas na tela, sem partir o link;
+  antes, cortava em 200 caracteres.
+- **README.** O paragrafo dos comandos `/esquadro-sessao` e `/esquadro-plano` diz as tres causas de o
+  comando nao aparecer (inclusive o esquadro antigo, com o comando de atualizar), que a forma com
+  dois-pontos nao existe, e o que o painel responde sem plano ativo.
+
 ## 0.6.0 — os numeros na tela, e a correcao que vira regra
 
 Uma revisao completa do plugin (scripts, ganchos, skills, agentes e testes) e o que ela trouxe de

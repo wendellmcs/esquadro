@@ -68,6 +68,24 @@ test('propor: regra duplicada nao e gravada duas vezes', () => {
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// D442/6 (T-20): a duplicata era procurada como TRECHO do arquivo; a regra nova que e so o comeco de uma que ja
+// existe ("ao editar -> rodar git status") era dada como JA EXISTE e nao era gravada. Agora compara a linha inteira.
+test('D442/6: regra que e trecho de outra e gravada; a mesma regra com espaco a mais segue sendo duplicata', () => {
+  const dir = projeto();
+  const regras = path.join(dir, '.claude', 'esquadro', 'regras.md');
+  try {
+    const r = rodar(['--gatilho', 'ao editar', '--acao', 'rodar git status', '--gravar'], dir);
+    assert.ok(!/JA EXISTE/.test(r.stdout), r.stdout);
+    const linhas = fs.readFileSync(regras, 'utf8').split(/\r?\n/);
+    assert.ok(linhas.includes('- ao editar -> rodar git status'), linhas.join('|'));
+    assert.ok(linhas.includes('- ao editar -> rodar git status antes'), linhas.join('|'));
+    const antes = fs.readFileSync(regras, 'utf8');
+    const d = rodar(['--gatilho', ' ao editar ', '--acao', 'rodar git status antes ', '--gravar'], dir);
+    assert.ok(/JA EXISTE/.test(d.stdout), d.stdout);
+    assert.strictEqual(fs.readFileSync(regras, 'utf8'), antes);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('propor: D434 quebra de linha no gatilho ou na acao e recusada e nada e gravado', () => {
   for (const [g, a] of [['linha1\nlinha2', 'x'], ['ao fechar', 'passo1\r\npasso2'], ['ao fechar', 'x\ry']]) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-aprende-'));

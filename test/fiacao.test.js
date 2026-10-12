@@ -679,6 +679,24 @@ test('fiacao: abertura NAO avisa quando o plano ativo e da propria sessao (R-T25
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// D442/5 (S-35, S-68): `"sugerirAprender": "false"` nao desliga (so o booleano decide, D388/D415) e o aviso so
+// saia na primeira escrita. Agora a abertura diz, em ASCII; com o booleano certo, calada.
+test('D442/5: abertura avisa chave de liga/desliga com valor torto; com booleano, nao', () => {
+  const dir = temp('liga-desliga');
+  try {
+    escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'), JSON.stringify({ sugerirAprender: 'false', vigia: 1 }));
+    const r = rodar('abertura.js', dir, { session_id: 'ld1', cwd: dir, source: 'startup' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(r.stdout.includes('sugerirAprender tem de ser true ou false'), r.stdout);
+    assert.ok(r.stdout.includes('vigia tem de ser true ou false'), r.stdout);
+    assert.ok(r.stdout.includes('"false" entre aspas NAO desliga'), r.stdout);
+    assert.ok(/^[\x20-\x7E\n]*$/.test(r.stdout.slice(r.stdout.indexOf('ATENCAO - valor'))), 'aviso fora de ASCII');
+    escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'), JSON.stringify({ sugerirAprender: false }));
+    const ok = rodar('abertura.js', dir, { session_id: 'ld2', cwd: dir, source: 'startup' });
+    assert.ok(!/tem de ser true ou false/.test(ok.stdout), ok.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('fiacao: abertura cita a frente vinculada e o objetivo dela (escopo por frente)', () => {
   const dir = temp('abertura-frente');
   try {

@@ -12,6 +12,10 @@ const JANELA_DA_MEDIA = 5;     // media das ultimas 5 subidas
 
 function num(v) { return typeof v === 'number' && isFinite(v); }
 function dois(n) { return String(n).padStart(2, '0'); }
+// D442/11 (M-22): o motor manda percentual com casas (37.29999); a tela mostra inteiro.
+function pct(n) { return Math.round(n) + '%'; }
+// D442/11 (M-15, M-18, M-19): gatilho sem nome, valor ou limiar nao entra na conta nem na lista.
+function gatilhoInteiro(g) { return !!g && typeof g.nome === 'string' && g.nome !== '' && num(g.valor) && num(g.limiar); }
 
 function hora(iso) {
   const d = new Date(iso);
@@ -27,7 +31,8 @@ function dia(iso) {
 
 function janelas(uso) {
   const lista = uso && Array.isArray(uso.rateLimits) ? uso.rateLimits : [];
-  return lista.filter(function (j) { return j && num(j.percentUsed); }).map(function (j) {
+  // D442/11 (M-16, M-21): janela sem `kind` virava o nome "undefined"; sem nome, fica de fora.
+  return lista.filter(function (j) { return j && num(j.percentUsed) && typeof j.kind === 'string' && j.kind !== ''; }).map(function (j) {
     const nome = NOME_DA_JANELA[j.kind] || String(j.kind);
     // a de 5h renova no mesmo dia (hora basta); as outras, pelo dia e hora
     const quando = j.resetsAt ? (j.kind === 'five_hour' ? hora(j.resetsAt) : [dia(j.resetsAt), hora(j.resetsAt)].filter(Boolean).join(' ')) : null;
@@ -49,20 +54,25 @@ function subidaMedia(amostras, campo) {
 }
 
 // Turnos que faltam: nunca negativo (contexto ou janela ja passados do fim = ~0 turnos).
-function turnosAte(falta, porTurno) { return Math.max(0, Math.floor(falta / porTurno)); }
+// D442/11 (M-20): subida minuscula (ruido de float) dava "~Infinity turnos"; sem conta finita, null (omite).
+function turnosAte(falta, porTurno) {
+  const n = Math.max(0, Math.floor(falta / porTurno));
+  return isFinite(n) ? n : null;
+}
 
 function previsao(uso, amostras) {
   const lista = Array.isArray(amostras) ? amostras : [];
   const partes = [];
   const ctx = uso && uso.context;
   const porTurno = subidaMedia(lista, 'tokens');
-  if (porTurno && ctx && num(ctx.tokens) && num(ctx.window)) {
-    partes.push({ curta: null, longa: 'contexto chega ao fim em ~' + turnosAte(ctx.window - ctx.tokens, porTurno) + ' turnos' });
+  const nCtx = porTurno && ctx && num(ctx.tokens) && num(ctx.window) ? turnosAte(ctx.window - ctx.tokens, porTurno) : null;
+  if (nCtx !== null) {
+    partes.push({ curta: null, longa: 'contexto chega ao fim em ~' + nCtx + ' turnos' });
   }
   const pct5h = subidaMedia(lista, 'cincoH');
   const j5 = janelas(uso).find(function (j) { return j.kind === 'five_hour'; });
-  if (pct5h && j5) {
-    const n = turnosAte(100 - j5.pct, pct5h);
+  const n = pct5h && j5 ? turnosAte(100 - j5.pct, pct5h) : null;
+  if (n !== null) {
     partes.push({ curta: '5h acaba em ~' + n + ' turnos', longa: 'janela 5h acaba em ~' + n + ' turnos' });
   }
   return partes;
@@ -71,16 +81,16 @@ function previsao(uso, amostras) {
 function linhaDaSessao(entrada) {
   const e = entrada || {};
   const uso = e.uso && typeof e.uso === 'object' ? e.uso : null;
-  const medidas = Array.isArray(e.medidas) ? e.medidas : [];
-  const cruzados = medidas.filter(function (g) { return g && g.cruzou; });
+  const medidas = (Array.isArray(e.medidas) ? e.medidas : []).filter(gatilhoInteiro);
+  const cruzados = medidas.filter(function (g) { return g.cruzou; });
   const avisou = e.avisouSaude === true;
   const cruzou = avisou || cruzados.length > 0;
   const prev = previsao(uso, e.amostras);
 
   const curta = ['esquadro'];
   const ctx = uso && uso.context;
-  if (ctx && num(ctx.percent)) curta.push('contexto ' + ctx.percent + '%');
-  for (const j of janelas(uso)) curta.push(j.nome + ' ' + j.pct + '%' + (j.quando && j.kind === 'five_hour' ? ' (renova ' + j.quando + ')' : ''));
+  if (ctx && num(ctx.percent)) curta.push('contexto ' + pct(ctx.percent));
+  for (const j of janelas(uso)) curta.push(j.nome + ' ' + pct(j.pct) + (j.quando && j.kind === 'five_hour' ? ' (renova ' + j.quando + ')' : ''));
   if (uso && uso.cost && num(uso.cost.usd)) curta.push('US$ ' + uso.cost.usd.toFixed(2));
   for (const p of prev) if (p.curta) curta.push(p.curta);
   if (avisou) curta.push('troca: aviso ja dado -> /esquadro:handoff');
@@ -89,13 +99,13 @@ function linhaDaSessao(entrada) {
 
   const longa = ['medidor da sessao'];
   if (ctx && num(ctx.percent)) {
-    longa.push('contexto: ' + ctx.percent + '%' + (num(ctx.tokens) && num(ctx.window) ? ' (' + ctx.tokens + ' de ' + ctx.window + ' tokens)' : ''));
+    longa.push('contexto: ' + pct(ctx.percent) + (num(ctx.tokens) && num(ctx.window) ? ' (' + ctx.tokens + ' de ' + ctx.window + ' tokens)' : ''));
   } else {
     longa.push('contexto: sem leitura ainda (o motor mede depois da 1a resposta)');
   }
   const js = janelas(uso);
   if (js.length) {
-    for (const j of js) longa.push('janela ' + j.nome + ': ' + j.pct + '% usada' + (j.quando ? ', renova ' + j.quando : ''));
+    for (const j of js) longa.push('janela ' + j.nome + ': ' + pct(j.pct) + ' usada' + (j.quando ? ', renova ' + j.quando : ''));
   } else {
     longa.push('janelas de limite: sem leitura (fora de assinatura, ou antes da 1a resposta)');
   }
@@ -105,10 +115,12 @@ function linhaDaSessao(entrada) {
     : 'previsao: sem dado ainda (precisa de ' + MINIMO_DE_SUBIDAS + ' turnos com consumo)');
   longa.push('troca de chat (basta 1 gatilho):');
   for (const g of medidas) {
-    if (!g) continue;
     longa.push('  - ' + g.nome + ': ' + g.valor + ' de ' + g.limiar + (g.cruzou ? '  <- cruzou' : ''));
   }
   if (avisou) longa.push('  (o aviso de troca ja foi dado nesta sessao; os contadores recomecam depois dele)');
+  // D442/2: o painel do VS Code le a longa como Markdown; sem a linha em branco, o "o que fazer" emendava
+  // no ultimo item da lista.
+  longa.push('');
   longa.push(cruzou
     ? 'o que fazer: rode /esquadro:handoff e cole o prompt pronto num chat novo.'
     : 'o que fazer: nada por ora.');

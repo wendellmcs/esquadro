@@ -22,7 +22,10 @@ function ehObjeto(v) { return !!v && typeof v === 'object' && !Array.isArray(v);
 // proposito (D101): so campo que muda decisao de portao, e so quando o TIPO
 // esta errado. Chave faltando e assunto de validar(), nunca do aviso.
 const LISTAS_LIDAS = ['comandosLiberados', 'comandosBloqueados', 'intocaveis'];
-const CHAVES_LIGA_DESLIGA = ['sugerirAprender', 'auditarNaAbertura'];
+// D442/5 (S-35, S-68): as seis chaves de liga/desliga do topo. Quem le testa `=== false` (ou `=== true`, no
+// vigia, que e opt-in): so o booleano decide (D388, D415) - `"false"` entre aspas NAO desliga. Por isso o valor
+// torto e avisado na abertura (abertura.js), reprovado em validar() e aceito pelo re-init.
+const CHAVES_LIGA_DESLIGA = ['sugerirAprender', 'auditarNaAbertura', 'qualidadeDeResposta', 'portaoDecisao', 'portaoHandoff', 'vigia'];
 
 // Padrao que NUNCA casa um alvo relativo: letra de unidade (C: ou C:\) ou esquema
 // (file://). O alvo que chega aos portoes e sempre relativo a raiz do projeto
@@ -105,9 +108,10 @@ function avisosDeTipo(projeto) {
   if ('travas' in projeto && (!projeto.travas || typeof projeto.travas !== 'object' || Array.isArray(projeto.travas))) {
     avisos.push('travas tem de ser objeto');
   }
-  // PA1-7/A2-2: as duas chaves de liga/desliga (ligadas por padrao; so `false` desliga,
-  // correcao.js e auditoria-periodica.js). "nao" ou 0 nao desliga e o dono nao sabe.
+  // PA1-7/A2-2: as chaves de liga/desliga (so booleano decide no portao). "nao" ou 0 nao desliga e o dono
+  // nao sabe. D442/5: as seis; o aviso da qualidadeDeResposta segue vindo de qualidade.js (um so por chave).
   for (const chave of CHAVES_LIGA_DESLIGA) {
+    if (chave === 'qualidadeDeResposta') continue;
     if (chave in projeto && typeof projeto[chave] !== 'boolean') avisos.push(chave + ' tem de ser true ou false');
   }
   const deQualidade = require('./qualidade.js').avisoDeTipo(projeto);
@@ -191,6 +195,11 @@ function validar(obj) {
     for (const t of TRAVAS) {
       if (typeof obj.travas[t] !== 'boolean') erros.push('travas.' + t + ' tem de ser true ou false');
     }
+  }
+
+  // D442/5 (S-35): o valor torto passava calado aqui (o aviso so saia no carregamento).
+  for (const chave of CHAVES_LIGA_DESLIGA) {
+    if (chave in obj && typeof obj[chave] !== 'boolean') erros.push(chave + ' tem de ser true ou false');
   }
 
   if ('limiares' in obj && (obj.limiares === null || typeof obj.limiares !== 'object')) {
@@ -295,7 +304,8 @@ function atualizar(antigo, respostas, hoje) {
   const mudou = [];
   const ignoradas = [];
   for (const chave of Object.keys(novas)) {
-    if (CHAVES.indexOf(chave) === -1) { ignoradas.push(chave); continue; }
+    // D442/5 (S-35): as chaves de liga/desliga sao do projeto.json, mesmo fora de CHAVES (que sao as obrigatorias).
+    if (CHAVES.indexOf(chave) === -1 && CHAVES_LIGA_DESLIGA.indexOf(chave) === -1) { ignoradas.push(chave); continue; }
     if (chave === 'versaoConfig' || chave === 'geradoEm') continue;
     if (novas[chave] === undefined) continue;
     // F1-C01: resposta parcial de objeto se funde por chave; trocar o objeto inteiro
@@ -366,6 +376,6 @@ function motivoInerte(inertes) {
 }
 
 module.exports = {
-  MARCHAS, AMEACAS, CHAVES, TRAVAS, LISTAS_LIDAS,
+  MARCHAS, AMEACAS, CHAVES, TRAVAS, LISTAS_LIDAS, CHAVES_LIGA_DESLIGA,
   travasDe, avisosDeTipo, intocaveisInertes, motivoInerte, validar, montar, atualizar
 };

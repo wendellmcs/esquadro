@@ -235,3 +235,15 @@ test('readme: ensina a atualizacao automatica pelo settings.json, porque o paine
   assert.ok(/VS Code/.test(s), 'falta dizer que o painel do VS Code nao tem o botao');
   assert.ok(/"esquadro-local"\s*:\s*\{[\s\S]*?"autoUpdate"\s*:\s*true/.test(s), 'falta o trecho literal do settings.json');
 });
+
+// D442/3 (M-8, M-10, M-11, M-13): o paragrafo dos comandos de mod nao dizia que a forma com dois-pontos nao
+// existe, nem a 3a causa de o comando faltar (o plugin antigo), nem o que /esquadro-plano responde sem plano
+// (o dono achou que o plano "nao apareceu", s70).
+test('D442/3: o paragrafo dos mods diz o efeito dos dois-pontos, a causa plugin antigo e o painel sem plano', () => {
+  const i = README.indexOf('**Ver os números a qualquer hora:**');
+  assert.ok(i !== -1, 'sumiu o paragrafo dos mods');
+  const p = README.slice(i, README.indexOf('\n\n', i));
+  assert.ok(/dois-pontos[^.]*n[aã]o existe/.test(p), 'falta dizer que a forma com dois-pontos nao existe');
+  assert.ok(p.indexOf('claude plugin update esquadro@esquadro-local') !== -1, 'falta a causa plugin antigo, com o comando');
+  assert.ok(p.indexOf('nenhum plano ativo') !== -1 && p.indexOf('--abrir') !== -1, 'falta o que o painel diz sem plano e como abrir');
+});

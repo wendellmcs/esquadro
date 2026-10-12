@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 // Bloco M (D435): o mod do esquadro e cola fina. A conta e o texto moram em scripts/sessao.js e
 // scripts/plano.js (testados pela suite node --test); aqui se prova a cola: o que o mod pede ao
@@ -134,6 +134,74 @@ test('chamada que lanca no fim do turno (ex.: prazo estourado): o status tambem 
   lanca = true
   await $.turn.complete({ turnId: 't2', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
   expect(String(status[status.length - 1])).toMatch(/^esquadro \| medidor sem resposta/)
+})
+
+const MEDIDA = { context: USO.context, rateLimits: USO.rateLimits, changed: ['context'] } as any
+
+function resposta(curta: string) {
+  return { value: { exitCode: 0, stdout: JSON.stringify({ curta: curta, longa: 'l', cruzou: false }), stderr: '' } }
+}
+
+// D442/7 (M-1): a medida que chegava enquanto outra media era descartada (guarda `medindo`); o status ficava
+// com o numero da medida anterior ate o proximo evento. Agora ela fica pendente e roda assim que a outra acaba.
+test('D442/7: medida que chega durante outra nao se perde - roda logo depois', async ($, on) => {
+  const relogio = mock.clock(on, { now: 1000 })
+  const status: (string | undefined)[] = []
+  let soltar: () => void = () => {}
+  const segura = new Promise<void>(r => { soltar = r })
+  let n = 0
+  on('session.usage', () => ({ value: USO }))
+  on('session.id', () => ({ value: 'sess-abc' }))
+  on('process.run', async () => {
+    n += 1
+    if (n === 1) { await segura; return resposta('esquadro | medida 1') }
+    return resposta('esquadro | medida 2')
+  })
+  on('ui.status', ($, e) => { status.push(e.text); return { value: undefined } })
+  on('ui.invalidate', () => ({ value: undefined }))
+  on('session.measure', () => ({ changed: [] }))
+  const primeira = $.session.measure(MEDIDA)
+  await relogio.settle()
+  await $.session.measure(MEDIDA)
+  soltar()
+  await primeira
+  await relogio.settle()
+  expect(n).toBe(2)
+  expect(status[status.length - 1]).toBe('esquadro | medida 2')
+})
+
+// D442/7 (M-5): o prazo cobria so o process.run; se `$.session.usage()` nunca respondesse, a guarda ficava presa
+// e a linha de status congelava no ultimo numero bom, sem sinal. Agora a medida presa alem do prazo e largada.
+test('D442/7: leitura de uso que nunca responde nao congela o status - a medida seguinte assume', async ($, on) => {
+  const relogio = mock.clock(on, { now: 1000 })
+  const status: (string | undefined)[] = []
+  let soltarPresa: () => void = () => {}
+  const presa = new Promise<void>(r => { soltarPresa = r })
+  let usos = 0
+  let runs = 0
+  on('session.usage', async () => {
+    usos += 1
+    if (usos === 1) await presa
+    return { value: USO }
+  })
+  on('session.id', () => ({ value: 'sess-abc' }))
+  on('process.run', () => {
+    runs += 1
+    return resposta(runs === 1 ? 'esquadro | contexto 5%' : 'esquadro | numero velho da medida presa')
+  })
+  on('ui.status', ($, e) => { status.push(e.text); return { value: undefined } })
+  on('ui.invalidate', () => ({ value: undefined }))
+  on('session.measure', () => ({ changed: [] }))
+  void $.session.measure(MEDIDA).catch(() => {})
+  await relogio.settle()
+  await relogio.advance(60000)
+  await $.session.measure(MEDIDA)
+  expect(status).toContain('esquadro | medidor sem resposta (a leitura de uso travou; medindo de novo)')
+  expect(status[status.length - 1]).toBe('esquadro | contexto 5%')
+  // a presa responde tarde: o resultado dela e velho e nao volta para a tela
+  soltarPresa()
+  await relogio.settle()
+  expect(status[status.length - 1]).toBe('esquadro | contexto 5%')
 })
 
 test('faixa acima do prompt: nada sem gatilho; com gatilho, botao que poe /esquadro:handoff no prompt', async ($, on) => {

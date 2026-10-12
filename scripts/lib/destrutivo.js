@@ -842,10 +842,20 @@ const CHECKOUT_FLAG = '(?:-[fq]+|--(?:force|ours|theirs|quiet|no-overlay|overlay
 // `restore`, UMA OU MAIS `--staged`/`-S`, um `--` isolado opcional e o `.` final - nada alem de espaco.
 // Qualquer outra coisa barra (wrapper `sudo -S`/`ssh -S`, `-W`, `--source`, `restore` repetido...). O texto
 // citado vira `""` antes, para valor entre aspas (`-C "a b"`) ser um token so.
-const SO_INDICE = /^\s*git(?:\.exe)?\s+(?:-[Cc]\s+\S+\s+)*restore\s+(?:(?:--staged|-S)\s+)+(?:--\s+)?\.\s*$/;
+// D442/1: `-q`/`--quiet` (sozinho ou agrupado ao `-S`, ex. `-Sq`) nao muda o efeito; o `--staged`/`-S` tem de
+// estar nas opcoes capturadas - `-q .` sozinho descarta a arvore.
+const SO_INDICE = /^\s*git(?:\.exe)?\s+(?:-[Cc]\s+\S+\s+)*restore\s+((?:(?:--staged|--quiet|-[Sq]+)\s+)+)(?:--\s+)?\.\s*$/;
 function soIndice(t) {
-  return SO_INDICE.test(t.replace(/"[^"]*"|'[^']*'/g, '""'));
+  const m = SO_INDICE.exec(t.replace(/"[^"]*"|'[^']*'/g, '""'));
+  return !!m && /(?:^|\s)(?:--staged|-q*S)/.test(m[1]);
 }
+
+// D442/1 (S-3, S-52): flags do `restore` que nao tiram o `.` do alvo e nao mudam o descarte. Lista fechada, como
+// a do checkout: `-p`/`--patch` (interativo) nao entra. O git aceita abreviacao unica de opcao longa - o
+// `--worktree` e o `--quiet` vao por prefixo (`--w`, `--work`, `--q`).
+const RESTORE_FLAG = '(?:--staged|--source=' + ASPA_OU_LETRA + '|--source\\s+' + ASPA_OU_LETRA + '|-s\\s+' + ASPA_OU_LETRA +
+  '|-[SWqm]+|--w(?:o(?:r(?:k(?:t(?:r(?:ee?)?)?)?)?)?)?|--q(?:u(?:i(?:et?)?)?)?|--ours|--theirs|--merge|--conflict=\\S+' +
+  '|--ignore-unmerged|--ignore-skip-worktree-bits|--(?:no-)?(?:overlay|progress|recurse-submodules)|--)';
 
 // D429/1: `git clean -n`/`--dry-run` (inclusive agrupado: `-nfd`, `-dn`) so lista o que apagaria. O `n` depois de um
 // `e` no aglomerado (`-en`) e o padrao do `-e`, nao dry-run.
@@ -906,7 +916,8 @@ const REGRAS = [
   // D420/SH-04: `restore` aceita `--`, `--worktree`, `--source=X`, `--source X`, `-s X`, `-S`, `-W` antes do `.`.
   // S1/L1-1: `-SW` agrupado e valor entre aspas (`--source "a b"`) tambem. S1/H-1: so o indice (`--staged`/`-S`
   // sem `--worktree`/`-W`) nao perde trabalho - `libera` tira essa forma (ver `soIndice`).
-  { re: new RegExp(GIT + 'restore\\s+(?:(?:--staged|--worktree|--source=' + ASPA_OU_LETRA + '|--source\\s+' + ASPA_OU_LETRA + '|-s\\s+' + ASPA_OU_LETRA + '|-[SW]+|--)\\s+)*\\.(\\s|$)', 'i'), libera: soIndice, semAspas: true, motivo: 'git restore . descarta todas as mudancas' },
+  // D442/1: as flags que nao mudam o descarte (`-q`, `--ours`, `--work`...) estao em RESTORE_FLAG.
+  { re: new RegExp(GIT + 'restore\\s+(?:' + RESTORE_FLAG + '\\s+)*\\.(\\s|$)', 'i'), libera: soIndice, semAspas: true, motivo: 'git restore . descarta todas as mudancas' },
   // D420/SH-04: `switch -f`/`--force`/`--discard-changes` jogam fora as mudancas locais ao trocar de branch.
   // s62: `-f` agrupado (`-fq`, `-fc`, `-qf`) tambem, como no checkout.
   { re: new RegExp(GIT + 'switch' + FIM + SEG + '\\s(?:-[a-zA-Z]*f[a-zA-Z]*|--force|--discard-changes)(?![\\w-])', 'i'), semAspas: true, motivo: 'git switch forcado descarta mudancas locais' },

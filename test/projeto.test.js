@@ -509,3 +509,31 @@ test('PA1-7/A2-2: sugerirAprender e auditarNaAbertura de tipo errado ganham avis
     assert.deepStrictEqual(projeto.avisosDeTipo({}), [], 'ausente nao e erro');
   }
 });
+
+// D442/5 (S-35, S-68): as seis chaves de liga/desliga. `"false"` (texto) nao desliga - so o booleano decide
+// (D388, D415) -, mas `validar()` aceitava o valor torto calado e o re-init jogava a resposta em `ignoradas`.
+// O aviso na abertura esta em fiacao.test.js.
+const LIGA_DESLIGA = ['sugerirAprender', 'auditarNaAbertura', 'qualidadeDeResposta', 'portaoDecisao', 'portaoHandoff', 'vigia'];
+
+test('D442/5: validar reprova chave de liga/desliga que nao e booleano; avisosDeTipo avisa as seis', () => {
+  const base = projeto.montar({ plataforma: { so: 'linux', shell: 'bash' } }, {
+    modeloDeAmeaca: 'publico', fontesCanonicas: [], provaDePronto: 'make test',
+    intocaveis: [], quemDecide: 'time', marchas: { aaa: [], padrao: [], rapida: [] }
+  });
+  for (const chave of LIGA_DESLIGA) {
+    const v = projeto.validar(Object.assign({}, base, { [chave]: 'false' }));
+    assert.ok(v.erros.includes(chave + ' tem de ser true ou false'), chave + ': ' + v.erros.join(' | '));
+    assert.strictEqual(projeto.validar(Object.assign({}, base, { [chave]: false })).ok, true, chave + '=false');
+    const avisos = projeto.avisosDeTipo({ [chave]: 'nao' });
+    assert.strictEqual(avisos.filter((a) => a === chave + ' tem de ser true ou false').length, 1, chave + ': ' + avisos.join(' | '));
+  }
+});
+
+test('D442/5: re-init aceita as chaves de liga/desliga em vez de ignorar', () => {
+  for (const chave of LIGA_DESLIGA) {
+    const r = projeto.atualizar(copia({}), { [chave]: false }, '2026-10-11');
+    assert.deepStrictEqual(r.ignoradas, [], chave);
+    assert.strictEqual(r.config[chave], false, chave);
+    assert.ok(r.mudou.includes(chave), chave);
+  }
+});

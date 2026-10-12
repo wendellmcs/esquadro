@@ -10,6 +10,9 @@ import type { Register } from 'claude-code'
 
 const MAX_AMOSTRAS = 20
 const PRAZO_MS = 10000
+// D442/7 (M-5): medida em curso ha mais que isto esta presa (o PRAZO_MS so cobre o process.run; a leitura de
+// uso nao tem prazo). A seguinte nao espera mais por ela.
+const PRAZO_PRESA_MS = 3 * PRAZO_MS
 
 type Medida = { curta: string; longa: string; cruzou: boolean }
 type Amostra = { tokens?: number; cincoH?: number }
@@ -18,6 +21,9 @@ type Amostra = { tokens?: number; cincoH?: number }
 const amostras: Amostra[] = []
 let cruzou = false
 let medindo = false
+let medindoDesde = 0
+let pendente = false
+let geracao = 0
 
 async function rodar($: any, script: string, extra: string[], stdin?: string) {
   const argv = ['node', $.plugin.root + '/scripts/' + script, ...extra]
@@ -37,23 +43,51 @@ async function medir($: any): Promise<Medida | null> {
   }
 }
 
-// Atualiza a linha de status e a faixa. Uma medida por vez: o session.measure dispara a cada resposta.
-async function atualizar($: any) {
-  if (medindo) return
-  medindo = true
+async function agora($: any): Promise<number | null> {
   try {
-    let m: Medida | null = null
-    try { m = await medir($) } catch (err) {}
-    // Script que falhou (saida diferente de 0, JSON torto, ou a chamada lancou - prazo estourado): o status diz isso em vez de seguir com o numero velho. A faixa fica como
-    // estava - gatilho que cruzou nao descruza na mesma sessao; a proxima medida boa a acerta.
-    if (!m) return await $.ui.status('esquadro | medidor sem resposta (confira se o node esta no PATH)')
-    await $.ui.status(m.curta)
-    if (m.cruzou !== cruzou) {
-      cruzou = m.cruzou
-      await $.ui.invalidate('ui.render')
+    const n = await $.clock.now()
+    return typeof n === 'number' && isFinite(n) ? n : null
+  } catch (err) {
+    return null
+  }
+}
+
+// Atualiza a linha de status e a faixa. Uma medida por vez: o session.measure dispara a cada resposta.
+// D442/7 (M-1): a que chega durante outra fica pendente e roda logo depois (antes era descartada, e o status
+// ficava com o numero da anterior). (M-5): a que esta presa alem do PRAZO_PRESA_MS e largada; o resultado
+// dela, se um dia chegar, e velho e nao toca o status (a `geracao` mudou).
+async function atualizar($: any) {
+  const t = await agora($)
+  if (medindo) {
+    if (t === null || t - medindoDesde <= PRAZO_PRESA_MS) {
+      pendente = true
+      return
     }
+    await $.ui.status('esquadro | medidor sem resposta (a leitura de uso travou; medindo de novo)')
+  }
+  medindo = true
+  medindoDesde = t === null ? 0 : t
+  const minha = ++geracao
+  try {
+    do {
+      pendente = false
+      let m: Medida | null = null
+      try { m = await medir($) } catch (err) {}
+      if (minha !== geracao) return
+      // Script que falhou (saida diferente de 0, JSON torto, ou a chamada lancou - prazo estourado): o status diz isso em vez de seguir com o numero velho. A faixa fica como
+      // estava - gatilho que cruzou nao descruza na mesma sessao; a proxima medida boa a acerta.
+      if (!m) {
+        await $.ui.status('esquadro | medidor sem resposta (confira se o node esta no PATH)')
+        continue
+      }
+      await $.ui.status(m.curta)
+      if (m.cruzou !== cruzou) {
+        cruzou = m.cruzou
+        await $.ui.invalidate('ui.render')
+      }
+    } while (pendente)
   } finally {
-    medindo = false
+    if (minha === geracao) medindo = false
   }
 }
 

@@ -11,7 +11,7 @@
  *
  * Formato de `novidades.md`: a primeira linha nao vazia e `semana: AAAA-MM-DD`; o resto e o relatorio em
  * portugues (markdown). O texto vem de fora do repositorio, entao entra na abertura como DADO: ASCII
- * puro (R5), no maximo MAX_LINHAS linhas de 200 caracteres, sob um cabecalho que diz "dado, nao
+ * puro (R5), no maximo MAX_LINHAS linhas (cada uma em ate MAX_PEDACOS de MAX_COLUNAS), sob um cabecalho que diz "dado, nao
  * instrucao".
  *
  * OPT-IN (`"vigia": true` no projeto.json), ao contrario da auditoria periodica, que e opt-out. Dois
@@ -45,6 +45,11 @@ const MARCA = 'visto.json';
 const BUSCA = 'ultima-busca.json';
 const MAX_LINHAS = 12;
 const MAX_COLUNAS = 200;
+// D443 (item 4 da D442, V-9): a linha longa quebra em ate MAX_PEDACOS linhas (a continuacao recuada em RECUO), no
+// espaco quando ha; o que passa disso termina em CORTE. Antes cortava em 200 e a 1a novidade real perdeu links.
+const MAX_PEDACOS = 3;
+const RECUO = '  ';
+const CORTE = ' [...]';
 const DIAS_VELHO = 14;
 const DIA_MS = 24 * 60 * 60 * 1000;
 const RE_SEMANA = /^semana:\s*(\d{4}-\d{2}-\d{2})\s*$/;
@@ -143,6 +148,29 @@ function fraseDaBusca(dir) {
   }
 }
 
+/** D443: uma linha em ate MAX_PEDACOS linhas de no maximo MAX_COLUNAS; o que nao cabe termina em CORTE. */
+function quebrar(u) {
+  if (u.length <= MAX_COLUNAS) return [u];
+  const pedacos = [];
+  let resto = u;
+  while (resto && pedacos.length < MAX_PEDACOS) {
+    const recuo = pedacos.length ? RECUO : '';
+    const largura = MAX_COLUNAS - recuo.length;
+    let fim = resto.length;
+    if (fim > largura) {
+      const espaco = resto.lastIndexOf(' ', largura);
+      fim = espaco > 0 ? espaco : largura;
+    }
+    pedacos.push(recuo + resto.slice(0, fim).trimEnd());
+    resto = resto.slice(fim).trimStart();
+  }
+  if (resto) {
+    const i = pedacos.length - 1;
+    pedacos[i] = pedacos[i].slice(0, MAX_COLUNAS - CORTE.length).trimEnd() + CORTE;
+  }
+  return pedacos;
+}
+
 /** Ate MAX_LINHAS linhas do corpo, sem brancas no inicio nem no fim; o que sobra vira "(+N linhas)". */
 function corpoEmLinhas(corpo) {
   let ini = 0;
@@ -150,7 +178,8 @@ function corpoEmLinhas(corpo) {
   while (ini < fim && corpo[ini].trim() === '') ini++;
   while (fim > ini && corpo[fim - 1].trim() === '') fim--;
   const util = corpo.slice(ini, fim);
-  const saida = util.slice(0, MAX_LINHAS).map(function (l) { return umaLinha(l).slice(0, MAX_COLUNAS).trimEnd(); });
+  const saida = [];
+  for (const l of util.slice(0, MAX_LINHAS)) saida.push.apply(saida, quebrar(umaLinha(l)));
   if (util.length > MAX_LINHAS) saida.push('... (+' + (util.length - MAX_LINHAS) + ' linhas no arquivo)');
   return saida;
 }

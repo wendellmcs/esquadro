@@ -93,6 +93,13 @@ io.blindar(function () {
     if (inertes.length) {
       process.stdout.write('\n' + projetoLib.motivoInerte(inertes) + '\n');
     }
+    // D442/5 (S-35, S-68): o aviso de tipo so saia na primeira escrita (portao-escopo), e o dono que pos
+    // `"sugerirAprender": "false"` achava que tinha desligado. So o booleano decide (D388, D415).
+    const tipos = projetoLib.avisosDeTipo(projeto);
+    if (tipos.length) {
+      process.stdout.write('\nesquadro: ATENCAO - valor de tipo errado em .claude/esquadro/projeto.json: ' + tipos.join('; ') +
+        '. Para ligar ou desligar vale so true ou false, sem aspas: "false" entre aspas NAO desliga.\n');
+    }
     // A2 (D426): auditoria periodica. Depois da foto do git (a marca nao entra nela) e antes do plano
     // ativo, que segue por ultimo. A lib ja nao lanca; o try/catch aqui e a segunda rede, para que
     // nada da auditoria derrube o resto da abertura.

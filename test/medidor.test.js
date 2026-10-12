@@ -173,6 +173,41 @@ test('longa: cada gatilho com nome, valor e limiar, e o que fazer', () => {
   assert.ok(ASCII.test(r.longa), JSON.stringify(r.longa));
 });
 
+// D442/2 (print do dono, s70): o painel do VS Code renderiza a longa como Markdown; sem linha em branco, o
+// "o que fazer" virava continuacao do ultimo item da lista de gatilhos ("... 0 de 3 o que fazer: ...").
+test('D442/2: longa separa o "o que fazer" da lista com uma linha em branco, com e sem aviso dado', () => {
+  for (const avisou of [false, true]) {
+    const r = medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: saude.medir({}, null), avisouSaude: avisou });
+    assert.ok(/\n\no que fazer: /.test(r.longa), JSON.stringify(r.longa));
+  }
+});
+
+// D442/11 (M-15 a M-22): o motor manda numero com casas e, se vier incompleto, o texto mostrava "undefined",
+// "Infinity" ou contava gatilho que nao listava. Campo que o motor nao deu e omitido, nunca inventado.
+test('D442/11: percentual arredondado; janela sem kind e gatilho incompleto omitidos; nada de undefined/Infinity', () => {
+  const torto = uso({
+    context: { tokens: 46900, window: 1000000, percent: 4.6899999 },
+    rateLimits: [
+      { kind: 'five_hour', percentUsed: 37.29999, resetsAt: '2026-10-11T23:20:00.000Z' },
+      { percentUsed: 40 },
+      { kind: 'seven_day', percentUsed: 92.5, resetsAt: '2026-10-15T07:00:00.000Z' }
+    ]
+  });
+  const certas = saude.medir({}, null);
+  const medidas = [null, { cruzou: true }, { nome: 'x', cruzou: false }].concat(certas);
+  // subida media de 1e-320 por turno: (1000000 - 46900) / 1e-320 = Infinity
+  const tokensSobemQuaseNada = [{ tokens: 0 }, { tokens: 1e-320 }, { tokens: 2e-320 }];
+  assert.strictEqual((1000000 - 46900) / 1e-320, Infinity, 'o caso nao exercita o Infinity');
+  const r = medidor.linhaDaSessao({ uso: torto, amostras: tokensSobemQuaseNada, medidas: medidas, avisouSaude: false });
+  const tudo = r.curta + '\n' + r.longa;
+  assert.ok(!/undefined|Infinity|NaN|null/.test(tudo), tudo);
+  assert.ok(r.curta.indexOf('contexto 5%') !== -1 && r.curta.indexOf('5h 37%') !== -1 && r.curta.indexOf('semana 93%') !== -1, r.curta);
+  assert.ok(r.longa.indexOf('janela 5h: 37% usada') !== -1, r.longa);
+  assert.strictEqual(r.cruzou, false, 'gatilho sem nome/valor/limiar nao cruza a troca');
+  assert.ok(new RegExp('troca: 0 de ' + certas.length + ' gatilhos').test(r.curta), r.curta);
+  assert.strictEqual((r.longa.match(/^  - /gm) || []).length, certas.length, r.longa);
+});
+
 test('entrada torta nao lanca: devolve curta com so a troca de chat', () => {
   const r = medidor.linhaDaSessao({ uso: null, amostras: 'x', medidas: null, avisouSaude: false });
   assert.ok(typeof r.curta === 'string' && r.curta.indexOf('esquadro') === 0, r.curta);

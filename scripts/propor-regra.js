@@ -47,7 +47,10 @@ if (!gravar) {
 let texto = '';
 try { texto = fs.readFileSync(alvo, 'utf8'); } catch (e) { texto = '# Regras deste projeto\n'; }
 
-if (texto.indexOf(bruta) !== -1) {
+// D442/6 (T-20): duplicata e a LINHA inteira ("- " + regra), nao trecho: a regra que e so o comeco de outra
+// ("ao editar -> rodar git status" x "... status antes") era dada como JA EXISTE e nao era gravada.
+const jaTem = texto.split(/\r?\n/).some(function (l) { return l.trim().replace(/^-\s*/, '') === bruta; });
+if (jaTem) {
   process.stdout.write('JA EXISTE, nao dupliquei: ' + bruta + '\n');
   process.exit(0);
 }

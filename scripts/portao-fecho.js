@@ -68,10 +68,20 @@ function encerrarTurno(e, s, avisoExtra) {
 // captura a LISTA ("1 e 2", "1, 2", "1 e tarefa 2") e `tarefaACobrar` separa os numeros. L2-fec-7: sem
 // quantificadores de espaco adjacentes (`\s+(?:a|o)?\s*` fazia backtracking quadratico). N2: plural
 // (`s?`, "as"/"os") e auxiliares plurais ("estao", "foram"), como no plano.js.
+// D442/8 (S-47, S-48): o id aceita "nº 3", "7b" e "1.2"; ":"/"-"/travessao e "ja" antes do participio; verbo da 2a
+// forma so no passado ou participio; na 1a, "complet" so como participio/adjetivo ("completar" nao alega). Quem
+// tira o numero e numerosDaAlegacao.
 const RE_ALEGA_N = [
-  /\b(?:tarefa|etapa|onda|fase)s?\s+(\d+(?:\s*(?:,|e)\s*(?:(?:tarefa|etapa|onda|fase)s?\s+)?\d+)*)\s*(?:est[aá] |est[aã]o |foi |foram )?(?:conclu[ií]d|fechad|finalizad|pronta|complet)/gi,
-  /\b(?:conclu[ií]|fech|finaliz|complet)\w*\s+(?:(?:as|os|a|o)\s*)?(?:tarefa|etapa|onda|fase)s?\s+(\d+(?:\s*(?:,|e)\s*(?:(?:tarefa|etapa|onda|fase)s?\s+)?\d+)*)/gi
+  /\b(?:tarefa|etapa|onda|fase)s?\s+((?:n[º°.]\s*)?\d+(?:\.\d+)*(?:[a-z](?![a-z]))?(?:\s*(?:,|e)\s*(?:(?:tarefa|etapa|onda|fase)s?\s+)?(?:n[º°.]\s*)?\d+(?:\.\d+)*(?:[a-z](?![a-z]))?)*)\s*(?:[:\-–—]\s*)?(?:j[aá]\s+)?(?:est[aá] |est[aã]o |foi |foram )?(?:conclu[ií]d|fechad|finalizad|pronta|complet(?:[ao]s?|ad[ao]s?)\b)/gi,
+  /\b(?:conclu(?:[ií](?:mos|ram|u|d[ao]s?)?)|(?:fech|finaliz|complet)(?:ei|ou|amos|aram|ad[ao]s?))\s+(?:(?:as|os|a|o)\s*)?(?:tarefa|etapa|onda|fase)s?\s+((?:n[º°.]\s*)?\d+(?:\.\d+)*(?:[a-z](?![a-z]))?(?:\s*(?:,|e)\s*(?:(?:tarefa|etapa|onda|fase)s?\s+)?(?:n[º°.]\s*)?\d+(?:\.\d+)*(?:[a-z](?![a-z]))?)*)/gi
 ];
+
+/** D442/8: os numeros de Tarefa N que a alegacao cita. So o inteiro puro: "7b" e "1.2" nao sao cabecalho
+ *  `Tarefa N` que o parser do plano entende - viram alegacao sem numero (cai na tarefa em andamento). */
+function numerosDaAlegacao(lista) {
+  return (lista.match(/\d+(?:\.\d+)*[a-z]?/gi) || []).filter(function (d) { return /^\d+$/.test(d); })
+    .map(function (d) { return parseInt(d, 10); });
+}
 
 /** A tarefa do plano que o subitem aberto cobra, na ordem: (1) a que a alegacao cita, se o numero existe
  *  no plano (fechada = alegacao verdadeira, nao cobra); numero inexistente vale como sem numero;
@@ -84,7 +94,7 @@ function tarefaACobrar(tarefas, mensagem, ativo) {
   for (const re of RE_ALEGA_N) {
     let m;
     re.lastIndex = 0;
-    while ((m = re.exec(texto)) !== null) (m[1].match(/\d+/g) || []).forEach(function (d) { citadas.push(parseInt(d, 10)); });
+    while ((m = re.exec(texto)) !== null) numerosDaAlegacao(m[1]).forEach(function (n) { citadas.push(n); });
   }
   const alvo = function (n) { return tarefas.filter(function (t) { return t.n === n; })[0]; };
   const comAberto = function (t) { return t && t.abertos > 0 ? t : undefined; };

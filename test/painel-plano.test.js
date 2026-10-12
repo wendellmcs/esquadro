@@ -82,3 +82,60 @@ test('plano.js --texto: sem plano ativo, saida 0 e o texto de como abrir', () =>
     assert.ok(/nenhum plano ativo/.test(r.stdout), r.stdout);
   } finally { fs.rmSync(base, { recursive: true, force: true }); }
 });
+
+const SCRIPT = path.join(__dirname, '..', 'scripts', 'plano.js');
+function painelEm(conteudoDoAtivo, args) {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-painel-'));
+  try {
+    fs.writeFileSync(path.join(base, 'plano.md'), PLANO);
+    if (conteudoDoAtivo !== null) {
+      fs.mkdirSync(path.join(base, '.claude', 'esquadro'), { recursive: true });
+      fs.writeFileSync(path.join(base, '.claude', 'esquadro', 'plano-ativo.json'), conteudoDoAtivo);
+    }
+    return spawnSync(process.execPath, [SCRIPT].concat(args || ['--texto']), { cwd: base, encoding: 'utf8' });
+  } finally { fs.rmSync(base, { recursive: true, force: true }); }
+}
+
+// D442/3 (M-8/M-10/M-14 e o print do dono na s70): sem plano, o painel mandava rodar
+// `node <pasta do plugin esquadro>/scripts/plano.js` - o dono nao sabe que pasta e essa. O script sabe onde esta.
+test('D442/3: sem plano ativo, o painel diz o caminho real do plano.js, entre aspas', () => {
+  const r = painelEm(null);
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(r.stdout.indexOf('<pasta do plugin') === -1, r.stdout);
+  assert.ok(r.stdout.indexOf('node "' + SCRIPT + '" --abrir <caminho do plano>') !== -1, r.stdout);
+  // caminho que nao e ASCII (R5) ou que o shell reinterpretaria: volta ao marcador, sem inventar
+  assert.ok(/<pasta do plugin esquadro>/.test(planoLib.painelTexto(null, [], 'C:/Usuários/zé/plano.js')));
+  assert.ok(/<pasta do plugin esquadro>/.test(planoLib.painelTexto(null, [], '/tmp/$x/plano.js')));
+  assert.ok(/<pasta do plugin esquadro>/.test(planoLib.painelTexto(null, [])));
+});
+
+// D442/10 (M-28): o --texto nao caia (conferido: saida 0 em 10 formas de arquivo torto), mas DIZIA "nenhum plano
+// ativo" com o arquivo la: JSON quebrado, e ate um plano valido gravado com BOM (comum no Windows, D124).
+test('D442/10: plano-ativo.json com BOM vale; JSON quebrado diz que existe mas nao se le', () => {
+  const comBom = painelEm('\uFEFF' + JSON.stringify({ arquivo: 'plano.md', sessionId: 's1' }));
+  assert.strictEqual(comBom.status, 0, comBom.stderr);
+  assert.ok(comBom.stdout.indexOf('tarefas: 1 de 3 concluidas') !== -1, comBom.stdout);
+  for (const torto of ['{"arquivo": ', '[]', '"x"']) {
+    const r = painelEm(torto);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(r.stdout.indexOf('nenhum plano ativo') === -1, torto + ' -> ' + r.stdout);
+    assert.ok(/plano-ativo\.json existe mas nao se le/.test(r.stdout), torto + ' -> ' + r.stdout);
+    assert.ok(ASCII.test(r.stdout), JSON.stringify(r.stdout));
+  }
+});
+
+// D442/9 (M-23/M-24): o painel em texto ja nao contava tarefa sem caixa como feita (D436), mas a saida JSON
+// do plano.js (sem --texto) contava: `concluidas = tarefas - abertas`.
+test('D442/9: plano.js (JSON) nao conta tarefa sem caixa como concluida e diz quantas sao', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-painel-'));
+  try {
+    fs.writeFileSync(path.join(base, 'plano.md'), '### Tarefa 1: A\n- [x] um\n### Tarefa 2: B\nsem caixas\n');
+    planoLib.abrir(base, 'plano.md', 's1');
+    const r = spawnSync(process.execPath, [SCRIPT], { cwd: base, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const j = JSON.parse(r.stdout);
+    assert.strictEqual(j.tarefas, 2);
+    assert.strictEqual(j.concluidas, 1, r.stdout);
+    assert.strictEqual(j.semCaixas, 1, r.stdout);
+  } finally { fs.rmSync(base, { recursive: true, force: true }); }
+});

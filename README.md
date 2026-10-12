@@ -357,13 +357,18 @@ gancho é um script `node` — ou o plugin não está ativo; `claude plugin list
 
 **Ver os números a qualquer hora:** dois comandos que vêm com o plugin, sem instalar nada à parte. Eles
 são *mods* (extensões que o próprio Claude Code roda dentro da sessão) e só existem no Claude Code 2.1.287
-ou mais novo: se `/esquadro-sessao` não aparecer, rode `claude --version` e atualize; se a versão já
-for essa ou mais nova, abra uma sessão nova, porque os dois comandos são registrados quando a sessão começa. O nome leva hífen,
-e não os dois-pontos dos outros comandos do esquadro, porque comando de mod não leva o prefixo do plugin. `/esquadro-sessao` responde o
+ou mais novo. Se `/esquadro-sessao` não aparecer, há três causas: o Claude Code antigo (rode
+`claude --version` e atualize); o esquadro antigo, de antes da 0.6.0, que não traz os mods (rode
+`claude plugin update esquadro@esquadro-local`, ver "Para atualizar à mão" acima); ou a sessão aberta antes de
+um dos dois (abra uma sessão nova, porque os dois comandos são registrados quando a sessão começa). O nome leva hífen,
+e não os dois-pontos dos outros comandos do esquadro, porque comando de mod não leva o prefixo do plugin: com
+dois-pontos no lugar do hífen, o Claude Code responde que o comando não existe. `/esquadro-sessao` responde o
 medidor da sessão — contexto usado, janelas de limite (5h e semana) com a hora em que renovam, custo,
 previsão em turnos (só depois de 2 turnos com consumo; antes disso diz que não tem dado) e cada
 gatilho da tabela acima com o valor e o limiar. `/esquadro-plano` responde o painel do plano ativo
-(tarefas feitas, abertas e a próxima). No painel de chat da extensão do VS Code os dois respondem em
+(tarefas feitas, abertas e a próxima); sem plano ativo, ele responde "nenhum plano ativo" e o comando
+`--abrir` com o caminho do script na sua máquina (o que é um plano ativo está em "Etapa com subitem aberto não
+fecha", acima). No painel de chat da extensão do VS Code os dois respondem em
 texto; no terminal e no app Desktop o medidor também fica na linha de status, e quando um gatilho
 cruza aparece uma faixa acima do prompt com o botão "gerar handoff". Nada disso abre rede: os números
 vêm do próprio Claude Code e dos arquivos do esquadro na sua máquina.

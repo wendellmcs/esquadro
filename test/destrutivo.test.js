@@ -2852,6 +2852,28 @@ test('D428: restore . so libera a forma estrita (git [-C d] restore (--staged|-S
   }
 });
 
+// D442/1 (S-3, S-52): `restore` com flag que nao muda o descarte antes do `.` (`-q`, `--ours`, `--theirs`,
+// `--merge`, `--conflict=X`...) e a abreviacao longa do `--worktree` (`--work`) apagavam a arvore e passavam.
+// `-p`/`--patch` (interativo) segue fora, como no checkout. So indice com `-q` (`--staged -q .`) segue passando.
+test('D442/1: restore -q/--ours/--theirs/--work . barra; --staged -q . e -p . passam', () => {
+  for (const cmd of [
+    'git restore -q .', 'git restore --quiet .', 'git restore --ours .', 'git restore --theirs .',
+    'git restore --work .', 'git restore --w .', 'git restore --worktree -q .', 'git restore -qW .',
+    'git restore -m .', 'git restore --merge .', 'git restore --conflict=diff3 .', 'git restore --ignore-unmerged .',
+    'git restore --overlay .', 'git restore --no-overlay .', 'git restore --progress .',
+    'git restore --no-progress .', 'git restore --recurse-submodules .', 'git restore --ignore-skip-worktree-bits .',
+    'git restore -q -- .', 'git -C x restore --ours .', 'git restore --staged --worktree -q .'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, true, 'devia barrar: ' + cmd);
+  }
+  for (const cmd of [
+    'git restore --staged -q .', 'git restore -q --staged .', 'git restore -Sq .', 'git restore --quiet -S -- .',
+    'git restore -p .', 'git restore --patch .', 'git restore -q arquivo.txt', 'git restore --ours arquivo.txt'
+  ]) {
+    assert.strictEqual(destrutivo.classificar(cmd).destrutivo, false, 'devia passar: ' + cmd);
+  }
+});
+
 // S1/L1-2: `-[a-z]*f` com flag `i` pegava `-F` e `-fix` (nao sao flags de push) e tinha duas corridas em
 // volta do `f`. Agora o aglomerado so pode ter letras de flag curta do push e a leitura e linear.
 test('S1/L1-2: push forcado barra por -f/--force; -F e argumento -fix passam; aglomerado enorme e linear', () => {

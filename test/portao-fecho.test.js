@@ -803,10 +803,64 @@ function numerosCitados(texto) {
   for (const re of reAlegaN()) {
     const r = new RegExp(re.source, re.flags);
     let m;
-    while ((m = r.exec(texto)) !== null) (m[1].match(/\d+/g) || []).forEach((d) => out.push(parseInt(d, 10)));
+    // D442/8: espelha numerosDaAlegacao do portao-fecho.js - so o numero inteiro puro ("7b" e "1.2" nao sao Tarefa N).
+    while ((m = r.exec(texto)) !== null) {
+      (m[1].match(/\d+(?:\.\d+)*[a-z]?/gi) || []).filter((d) => /^\d+$/.test(d)).forEach((d) => out.push(parseInt(d, 10)));
+    }
   }
   return out;
 }
+
+// D442/8 (S-47, S-48): "vou concluir a tarefa" contava como alegacao (bloqueio a toa); "Tarefa 3: concluida",
+// "tarefa n. 3", "ja concluida", "onda 7b", "tarefa 1.2" nao eram lidos (etapa nao cobrada - os planos do dono
+// usam "onda"). Id que o parser do plano nao modela (7b, 1.2) alega SEM numero: cai na tarefa em andamento.
+test('D442/8: infinitivo e gerundio nao alegam; dois-pontos, nº, ja, onda 7b e tarefa 1.2 alegam', () => {
+  const plano = require('../scripts/lib/plano.js');
+  const alegam = [
+    { texto: 'Tarefa 3: concluída.', n: [3] },
+    { texto: 'Tarefa 3 - concluída.', n: [3] },
+    { texto: 'Tarefa 3 — fechada.', n: [3] },
+    { texto: 'A tarefa nº 3 foi concluída.', n: [3] },
+    { texto: 'A tarefa n. 3 foi concluída.', n: [3] },
+    { texto: 'A tarefa 3 já está concluída.', n: [3] },
+    { texto: 'A tarefa 3 já concluída, sigo.', n: [3] },
+    { texto: 'A onda 7b concluída.', n: [] },
+    { texto: 'Onda 7b: fechada.', n: [] },
+    { texto: 'Tarefa 1.2 concluída.', n: [] },
+    { texto: 'Concluí a onda 7b.', n: [] },
+    { texto: 'Fechei a tarefa 1.2 e tarefa 2.', n: [2] },
+    { texto: 'Concluímos as tarefas 1 e 2.', n: [1, 2] },
+    { texto: 'Fechada a etapa 4.', n: [4] }
+  ];
+  for (const c of alegam) {
+    assert.strictEqual(plano.alegaEtapaConcluida(c.texto), true, 'devia alegar: ' + c.texto);
+    assert.deepStrictEqual(numerosCitados(c.texto), c.n, 'numero extraido: ' + c.texto);
+  }
+  for (const t of ['Vou concluir a tarefa 3.', 'Antes de fechar a etapa, rodo a suite.', 'Estou finalizando a fase 2.',
+    'Para completar a onda 7b falta o teste.', 'Concluindo a tarefa 3 agora.', 'Falta fechar as tarefas 1 e 2.',
+    'Preciso concluir a etapa.', 'Tarefa 3: completar os testes.', 'Etapa 2 - completando a migracao.']) {
+    assert.strictEqual(plano.alegaEtapaConcluida(t), false, 'nao devia alegar: ' + t);
+    assert.deepStrictEqual(numerosCitados(t), [], t);
+  }
+});
+
+test('D442/8: "Tarefa 1: concluida." com caixa aberta na 1 bloqueia; "onda 7b concluida" nao cobra a Tarefa 7', () => {
+  comTmp((tmp) => {
+    const texto = '## Tarefa 1: primeira\n- [x] a\n- [ ] b\n';
+    const d1 = planoComTarefas(tmp, 'd8a', texto);
+    const r1 = fecho(tmp, 'd8a', d1, 'Tarefa 1: concluída.' + SAIDA);
+    assert.ok(r1.json && r1.json.decision === 'block' && /Tarefa 1 \("primeira"\)/.test(r1.json.reason), r1.stdout);
+    // "7b" nao e a Tarefa 7: sem numero, a cobrada e a em andamento (a 6, com caixa marcada e aberta)
+    const sete = '## Tarefa 6: seis\n- [x] a\n- [ ] b\n\n## Tarefa 7: sete\n- [ ] c\n';
+    const d2 = planoComTarefas(tmp, 'd8b', sete);
+    const r2 = fecho(tmp, 'd8b', d2, 'A onda 7b concluída.' + SAIDA);
+    assert.ok(r2.json && r2.json.decision === 'block' && /Tarefa 6 \("seis"\)/.test(r2.json.reason), r2.stdout);
+    // controle: intencao no futuro nao e alegacao e nao barra pelo subitem
+    const d3 = planoComTarefas(tmp, 'd8c', texto);
+    const r3 = fecho(tmp, 'd8c', d3, 'Vou concluir a tarefa 1 agora.' + SAIDA);
+    assert.ok(!r3.json || !/subitem pendente/.test(r3.json.reason || ''), r3.stdout);
+  });
+});
 
 test('L2-fec-1: RE_ALEGA_N concorda com plano.alegaEtapaConcluida (paridade) e extrai o numero certo', () => {
   const plano = require('../scripts/lib/plano.js');

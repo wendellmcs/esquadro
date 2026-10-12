@@ -91,22 +91,47 @@ test('semana nova depois da vista: mostra de novo e preserva o resto do visto.js
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('mais de 12 linhas de corpo: corta em 12 e diz quantas ficaram; linha longa e cortada em 200', () => {
+test('mais de 12 linhas de corpo: corta em 12 e diz quantas ficaram', () => {
   const dir = temp('corte');
   try {
     const corpo = [];
     for (let i = 1; i <= 20; i++) corpo.push('linha ' + i);
-    corpo[3] = 'x'.repeat(500);
     corpo[5] = ''; // branca no meio: mantida como linha vazia
     novidades(dir, 'semana: 2026-10-05\n\n\n' + corpo.join('\n') + '\n\n');
     const linhas = aviso(dir, AGORA).split('\n');
     // cabecalho + 12 + corte + rodape
     assert.strictEqual(linhas.length, 1 + 12 + 1 + 1, linhas.join('|'));
     assert.strictEqual(linhas[1], 'linha 1');
-    assert.strictEqual(linhas[4], 'x'.repeat(200));
     assert.strictEqual(linhas[6], '', 'a branca do meio sumiu');
     assert.strictEqual(linhas[12], 'linha 12');
     assert.strictEqual(linhas[13], '... (+8 linhas no arquivo)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// D443 (item 4 da D442, V-9): o corte era em 200 e, na 1a novidade real (linhas de ate 359), 3 itens perderam o
+// link e o "Pode mexer em". Agora a linha longa quebra no espaco em ate 3 linhas de 200 (continuacao recuada em 2);
+// o que passar disso termina em ` [...]`. Nenhuma linha passa de 200.
+test('D443: linha longa quebra em ate 3 linhas de 200 sem partir o link; alem disso, marca de corte', () => {
+  const dir = temp('quebra');
+  try {
+    const url = 'https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#2-1-296-novidade';
+    // o link comeca na coluna 193 e atravessa a 200: o corte seco o partiria
+    const real = '- **Item novo!** ' + 'palavra '.repeat(22) + url + ' Pode mexer em: hooks/mods.tsx e scripts/lib/medidor.js';
+    assert.ok(real.indexOf(url) < 200 && real.indexOf(url) + url.length > 200);
+    const enorme = 'x'.repeat(1000);
+    novidades(dir, 'semana: 2026-10-05\n\n' + real + '\nmeio\n' + enorme + '\nfim\n');
+    const linhas = aviso(dir, AGORA).split('\n');
+    for (const l of linhas.slice(1, -1)) assert.ok(l.length <= 200, l.length + ': ' + l);
+    const i = linhas.indexOf('meio');
+    assert.ok(i > 2, linhas.join('|'));
+    const pedacos = linhas.slice(1, i);
+    assert.ok(pedacos.length === 2 && pedacos[1].indexOf('  ') === 0, pedacos.join('|'));
+    assert.strictEqual(pedacos.map(function (p) { return p.trim(); }).join(' '), real, 'perdeu texto ao quebrar');
+    assert.ok(pedacos.some(function (p) { return p.indexOf(url) !== -1; }), 'o link foi partido: ' + pedacos.join('|'));
+    const x = linhas.slice(i + 1, linhas.indexOf('fim'));
+    assert.strictEqual(x.length, 3, x.join('|'));
+    assert.strictEqual(x[0], 'x'.repeat(200));
+    assert.strictEqual(x[2], '  ' + 'x'.repeat(192) + ' [...]');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

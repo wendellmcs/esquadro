@@ -29,7 +29,8 @@ function parseTarefas(texto) {
 
 function lerAtivo(cwd) {
   try {
-    const o = JSON.parse(fs.readFileSync(path.join(cwd, ATIVO), 'utf8'));
+    // D442/10: JSON gravado no Windows costuma vir com BOM (D124); sem semBom o plano valido sumia calado.
+    const o = JSON.parse(require('./texto.js').semBom(fs.readFileSync(path.join(cwd, ATIVO), 'utf8')));
     return o && typeof o === 'object' ? o : null;
   } catch (e) { return null; }
 }
@@ -75,7 +76,11 @@ function proximaDecisao(arquivoDeDecisoes) {
 // plurais ("estao", "foram"). Sem o nome da tarefa dentro da lista: cada nome da cadeia ("tarefa 1 e
 // tarefa 2 concluidas") ja casa sozinho, e a lista nao atravessa outro nome (cada inicio e local).
 // Mesmas duas formas do RE_ALEGA_N de scripts/portao-fecho.js (paridade em test/portao-fecho.test.js).
-const RE_CONCLUIDA = /\b(?:tarefa|etapa|onda|fase)s? (?:\d+(?: ?(?:,|e) ?\d+)* ?)?(?:est[aá] |est[aã]o |foi |foram )?(?:conclu[ií]d|fechad|finalizad|pronta|complet)|\b(?:conclu[ií]|fech|finaliz|complet)\w* (?:(?:as|os|a|o) )?(?:tarefa|etapa|onda|fase)s?\b/i;
+// D442/8 (S-47, S-48): o id aceita "nº 3", "7b" e "1.2"; entre o id e o participio, ":"/"-"/travessao e "ja";
+// na 2a forma o verbo e passado ou participio (concluí, fechei, fechamos, fechada): "vou concluir a tarefa",
+// "antes de fechar a etapa" e "concluindo" deixam de alegar. Na 1a forma "complet" so como participio/adjetivo
+// ("completa", "completado"): com o separador, "Tarefa 3: completar os testes" alegava.
+const RE_CONCLUIDA = /\b(?:tarefa|etapa|onda|fase)s? (?:(?:n[º°.] ?)?\d+(?:\.\d+)*(?:[a-z](?![a-z]))?(?: ?(?:,|e) ?(?:n[º°.] ?)?\d+(?:\.\d+)*(?:[a-z](?![a-z]))?)* ?)?(?:[:\-–—] ?)?(?:j[aá] )?(?:est[aá] |est[aã]o |foi |foram )?(?:conclu[ií]d|fechad|finalizad|pronta|complet(?:[ao]s?|ad[ao]s?)\b)|\b(?:conclu(?:[ií](?:mos|ram|u|d[ao]s?)?)|(?:fech|finaliz|complet)(?:ei|ou|amos|aram|ad[ao]s?)) (?:(?:as|os|a|o) )?(?:tarefa|etapa|onda|fase)s?\b/i;
 
 function alegaEtapaConcluida(texto) {
   return RE_CONCLUIDA.test(String(texto == null ? '' : texto).replace(/\s+/g, ' '));
@@ -97,14 +102,29 @@ function motivoSubitemAberto(tarefa) {
 }
 
 /**
+ * D442/3: o comando de abrir com o caminho real do plano.js (quem roda o script sabe onde ele esta), entre aspas.
+ * Caminho fora de ASCII (R5) ou com `$`, crase ou `"` (o shell reinterpretaria) volta ao marcador, sem inventar.
+ */
+function comandoDeAbrir(script) {
+  const cabeEntreAspas = typeof script === 'string' && /^[\x20-\x7E]+$/.test(script) && !/[$`"]/.test(script);
+  return 'node ' + (cabeEntreAspas ? '"' + script + '"' : '<pasta do plugin esquadro>/scripts/plano.js') + ' --abrir <caminho do plano>';
+}
+
+/** D442/10: plano-ativo.json presente que nao se le (JSON quebrado, sem "arquivo") nao e "nenhum plano ativo". */
+function painelIlegivel(script) {
+  return 'painel do plano\n.claude/esquadro/plano-ativo.json existe mas nao se le (JSON quebrado, ou sem o campo ' +
+    '"arquivo"). Abra o plano de novo: ' + comandoDeAbrir(script);
+}
+
+/**
  * Bloco M / M2 (D435): o painel do plano em texto (ASCII, R5) - o que o /esquadro-plano do mod
  * responde. Mostra a vista o que o portao de fecho so barra no fim: passo aberto = tarefa aberta.
+ * D442/3: `script` e o caminho do plano.js para o "como abrir"; sem ele, o marcador.
  */
-function painelTexto(ativo, tarefas) {
+function painelTexto(ativo, tarefas, script) {
   if (!ativo || !ativo.arquivo) {
     // Sem "esquadro - " no titulo: o motor ja escreve o nome do plugin antes da resposta do comando.
-    return 'painel do plano\nnenhum plano ativo (.claude/esquadro/plano-ativo.json). Para abrir: ' +
-      'node <pasta do plugin esquadro>/scripts/plano.js --abrir <caminho do plano>';
+    return 'painel do plano\nnenhum plano ativo (.claude/esquadro/plano-ativo.json). Para abrir: ' + comandoDeAbrir(script);
   }
   const linhas = ['painel do plano','plano ativo: ' + ativo.arquivo + ' (dono: ' + (ativo.sessionId || 'sem-sessao') + ')'];
   const lista = Array.isArray(tarefas) ? tarefas : [];
@@ -136,5 +156,5 @@ function painelTexto(ativo, tarefas) {
 
 module.exports = {
   ATIVO, RE_TAREFA, RE_CAIXA, parseTarefas, lerAtivo, abrir, donoOutro,
-  proximaDecisao, alegaEtapaConcluida, motivoSubitemAberto, painelTexto
+  proximaDecisao, alegaEtapaConcluida, motivoSubitemAberto, painelTexto, painelIlegivel
 };
