@@ -22,7 +22,7 @@ function ehObjeto(v) { return !!v && typeof v === 'object' && !Array.isArray(v);
 // proposito (D101): so campo que muda decisao de portao, e so quando o TIPO
 // esta errado. Chave faltando e assunto de validar(), nunca do aviso.
 const LISTAS_LIDAS = ['comandosLiberados', 'comandosBloqueados', 'intocaveis'];
-// D442/5 (S-35, S-68): as seis chaves de liga/desliga do topo. Quem le testa `=== false` (ou `=== true`, no
+// D442/5 (S-35, S-68): as chaves de liga/desliga do topo (a lista abaixo; D484: sem numero, que envelhece). Quem le testa `=== false` (ou `=== true`, no
 // vigia, que e opt-in): so o booleano decide (D388, D415) - `"false"` entre aspas NAO desliga. Por isso o valor
 // torto e avisado na abertura (abertura.js), reprovado em validar() e aceito pelo re-init.
 // D468 (0.7.0): `modoContinuo` e opt-in como o vigia (so `=== true` liga, continuo.js).

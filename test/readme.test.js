@@ -233,6 +233,19 @@ test('readme: diz o que NAO dispara, como conferir os ganchos e de que o gatilho
     'falta declarar a dependencia do gitOperation e a versao do Claude Code em que foi medida');
 });
 
+// D484 (V1 da triagem s106): "os outros cinco gatilhos" ficou para tras quando a tabela cresceu (sao 7 alem do
+// commit). O numero por extenso tem de seguir os limiares do codigo, menos o proprio commit.
+test('D484: "os outros N gatilhos" do paragrafo do commit bate com os limiares do codigo', () => {
+  const saude = require('../scripts/lib/saude.js');
+  const POR_EXTENSO = ['zero', 'um', 'dois', 'tres', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez'];
+  const s = secao('Como funciona').corpo.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const m = s.match(/os outros (\w+) gatilhos/);
+  assert.ok(m, 'sumiu a frase "os outros N gatilhos" do paragrafo do commit');
+  const esperado = Object.keys(saude.LIMIARES_PADRAO).filter((k) => k !== 'commits').length;
+  assert.strictEqual(POR_EXTENSO.indexOf(m[1]), esperado,
+    'o README diz "os outros ' + m[1] + ' gatilhos" e o codigo tem ' + esperado + ' alem do commit');
+});
+
 test('readme: ensina a atualizacao automatica pelo settings.json, porque o painel do VS Code nao tem o botao (D346)', () => {
   const s = secao('Como instalar').corpo;
   assert.ok(s.indexOf('extraKnownMarketplaces') !== -1 && s.indexOf('autoUpdate') !== -1 &&

@@ -30,4 +30,16 @@ function causaDoErro(e) {
   return causa.replace(/\s+/g, ' ').slice(0, 200);
 }
 
-module.exports = { semBom, causaDoErro };
+/**
+ * O prompt que chegou ao UserPromptSubmit e retorno de subagente ou aviso de tarefa, e nao fala do dono?
+ * D475/D477: o relatorio que CITA "o contexto esta bom?" ou uma correcao nao e o dono falando.
+ * s103: no 2.1.296 o retorno vem como "Another Claude session sent a message[ while you were working]:" + a tag.
+ * D484: um lugar so (saude.perguntaSobreSaude e correcao.pareceCorrecao); se a CLI mudar a forma, muda aqui.
+ */
+function veioDeSubagente(prompt) {
+  if (typeof prompt !== 'string') return false;
+  const t = prompt.toLowerCase().replace(/\s+/g, ' ').trim();
+  return /^(?:another claude session sent a message[a-z ]*: )?<(?:agent-message|task-notification)\b/.test(t);
+}
+
+module.exports = { semBom, causaDoErro, veioDeSubagente };

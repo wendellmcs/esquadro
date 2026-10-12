@@ -276,6 +276,47 @@ test('publicacao: a linha "So logica" do revisar diz LENTES menos SAEM_SO_LOGICA
   assert.strictEqual(NUMEROS[m[1].toLowerCase()], n, 'o README conta so logica errado');
 });
 
+// D485 (s106): a faixa vem antes da tabela de familias. A tabela das faixas do revisar diz as lentes de
+// lentesDaFaixa e os cortes FAIXA_UMA_ATE / FAIXA_DUAS_ATE do veredito.js, nao de memoria; e a regra de que o
+// agente pode subir de faixa, nunca descer, esta escrita.
+test('D485: a tabela de faixas do revisar diz as lentes e os cortes do veredito.js', () => {
+  const revisar = fs.readFileSync(path.join(RAIZ, 'skills', 'revisar', 'SKILL.md'), 'utf8');
+  const linhas = revisar.split('\n');
+  for (const faixa of ['uma', 'duas', 'texto']) {
+    const linha = linhas.find((l) => l.startsWith('| `' + faixa + '` |'));
+    assert.ok(linha, 'a tabela de faixas nao tem a linha `' + faixa + '`');
+    const lentes = veredito.lentesDaFaixa(faixa);
+    assert.ok(linha.includes('**' + lentes.length + '**'), 'a faixa ' + faixa + ' conta outro numero: ' + linha);
+    lentes.forEach((k) => assert.ok(linha.includes('`' + k + '`'), 'a faixa ' + faixa + ' nao nomeia ' + k + ': ' + linha));
+  }
+  const completa = linhas.find((l) => l.startsWith('| `completa` |'));
+  assert.ok(completa && /tabela de fam[ií]lias/i.test(completa), 'a completa tem de mandar para a tabela de familias: ' + completa);
+  assert.ok(revisar.includes('até ' + veredito.FAIXA_UMA_ATE + ' linhas'), 'o corte da faixa uma nao e o do codigo');
+  assert.ok(revisar.includes('até ' + veredito.FAIXA_DUAS_ATE + ' linhas'), 'o corte da faixa duas nao e o do codigo');
+  assert.match(revisar, /subir de faixa, nunca descer/i, 'falta a regra de que a faixa so sobe');
+  assert.ok(revisar.indexOf('| `uma` |') < revisar.indexOf('| Só lógica '), 'a faixa vem antes da tabela de familias');
+});
+
+// D486 (s107): na faixa pequena, A e B sao recortes. O briefing do revisar ganha a linha do recorte quando a saida
+// traz `trecho`, e o inspetor sabe que o vao marcado nao e defeito (diz "nao consigo ver", nao "esta ausente").
+test('D486: o revisar e o inspetor dizem o que fazer com o recorte do trecho mudado', () => {
+  const revisar = fs.readFileSync(path.join(RAIZ, 'skills', 'revisar', 'SKILL.md'), 'utf8');
+  assert.match(revisar, /`trecho`/, 'o revisar nao fala do campo trecho da saida');
+  assert.ok(revisar.includes('[fora do trecho: linhas a-b]'), 'o revisar nao diz a marca do vao');
+  // o que o inspetor le e o briefing: a linha do recorte leva a marca e o "nao consigo ver"
+  const brief = revisar.split('\n').find((l) => l.startsWith('> A e B são recortes'));
+  assert.ok(brief && brief.includes('[fora do trecho: linhas a-b]') && /n[aã]o consigo ver/.test(brief),
+    'o briefing do recorte nao diz a marca nem o "nao consigo ver": ' + brief);
+  assert.ok(!/Entregue o \*\*arquivo inteiro\*\* ao inspetor\./.test(revisar), 'o revisar ainda manda sempre o arquivo inteiro');
+  const inspetor = fs.readFileSync(path.join(RAIZ, 'agents', 'inspetor.md'), 'utf8');
+  assert.ok(inspetor.includes('[fora do trecho'), 'o inspetor nao sabe da marca do vao');
+  assert.match(inspetor, /n[aã]o consigo ver/i, 'o inspetor tem de dizer "nao consigo ver" sobre o que esta fora');
+  // s108, ronda 1 da Tarefa 3: 5 de 6 P1 das faixas pequenas eram inferencia sobre o que ficou fora do recorte.
+  // O que depende do vao sai no maximo P2, no briefing e no inspetor.
+  assert.ok(/no m[aá]ximo P2/.test(brief), 'o briefing do recorte tem de limitar a P2 o que depende do vao: ' + brief);
+  assert.ok(/no m[aá]ximo P2/.test(inspetor), 'o inspetor tem de limitar a P2 o que depende do vao');
+});
+
 // Ronda 2 do Passo 8b: "oito travas" batia o README com o CHANGELOG e o manifesto, e o
 // titulo do README com a tabela dele - nunca com o codigo. Trava e portao que nega (os
 // baldes de bloqueio do saude.js) ou um dos dois comandos. Balde novo que nega tem de

@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.7.2 — revisao proporcional ao diff, cd solto que se corrige e filtro de subagente num lugar so
+
+**Mudado**
+
+- **`/esquadro:revisar` passa a ser proporcional ao tamanho da mudanca.** Ate a 0.7.1 toda revisao
+  despachava a familia inteira de lentes (6 inspetores numa logica, 9 num codigo de estilo), inclusive para
+  trocar uma palavra. Nas revisoes do autor, os diffs pequenos gastaram cerca de 40% dos inspetores e nao
+  acharam nenhum defeito real; os defeitos vieram de logica nova ou grande. Agora o `preparar-revisao.js`
+  mede o diff contra o HEAD e diz a faixa: ate 3 linhas, 1 inspetor (`correcao`); logica de ate 40 linhas
+  com teste vermelho e mutacao, 2 (`correcao` e `borda`); texto, 2 (`correcao` e `microcopy`); arquivo
+  novo, logica maior, estilo ou o que nao der para medir, a tabela de familias de antes. Quem revisa pode
+  subir de faixa, nunca descer. A regra de parada nao muda: duas rondas secas, teto de 3.
+- **Nas faixas pequenas, o inspetor le so o trecho mudado.** `A.txt` e `B.txt` levam o trecho com 20
+  linhas de margem; o resto fica em branco, com uma linha `[fora do trecho: linhas a-b]` no inicio de cada
+  vao. Os numeros de linha seguem os do arquivo, entao a apuracao e a refutacao nao mudam. O inspetor sabe
+  que o vao nao e defeito: o que depender dele vira "nao consigo ver". Na faixa completa, o arquivo inteiro,
+  como antes.
+- **O `cd` solto no Bash se corrige sozinho em vez de ser barrado.** Era o portao que mais parava o trabalho
+  (cerca de 435 idas e voltas por semana nas sessoes do autor): o comando era negado e o agente tinha de
+  escrever de novo. Agora o comando vai inteiro num subshell, `( ... )`, e roda: a pasta volta sozinha, e o
+  agente fica sabendo da correcao e da forma certa. A permissao continua a de sempre (o portao nao aprova
+  nada), e a correcao nao conta como bloqueio para a troca de chat. Seguem negados: o `cd` solto no
+  PowerShell (que nao tem subshell que devolva a pasta), o comando que termina em barra e o que nao se le
+  inteiro.
+
+**Corrigido**
+
+- **O filtro que separa o retorno de subagente da sua fala fica num lugar so.** Ate a 0.7.1 ele estava
+  copiado em dois ganchos (a pergunta sobre o contexto e a sugestao de `/esquadro:aprender`), preso ao
+  texto com que o Claude Code entrega o retorno; quando esse texto mudou no 2.1.296, os dois deixaram
+  passar ate a 0.7.1 corrigir as duas copias. Agora os dois usam a mesma funcao, e a proxima mudanca da
+  forma se corrige uma vez. O comportamento nao muda: nas transcricoes do autor (7291 prompts), o filtro
+  novo decide igual ao antigo em todos.
+- **README: "os outros cinco gatilhos" virou "sete".** No paragrafo do gatilho de commit, o numero ficou
+  para tras quando a tabela de gatilhos cresceu. Um teste passa a conferir esse numero contra os limiares
+  do codigo.
+
 ## 0.7.1 — painel do plano completo e tres correcoes
 
 **Mudado**

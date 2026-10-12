@@ -95,6 +95,8 @@ test('preparar-revisao: de SUBPASTA, arquivo que esta em HEAD nao pode ser negad
     const lados = [fs.readFileSync(saida.a, 'utf8'), fs.readFileSync(saida.b, 'utf8')].sort();
     assert.deepStrictEqual(lados, ['aninhado em HEAD\n', 'aninhado no trabalho\n'],
       'os dois lados tem de ser as duas versoes do arquivo da subpasta');
+    // D485 (s108): de subpasta o diff tambem mede (o pathspec e relativo a pasta atual).
+    assert.strictEqual(saida.linhasMudadas, 1, 'de subpasta o diff nao mediu: ' + r.stdout);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -768,7 +770,11 @@ test('0.3.3/item 12: arquivo de 2 MiB no HEAD, modificado, e preparado (maxBuffe
     assert.strictEqual(r.stderr, '', r.stderr);
     assert.strictEqual(r.status, 0, 'o git show estourou o buffer. Saida: ' + r.stdout);
     const s = JSON.parse(r.stdout);
-    assert.ok(fs.readFileSync(s.a, 'utf8').length > 2000000 && fs.readFileSync(s.b, 'utf8').length > 2000000);
+    // D486 (s108): 1 linha acrescentada e faixa pequena, e A/B sao recortes do trecho mudado; o numero de linhas
+    // de cada lado segue o do arquivo inteiro, entao os dois lados ainda provam que o git show leu os 2 MiB.
+    const contagens = [fs.readFileSync(s.a, 'utf8'), fs.readFileSync(s.b, 'utf8')]
+      .map((t) => t.split('\n').length).sort((x, y) => x - y);
+    assert.deepStrictEqual(contagens, [100001, 100002], 'os dois lados tem as linhas do arquivo inteiro');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -1227,5 +1233,159 @@ test('RV-04: mapa.json do formato antigo com BOM ainda diz o id da revisao antig
     const r = rodarCli(dir, 'raiz.txt');
     assert.strictEqual(r.status, 0, r.stdout + r.stderr);
     assert.ok(JSON.parse(r.stdout).aviso.indexOf('.claude/esquadro/revisao/a_b__c.js/') !== -1, r.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// D485 (s106): a revisao e proporcional ao diff. O preparar-revisao.js mede as linhas mudadas contra o HEAD e diz a
+// faixa (uma, duas, texto, completa) e as lentes dela; na completa, `lentes` e null e vale a tabela de familias.
+function linhas(n, prefixo) {
+  return Array.from({ length: n }, (_, i) => prefixo + ' ' + (i + 1)).join('\n') + '\n';
+}
+function trocar(texto, quantas, de) {
+  const l = texto.split('\n');
+  for (let i = de; i < de + quantas; i++) l[i] = l[i] + ' mudada';
+  return l.join('\n');
+}
+function repoDeFaixas() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-faixa-'));
+  const g = (args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8', shell: false });
+  g(['init', '-q', '.']);
+  g(['config', 'user.email', 'ensaio@ensaio']);
+  g(['config', 'user.name', 'ensaio']);
+  g(['config', 'core.autocrlf', 'false']);
+  fs.writeFileSync(path.join(dir, 'logica.js'), linhas(200, 'const x ='), 'utf8');
+  fs.writeFileSync(path.join(dir, 'texto.md'), linhas(200, 'frase'), 'utf8');
+  fs.writeFileSync(path.join(dir, 'estilo.css'), linhas(20, '.a { color: red; }'), 'utf8');
+  g(['add', '-A']);
+  g(['commit', '-qm', 'base']);
+  return dir;
+}
+function faixaDe(dir, rel) {
+  const r = rodarCli(dir, rel);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  const s = JSON.parse(r.stdout);
+  return { faixa: s.faixa, lentes: s.lentes, linhasMudadas: s.linhasMudadas };
+}
+
+test('D485: preparar-revisao diz a faixa e as lentes pelo tamanho do diff', () => {
+  const dir = repoDeFaixas();
+  try {
+    const js = fs.readFileSync(path.join(dir, 'logica.js'), 'utf8');
+    fs.writeFileSync(path.join(dir, 'logica.js'), trocar(js, 2, 50), 'utf8');
+    assert.deepStrictEqual(faixaDe(dir, 'logica.js'), { faixa: 'uma', lentes: ['correcao'], linhasMudadas: 2 });
+    fs.writeFileSync(path.join(dir, 'logica.js'), trocar(js, 12, 50), 'utf8');
+    assert.deepStrictEqual(faixaDe(dir, 'logica.js'), { faixa: 'duas', lentes: ['correcao', 'borda'], linhasMudadas: 12 });
+    // linhas acrescentadas sem tirar nenhuma contam pelo lado maior
+    fs.writeFileSync(path.join(dir, 'logica.js'), js + linhas(45, 'const y ='), 'utf8');
+    assert.deepStrictEqual(faixaDe(dir, 'logica.js'), { faixa: 'completa', lentes: null, linhasMudadas: 45 });
+    const md = fs.readFileSync(path.join(dir, 'texto.md'), 'utf8');
+    fs.writeFileSync(path.join(dir, 'texto.md'), trocar(md, 60, 10), 'utf8');
+    assert.deepStrictEqual(faixaDe(dir, 'texto.md'), { faixa: 'texto', lentes: ['correcao', 'microcopy'], linhasMudadas: 60 });
+    fs.writeFileSync(path.join(dir, 'texto.md'), trocar(md, 1, 10), 'utf8');
+    assert.deepStrictEqual(faixaDe(dir, 'texto.md'), { faixa: 'uma', lentes: ['correcao'], linhasMudadas: 1 });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D485: arquivo novo, de estilo ou igual ao HEAD vai a completa, com lentes null', () => {
+  const dir = repoDeFaixas();
+  try {
+    fs.writeFileSync(path.join(dir, 'novo.js'), 'const z = 1;\n', 'utf8');
+    assert.strictEqual(faixaDe(dir, 'novo.js').faixa, 'completa');
+    const css = fs.readFileSync(path.join(dir, 'estilo.css'), 'utf8');
+    fs.writeFileSync(path.join(dir, 'estilo.css'), trocar(css, 1, 3), 'utf8');
+    assert.deepStrictEqual(faixaDe(dir, 'estilo.css'), { faixa: 'completa', lentes: null, linhasMudadas: 1 });
+    assert.deepStrictEqual(faixaDe(dir, 'logica.js'), { faixa: 'completa', lentes: null, linhasMudadas: 0 });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// D486 (s107): nas faixas pequenas o inspetor recebe o trecho mudado, com margem; as linhas de fora ficam em
+// branco (o numero de linha segue o do arquivo: apurar e refutar nao mudam) e a primeira de cada vao diz quais sairam.
+test('D486: recortarTrecho - margem, marca no inicio do vao, mesmo numero de linhas, CRLF preservado', () => {
+  assert.strictEqual(cegar.TRECHO_MARGEM, 20);
+  const t = linhas(10, 'l');
+  const r = cegar.recortarTrecho(t, [{ ini: 5, qtd: 1 }], 1).split('\n');
+  assert.deepStrictEqual(r, ['[fora do trecho: linhas 1-3]', '', '', 'l 4', 'l 5', 'l 6',
+    '[fora do trecho: linhas 7-10]', '', '', '', '']);
+  // qtd 0 (insercao do outro lado): a margem e em volta da linha dita
+  assert.deepStrictEqual(cegar.recortarTrecho(t, [{ ini: 10, qtd: 0 }], 1).split('\n'),
+    ['[fora do trecho: linhas 1-8]', '', '', '', '', '', '', '', 'l 9', 'l 10', '']);
+  assert.deepStrictEqual(cegar.recortarTrecho(t, [{ ini: 5, qtd: 0 }], 1).split('\n'),
+    ['[fora do trecho: linhas 1-3]', '', '', 'l 4', 'l 5', 'l 6', '[fora do trecho: linhas 7-10]', '', '', '', '']);
+  // dois blocos e borda do arquivo
+  assert.deepStrictEqual(cegar.recortarTrecho(t, [{ ini: 1, qtd: 1 }, { ini: 10, qtd: 1 }], 0).split('\n'),
+    ['l 1', '[fora do trecho: linhas 2-9]', '', '', '', '', '', '', '', 'l 10', '']);
+  // CRLF: a linha em branco guarda o \r
+  const crlf = t.replace(/\n/g, '\r\n');
+  const rc = cegar.recortarTrecho(crlf, [{ ini: 5, qtd: 1 }], 0);
+  assert.strictEqual(rc.split('\r\n').length, crlf.split('\r\n').length);
+  assert.ok(rc.startsWith('[fora do trecho: linhas 1-4]\r\n\r\n'), JSON.stringify(rc.slice(0, 40)));
+  // sem bloco, nada a recortar
+  assert.strictEqual(cegar.recortarTrecho(t, [], 1), t);
+  // ronda 1 da s108 (borda): bloco ou margem que nao e inteiro nao esvazia o recorte calado - vai o texto inteiro
+  for (const [blocos, margem] of [[[{ ini: 5 }], 1], [[{ qtd: 1 }], 1], [[{ ini: 5, qtd: 1 }], undefined],
+    [[{ ini: 2.5, qtd: 1 }], 1], [[{ ini: 5, qtd: -1 }], 1], [[null], 1], [[{ ini: 5, qtd: 1 }], -1]]) {
+    assert.strictEqual(cegar.recortarTrecho(t, blocos, margem), t, JSON.stringify([blocos, margem]));
+  }
+});
+
+test('D486: preparar-revisao entrega o trecho nas faixas pequenas e o arquivo inteiro na completa', () => {
+  const dir = repoDeFaixas();
+  try {
+    const js = fs.readFileSync(path.join(dir, 'logica.js'), 'utf8');
+    fs.writeFileSync(path.join(dir, 'logica.js'), trocar(js, 1, 99), 'utf8');
+    let r = rodarCli(dir, 'logica.js');
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    let s = JSON.parse(r.stdout);
+    assert.strictEqual(s.faixa, 'uma');
+    assert.deepStrictEqual(s.trecho, { margem: cegar.TRECHO_MARGEM });
+    assert.match(s.aviso, /fora do trecho/);
+    for (const lado of [s.a, s.b]) {
+      const l = fs.readFileSync(lado, 'utf8').split('\n');
+      assert.strictEqual(l.length, 201, 'o recorte manteve o numero de linhas');
+      assert.strictEqual(l[0], '[fora do trecho: linhas 1-79]');
+      assert.match(l[99], /^const x = 100( mudada)?$/);
+      assert.strictEqual(l[79], 'const x = 80');
+      assert.strictEqual(l[120], '[fora do trecho: linhas 121-200]');
+    }
+    // cada lado e recortado nos numeros de linha dele: 10 linhas no topo empurram o trecho do lado novo
+    fs.writeFileSync(path.join(dir, 'logica.js'), linhas(10, 'const novo =') + trocar(js, 1, 149), 'utf8');
+    r = rodarCli(dir, 'logica.js');
+    s = JSON.parse(r.stdout);
+    assert.strictEqual(s.faixa, 'duas');
+    const [velho, novo] = [fs.readFileSync(s.a, 'utf8'), fs.readFileSync(s.b, 'utf8')]
+      .map((t) => t.split('\n')).sort((x, y) => x.length - y.length);
+    assert.strictEqual(velho[129], 'const x = 130', 'lado antigo: trecho em volta da linha 150 dele');
+    assert.strictEqual(velho[20], '[fora do trecho: linhas 21-129]');
+    assert.strictEqual(novo[139], 'const x = 130', 'lado novo: o mesmo trecho, 10 linhas abaixo');
+    assert.strictEqual(novo[30], '[fora do trecho: linhas 31-139]');
+    fs.writeFileSync(path.join(dir, 'logica.js'), js + linhas(45, 'const y ='), 'utf8');
+    r = rodarCli(dir, 'logica.js');
+    s = JSON.parse(r.stdout);
+    assert.strictEqual(s.faixa, 'completa');
+    assert.strictEqual(s.trecho, undefined);
+    const lados = [fs.readFileSync(s.a, 'utf8'), fs.readFileSync(s.b, 'utf8')].sort();
+    assert.deepStrictEqual(lados, [js, js + linhas(45, 'const y =')].sort(), 'na completa, o arquivo inteiro');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D485: git diff que falha nao inventa faixa pequena - completa, linhasMudadas null', () => {
+  const dir = repoDeFaixas();
+  try {
+    const js = fs.readFileSync(path.join(dir, 'logica.js'), 'utf8');
+    fs.writeFileSync(path.join(dir, 'logica.js'), trocar(js, 1, 5), 'utf8');
+    const gancho = [
+      "const cp = require('node:child_process');",
+      "const orig = cp.spawnSync;",
+      "cp.spawnSync = function (cmd, args) {",
+      "  if (cmd === 'git' && args && args.indexOf('diff') !== -1) return { status: 128, stdout: '', stderr: 'fatal' };",
+      "  return orig.apply(this, arguments);",
+      "};"
+    ].join('\n');
+    const r = rodarComGancho(dir, 'logica.js', gancho);
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const s = JSON.parse(r.stdout);
+    assert.strictEqual(s.faixa, 'completa');
+    assert.strictEqual(s.lentes, null);
+    assert.strictEqual(s.linhasMudadas, null);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

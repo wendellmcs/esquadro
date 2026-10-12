@@ -169,7 +169,8 @@ que convivem e não se fundem: as **nove lentes de código**, em `LENTES`, e as 
 tela**, abaixo, em `LENTES_UI`, as duas listas em `scripts/lib/veredito.js` do plugin. Quais vão
 depende do que a mudança toca: só código, as nove de código; só tela, as oito de tela; código e
 tela, as duas famílias; na dúvida, as duas. É a regra do `/esquadro:revisar`, na tabela do Passo 2
-de `skills/revisar/SKILL.md`.
+de `skills/revisar/SKILL.md`. Antes da família vem a faixa: mudança pequena vai a menos inspetores, pelo
+tamanho do diff, na outra tabela do mesmo Passo 2.
 
 1. Fidelidade ao design system
 2. Estados obrigatórios

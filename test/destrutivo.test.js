@@ -2949,7 +2949,8 @@ test('D420/SH-02: estado nao gravavel nao libera o comando destrutivo (o contado
   fs.writeFileSync(arquivo, 'x');
   try {
     // ESQUADRO_TMP aponta para um ARQUIVO: o mkdir do diretorio de estado lanca ENOTDIR
-    for (const cmd of ['rm -rf ./build', 'git push --force origin main', 'cd ..']) {
+    // D486 (s108): o cd solto que o Bash corrige nao passa pelo contador; o que segue negado (fim em barra) passa
+    for (const cmd of ['rm -rf ./build', 'git push --force origin main', 'cd .. && ls \\']) {
       const saida = chamarPortaoDestrutivo(cmd, arquivo);
       assert.ok(saida && saida.hookSpecificOutput, 'devia negar com o estado fora do ar: ' + cmd + ' -> ' + JSON.stringify(saida));
       assert.strictEqual(saida.hookSpecificOutput.permissionDecision, 'deny', cmd);

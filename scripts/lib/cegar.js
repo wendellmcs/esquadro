@@ -79,4 +79,41 @@ function temPastaNumeradaSolta(revisao) {
   }
 }
 
-module.exports = { semente, rotular, proximaRonda, idDoArquivo, REGRA_DO_ID, baseDoArquivo, temPastaNumeradaSolta };
+// D486 (s107): nas faixas pequenas da D485 o inspetor recebe o trecho mudado, nao o arquivo inteiro. A margem de 20
+// linhas em volta de cada bloco e escolha tecnica da s108.
+const TRECHO_MARGEM = 20;
+
+/**
+ * D486: o texto com so os blocos [{ ini, qtd }] (linha a partir de 1; qtd 0 = insercao do outro lado, a margem fica
+ * em volta de `ini`) e `margem` linhas em volta. As linhas de fora ficam em branco - o numero de linha segue o do
+ * arquivo, e o apurar e a refutacao nao mudam - e a primeira de cada vao diz "[fora do trecho: linhas a-b]", para o
+ * inspetor nao ler o vao como defeito. O \r de cada linha fica (CRLF segue CRLF). Sem bloco, o texto como veio.
+ * Ronda 1 da s108 (borda): bloco ou margem que nao e inteiro >= 0 tambem devolve o texto como veio - o NaN nao
+ * marcava linha nenhuma e o inspetor recebia um recorte vazio, calado. Na duvida, o arquivo inteiro.
+ */
+function recortarTrecho(texto, blocos, margem) {
+  if (!Array.isArray(blocos) || blocos.length === 0) return texto;
+  const inteiro = function (n) { return Number.isInteger(n) && n >= 0; };
+  if (!inteiro(margem) || !blocos.every(function (b) { return b && inteiro(b.ini) && inteiro(b.qtd); })) return texto;
+  const linhas = String(texto).split('\n');
+  const total = linhas[linhas.length - 1] === '' ? linhas.length - 1 : linhas.length;
+  const fica = new Array(total).fill(false);
+  blocos.forEach(function (b) {
+    const de = Math.max(1, b.ini - margem);
+    const ate = Math.min(total, b.ini + Math.max(b.qtd, 1) - 1 + margem);
+    for (let i = de; i <= ate; i++) fica[i - 1] = true;
+  });
+  const fimDe = function (l) { return l.endsWith('\r') ? '\r' : ''; };
+  for (let i = 0; i < total; i++) {
+    if (fica[i]) continue;
+    let j = i;
+    while (j + 1 < total && !fica[j + 1]) j++;
+    linhas[i] = '[fora do trecho: linhas ' + (i + 1) + '-' + (j + 1) + ']' + fimDe(linhas[i]);
+    for (let k = i + 1; k <= j; k++) linhas[k] = fimDe(linhas[k]);
+    i = j;
+  }
+  return linhas.join('\n');
+}
+
+module.exports = { semente, rotular, proximaRonda, idDoArquivo, REGRA_DO_ID, baseDoArquivo, temPastaNumeradaSolta,
+  TRECHO_MARGEM, recortarTrecho };

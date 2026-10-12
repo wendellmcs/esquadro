@@ -50,6 +50,48 @@ test('veredito: mudanca so de tela despacha so a familia de tela; na duvida, as 
   assert.deepStrictEqual(v.familiasPara(), ['codigo', 'ui']);
 });
 
+// D485 (s106): revisao proporcional ao diff. So comentario, numero ou frase curta = 1 inspetor; logica pequena
+// com teste vermelho e mutacao = 2; texto = correcao + microcopy; arquivo novo ou logica grande = a tabela de
+// familias de hoje. Na duvida (sem medida, identico ao HEAD, estilo), a completa.
+test('D485: faixaDaMudanca - novo, identico, estilo e sem medida vao a completa', () => {
+  assert.strictEqual(v.faixaDaMudanca({ novo: true, linhasMudadas: 1 }), 'completa');
+  assert.strictEqual(v.faixaDaMudanca({ identico: true, linhasMudadas: 0 }), 'completa');
+  assert.strictEqual(v.faixaDaMudanca({ estilo: true, linhasMudadas: 1 }), 'completa');
+  assert.strictEqual(v.faixaDaMudanca({ linhasMudadas: null }), 'completa');
+  assert.strictEqual(v.faixaDaMudanca({}), 'completa');
+  assert.strictEqual(v.faixaDaMudanca(), 'completa');
+  assert.strictEqual(v.faixaDaMudanca({ linhasMudadas: -1 }), 'completa');
+  assert.strictEqual(v.faixaDaMudanca({ linhasMudadas: 2.5 }), 'completa');
+});
+
+test('D485: faixaDaMudanca - os cortes de linhas, com texto e sem texto', () => {
+  assert.strictEqual(v.FAIXA_UMA_ATE, 3);
+  assert.strictEqual(v.FAIXA_DUAS_ATE, 40);
+  assert.strictEqual(v.faixaDaMudanca({ linhasMudadas: 0 }), 'uma');
+  assert.strictEqual(v.faixaDaMudanca({ linhasMudadas: 3 }), 'uma');
+  assert.strictEqual(v.faixaDaMudanca({ linhasMudadas: 4 }), 'duas');
+  assert.strictEqual(v.faixaDaMudanca({ linhasMudadas: 40 }), 'duas');
+  assert.strictEqual(v.faixaDaMudanca({ linhasMudadas: 41 }), 'completa');
+  assert.strictEqual(v.faixaDaMudanca({ texto: true, linhasMudadas: 3 }), 'uma');
+  assert.strictEqual(v.faixaDaMudanca({ texto: true, linhasMudadas: 4 }), 'texto');
+  assert.strictEqual(v.faixaDaMudanca({ texto: true, linhasMudadas: 500 }), 'texto');
+});
+
+test('D485: lentesDaFaixa - as lentes de cada faixa existem em LENTES; a completa devolve null (tabela de familias)', () => {
+  assert.deepStrictEqual(v.lentesDaFaixa('uma'), ['correcao']);
+  assert.deepStrictEqual(v.lentesDaFaixa('duas'), ['correcao', 'borda']);
+  assert.deepStrictEqual(v.lentesDaFaixa('texto'), ['correcao', 'microcopy']);
+  assert.strictEqual(v.lentesDaFaixa('completa'), null);
+  assert.strictEqual(v.lentesDaFaixa('outra'), null);
+  const chaves = new Set(v.LENTES.map((l) => l.chave));
+  for (const f of ['uma', 'duas', 'texto']) {
+    v.lentesDaFaixa(f).forEach((k) => assert.ok(chaves.has(k), 'lente da faixa ' + f + ' nao existe: ' + k));
+  }
+  // a lista devolvida e copia: quem mexe nela nao muda a regra
+  v.lentesDaFaixa('uma').push('escopo');
+  assert.deepStrictEqual(v.lentesDaFaixa('uma'), ['correcao']);
+});
+
 test('veredito: as duas familias somam 17 lentes sem chave repetida', () => {
   const todas = v.FAMILIAS.codigo.concat(v.FAMILIAS.ui);
   assert.strictEqual(todas.length, 17);

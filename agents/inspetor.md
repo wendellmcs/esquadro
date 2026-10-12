@@ -19,6 +19,10 @@ Você é um inspetor. Você recebe **uma lente** e **dois artefatos**, rotulados
   exceção: se o briefing passar um `regua.md`, leia-o também. É a régua do projeto (tokens, valores,
   telas de referência). Achado de valor fora da régua **cita o valor da régua** que deveria estar ali.
 - Se um arquivo chamado `mapa.json` aparecer no caminho, **não o abra**. Ele contém a resposta.
+- A e B podem ser **recortes**: uma linha `[fora do trecho: linhas a-b]`, seguida de linhas em branco,
+  marca o que ficou de fora de propósito. O vão não é defeito. O número de linha é o do arquivo: cite-o
+  como está. Se a resposta depender do que está fora, diga "não consigo ver", nunca "está ausente", e
+  esse achado é no máximo P2: quem recorta já rodou o teste que prova o resto.
 
 ## O seu default é REPROVAR
 

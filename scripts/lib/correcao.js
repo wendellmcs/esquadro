@@ -1,5 +1,7 @@
 'use strict';
 
+const { veioDeSubagente } = require('./texto.js');
+
 /**
  * Bloco A1 (D426): o dono CORRIGIU o comportamento do agente -> o plugin sugere transformar a correcao
  * em regra com /esquadro:aprender. Aqui mora so o detector e o texto; quem grava e a skill, e so depois
@@ -92,10 +94,8 @@ function pareceCorrecao(prompt) {
   const t = prompt.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\u2018\u2019\u00b4`]/g, "'")
     .toLowerCase().replace(/\s+/g, ' ').trim();
   if (!t) return false;
-  // D477 (mesmo filtro da D475 em saude.perguntaSobreSaude): retorno de subagente e aviso de tarefa chegam ao
-  // UserPromptSubmit como prompt. O relatorio que CITA uma correcao nao e o dono corrigindo.
-  // s103: no 2.1.296 o retorno vem como "Another Claude session sent a message[ while you were working]:" + a tag.
-  if (/^(?:another claude session sent a message[a-z ]*: )?<(?:agent-message|task-notification)\b/.test(t)) return false;
+  // D477: o relatorio que CITA uma correcao nao e o dono corrigindo (filtro em texto.js, D484).
+  if (veioDeSubagente(prompt)) return false;
   return PADROES.some(function (re) { return re.test(t); });
 }
 

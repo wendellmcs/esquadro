@@ -8,6 +8,8 @@ const git = require('./lib/git.js');
 const caminho = require('./lib/caminho.js');
 const config = require('./lib/config.js');
 const textoLib = require('./lib/texto.js');
+const veredito = require('./lib/veredito.js');
+const design = require('./lib/design.js');
 
 /**
  * D244/defeito 9: a secao "## Regua ..." do regras.md do projeto, do cabecalho ate o proximo
@@ -93,6 +95,28 @@ function versaoNoHead(cwd, relRaiz) {
     (v ? (v.error ? (v.error.code || 'erro') : v.status) : 'sem resposta') + ')' };
 }
 
+/**
+ * D485 (s108): o diff do arquivo contra o HEAD, sem contexto (-U0), para medir a faixa da revisao. Devolve
+ * { removidas, acrescentadas, blocos: [{ antigoIni, antigoQtd, novoIni, novoQtd }] }, ou null quando nao da para
+ * medir (git que falha, binario, saida sem bloco): sem medida, a faixa e a completa. `:(literal)` para que um
+ * nome com `*` ou `?` nao vire padrao; --ignore-cr-at-eol porque o identico tambem ignora o CRLF.
+ */
+function diffContraHead(cwd, rel) {
+  const r = rodarGit(cwd, ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '--ignore-cr-at-eol', '-U0',
+    'HEAD', '--', ':(literal)' + rel]);
+  if (!r || r.error || r.status !== 0 || typeof r.stdout !== 'string') return null;
+  const blocos = [];
+  const re = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm;
+  let m;
+  while ((m = re.exec(r.stdout)) !== null) {
+    blocos.push({ antigoIni: Number(m[1]), antigoQtd: m[2] === undefined ? 1 : Number(m[2]),
+      novoIni: Number(m[3]), novoQtd: m[4] === undefined ? 1 : Number(m[4]) });
+  }
+  if (blocos.length === 0 && r.stdout.trim() !== '') return null;
+  const soma = function (campo) { return blocos.reduce(function (t, b) { return t + b[campo]; }, 0); };
+  return { removidas: soma('antigoQtd'), acrescentadas: soma('novoQtd'), blocos: blocos };
+}
+
 const cwd = process.cwd();
 const alvo = arg('arquivo');
 const sementeTexto = arg('semente') || String(process.pid);
@@ -162,6 +186,18 @@ const anterior = novo ? '' : doHead.texto;
 // tem CRLF e o blob do HEAD tem LF. O conteudo gravado em A.txt/B.txt nao e normalizado.
 const normalizado = function (t) { return textoLib.semBom(t).replace(/\r\n/g, '\n'); };
 const identico = !novo && normalizado(anterior) === normalizado(atual);
+
+// D485 (s108): a faixa da revisao pelo tamanho do diff. Linhas mudadas = o lado maior (removidas ou
+// acrescentadas). Estilo pela mesma regra do portao (extensao ou caminhosDeEstilo do projeto, relativo a raiz).
+const raizProjeto = config.raizDoProjeto(cwd);
+const relNaRaiz = path.relative(raizProjeto, path.join(cwd, rel)).replace(/\\/g, '/');
+const diff = novo || identico ? null : diffContraHead(cwd, rel);
+const linhasMudadas = identico ? 0 : (diff ? Math.max(diff.removidas, diff.acrescentadas) : null);
+const faixa = veredito.faixaDaMudanca({
+  novo: novo, identico: identico, linhasMudadas: linhasMudadas,
+  estilo: design.ehArquivoDeEstilo(relNaRaiz, config.carregarProjeto(raizProjeto)),
+  texto: /\.(md|markdown|txt)$/i.test(rel)
+});
 
 // D257 secao 11, item 11: uma base por arquivo (revisao/<id>/<n>/). Revisao em andamento no formato
 // da 0.3.0 - pasta numerada solta em revisao/ - segue na base unica, para nao partir a revisao ao meio.
@@ -275,8 +311,17 @@ if (formatoAntigo) {
   }
 }
 
+// D486 (s108): nas faixas pequenas (lentes da faixa, nao a tabela de familias) cada lado leva so o trecho mudado,
+// com margem, nos numeros de linha do proprio arquivo. Na completa, ou sem bloco medido, o arquivo inteiro.
+const recorte = !!(diff && diff.blocos.length > 0 && veredito.lentesDaFaixa(faixa) !== null);
+const doLado = function (texto, ini, qtd) {
+  if (!recorte) return texto;
+  return cegar.recortarTrecho(texto, diff.blocos.map(function (b) { return { ini: b[ini], qtd: b[qtd] }; }),
+    cegar.TRECHO_MARGEM);
+};
 const r = cegar.rotular(
-  [{ nome: 'HEAD', conteudo: anterior }, { nome: 'trabalho', conteudo: atual }],
+  [{ nome: 'HEAD', conteudo: doLado(anterior, 'antigoIni', 'antigoQtd') },
+    { nome: 'trabalho', conteudo: doLado(atual, 'novoIni', 'novoQtd') }],
   sementeTexto + '|' + rel
 );
 
@@ -288,7 +333,8 @@ let regua = null;
 try {
   fs.mkdirSync(dir, { recursive: true });
   criada = true;
-  // Artefato INTEIRO. Fatia que corta funcao no meio faz o inspetor reportar o corte como defeito.
+  // Artefato INTEIRO na faixa completa. Fatia que corta funcao no meio faz o inspetor reportar o corte como
+  // defeito; o recorte das faixas pequenas (D486) marca cada vao e o aviso manda dizer isso no briefing.
   fs.writeFileSync(path.join(dir, 'A.txt'), r.A.conteudo, 'utf8');
   fs.writeFileSync(path.join(dir, 'B.txt'), r.B.conteudo, 'utf8');
   const mapaJson = { arquivo: rel, mapa: r.mapa };
@@ -324,6 +370,11 @@ if (arquivada) {
   aviso += ' A revisao anterior deste arquivo ja estava fechada (fechada.json): foi movida inteira, sem apagar ' +
     'nada, para ' + path.relative(cwd, arquivada).replace(/\\/g, '/') + '. Esta e a ronda 1 de uma revisao ' +
     'nova, com o teto de 3 rondas inteiro.';
+}
+if (recorte) {
+  aviso += ' A e B sao recortes (faixa ' + faixa + '): so o trecho mudado, com ' + cegar.TRECHO_MARGEM + ' linhas de ' +
+    'margem; as linhas de fora estao em branco e a primeira de cada vao diz "[fora do trecho: linhas a-b]". ' +
+    'Diga isso no briefing de cada inspetor.';
 }
 if (novo) {
   aviso += ' E arquivo novo: um dos lados e vazio, a cegueira nao existe; julgue o lado cheio pelo que ele e, ' +
@@ -369,8 +420,13 @@ const saida = {
   b: path.join(dir, 'B.txt'),
   regua: regua,
   vereditos: path.join(dir, 'vereditos'),
+  // D485: lentes null = a faixa completa, e vale a tabela de familias do revisar.
+  faixa: faixa,
+  lentes: veredito.lentesDaFaixa(faixa),
+  linhasMudadas: linhasMudadas,
   aviso: aviso
 };
+if (recorte) saida.trecho = { margem: cegar.TRECHO_MARGEM };
 if (arquivada) saida.arquivada = arquivada;
 if (!regua) saida.semRegua = 'nenhuma regua declarada no regras.md do projeto (secao "## Regua ...")';
 process.stdout.write(JSON.stringify(saida, null, 2) + '\n');

@@ -320,25 +320,56 @@ function chamar(dir, id, ferramenta, comando) {
   return r;
 }
 
-test('fiacao: portao nega o cd solto no Bash, ensina o subshell e conta no balde cd_solto (D286)', () => {
+/** D486 (s108): o que o portao devolveu ao corrigir o comando (updatedInput), ou null. */
+function corrigido(r) {
+  try {
+    const h = JSON.parse(r.stdout).hookSpecificOutput;
+    return h && h.updatedInput ? h : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// D486 (s108): no Bash o cd solto nao e mais negado: o portao devolve o comando em subshell (updatedInput,
+// provado com `claude -p` no 2.1.296), sem decidir a permissao (a pergunta normal segue) e sem encher o balde
+// cd_solto, que conta bloqueio para a troca de chat. O motivo de antes vira contexto para o agente.
+test('fiacao: o cd solto no Bash e corrigido sozinho - subshell no updatedInput, sem negar e sem balde (D486)', () => {
   const dir = temp('cd-bash');
   try {
     comPlataforma(dir, PLATAFORMA_LINUX);
-    const r = chamar(dir, 'cd1', 'Bash', 'cd sub && git status');
-    const motivo = motivoNegado(r);
-    assert.ok(motivo, 'o portao tinha de ter negado; stdout: ' + JSON.stringify(r.stdout));
-    assert.ok(/cd solto/i.test(motivo), motivo);
-    assert.ok(motivo.includes('( cd '), 'faltou a forma certa (subshell): ' + motivo);
-    assert.ok(motivo.includes('cd sub && git status'), 'faltou o comando negado: ' + motivo);
+    const r = rodar('portao-destrutivo.js', dir, { session_id: 'cd1', cwd: dir, tool_name: 'Bash',
+      tool_input: { command: 'cd sub && git status', description: 'ver o status', timeout: 5000 } });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(!motivoNegado(r), 'o Bash nao nega mais o cd solto: ' + r.stdout);
+    const h = corrigido(r);
+    assert.ok(h, 'o portao tinha de devolver o comando corrigido: ' + JSON.stringify(r.stdout));
+    assert.strictEqual(h.hookEventName, 'PreToolUse');
+    assert.deepStrictEqual(h.updatedInput, { command: '( cd sub && git status\n)', description: 'ver o status', timeout: 5000 },
+      'o comando vai em subshell e o resto do tool_input fica como veio');
+    assert.strictEqual(h.permissionDecision, undefined, 'corrigir nao decide a permissao: a pergunta normal segue');
+    assert.ok(/cd solto/i.test(h.additionalContext) && h.additionalContext.includes('( cd '),
+      'o agente fica sabendo da correcao e da forma certa: ' + h.additionalContext);
+    assert.strictEqual(lerSessao(dir, 'cd1'), null, 'corrigido nao e bloqueio: nao enche o balde cd_solto');
 
-    const s = lerSessao(dir, 'cd1');
-    assert.ok(s, 'o portao tinha de ter gravado estado de sessao');
-    assert.strictEqual(s.contadores.cd_solto, 1, JSON.stringify(s));
-    assert.strictEqual(s.contadores.shell_idioma_errado, undefined, 'cd solto nao e idioma errado: ' + JSON.stringify(s));
-    assert.strictEqual(s.contadores.comando_destrutivo, undefined, JSON.stringify(s));
+    // heredoc e comentario no fim: o ) vem na linha de baixo
+    const hd = corrigido(chamar(dir, 'cd1', 'Bash', 'cd sub && cat <<EOF\nx\nEOF'));
+    assert.strictEqual(hd.updatedInput.command, '( cd sub && cat <<EOF\nx\nEOF\n)');
+    const cm = corrigido(chamar(dir, 'cd1', 'Bash', 'echo a; pushd sub # vai'));
+    assert.strictEqual(cm.updatedInput.command, '( echo a; pushd sub # vai\n)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
 
-    chamar(dir, 'cd1', 'Bash', 'echo a; pushd sub');
-    assert.strictEqual(lerSessao(dir, 'cd1').contadores.cd_solto, 2, 'a segunda negacao tem de somar no mesmo balde');
+test('fiacao: o que nao da para envolver segue negado no balde cd_solto - fim em barra e comando ilegivel (D486)', () => {
+  const dir = temp('cd-bash-nega');
+  try {
+    comPlataforma(dir, PLATAFORMA_LINUX);
+    const barra = motivoNegado(chamar(dir, 'cd1', 'Bash', 'cd sub && ls \\'));
+    assert.ok(barra && /cd solto/i.test(barra) && barra.includes('( cd '), 'fim em barra nao se envolve: ' + barra);
+    assert.strictEqual(lerSessao(dir, 'cd1').contadores.cd_solto, 1);
+    const fundo = '('.repeat(101) + 'cd sub' + ')'.repeat(101);
+    const teto = motivoNegado(chamar(dir, 'cd1', 'Bash', fundo));
+    assert.ok(teto && /aninhamento/.test(teto), 'comando que nao se le inteiro segue negado: ' + teto);
+    assert.strictEqual(lerSessao(dir, 'cd1').contadores.cd_solto, 2, 'a segunda negacao soma no mesmo balde');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -357,14 +388,15 @@ test('fiacao: portao nega o cd solto no PowerShell e ensina Push-Location com Po
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('fiacao: o cd solto e negado em qualquer plataforma declarada, e sem plataforma nenhuma (D286)', () => {
+test('fiacao: o cd solto do Bash e corrigido em qualquer plataforma declarada, e sem plataforma nenhuma (D286, D486)', () => {
   // A trava nao e a tabela do win32: a pasta persiste nos dois.
   for (const plataforma of [PLATAFORMA_LINUX, { so: 'darwin', shell: 'zsh' }, PLATAFORMA_WIN, null]) {
     const dir = temp('cd-plataforma');
     try {
       if (plataforma) comPlataforma(dir, plataforma);
       const r = chamar(dir, 'cd3', 'Bash', 'cd sub && git status');
-      assert.ok(motivoNegado(r), JSON.stringify(plataforma) + ' -> ' + JSON.stringify(r.stdout));
+      const h = corrigido(r);
+      assert.ok(h && h.updatedInput.command === '( cd sub && git status\n)', JSON.stringify(plataforma) + ' -> ' + JSON.stringify(r.stdout));
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 });
@@ -402,19 +434,19 @@ test('fiacao: o comandosLiberados continua liberando o cd solto, e o cd_solto na
     const r = chamar(dir, 'cd5', 'Bash', 'cd sub && git status');
     assert.strictEqual(r.stdout, '', 'o escape declarado tinha de liberar: ' + r.stdout);
     assert.strictEqual(lerSessao(dir, 'cd5'), null, 'liberado nao enche balde');
-    // controle: o escape e por padrao - outro cd solto continua negado
-    assert.ok(motivoNegado(chamar(dir, 'cd5', 'Bash', 'cd outra && git status')), 'o escape nao podia liberar tudo');
+    // controle: o escape e por padrao - outro cd solto continua pego (D486: no Bash, corrigido em subshell)
+    assert.ok(corrigido(chamar(dir, 'cd5', 'Bash', 'cd outra && git status')), 'o escape nao podia liberar tudo');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('fiacao: travas.destrutivo false desliga tambem o cd solto, como o README e o init dizem (D295)', () => {
   const dir = temp('cd-trava');
   try {
-    // controle: com a trava ligada o mesmo comando e negado como cd solto
+    // controle: com a trava ligada o mesmo comando e pego como cd solto (D486: no Bash, corrigido em subshell)
     escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'),
       JSON.stringify({ plataforma: PLATAFORMA_LINUX, travas: { destrutivo: true } }));
-    const ligada = motivoNegado(chamar(dir, 'cd8', 'Bash', 'cd sub && git status'));
-    assert.ok(ligada && /cd solto/i.test(ligada), 'controle: a trava ligada tinha de negar o cd solto: ' + ligada);
+    const ligada = corrigido(chamar(dir, 'cd8', 'Bash', 'cd sub && git status'));
+    assert.ok(ligada && /cd solto/i.test(ligada.additionalContext), 'controle: a trava ligada tinha de pegar o cd solto: ' + JSON.stringify(ligada));
 
     escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'),
       JSON.stringify({ plataforma: PLATAFORMA_LINUX, travas: { destrutivo: false } }));

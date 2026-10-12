@@ -25,10 +25,28 @@ caminho exato vem na saída (`a`, `b`, `vereditos` e `base`); use o que a saída
 suas rondas e o seu teto de 3. Se a saída avisar "formato antigo", há uma revisão da 0.3.0 em
 andamento em pastas numeradas soltas: ela segue na base única até acabar.
 
-Entregue o **arquivo inteiro** ao inspetor. Fatia que corta função no meio faz o inspetor reportar o
-corte como defeito e contamina a ronda.
+Não fatie à mão. Fatia que corta função no meio faz o inspetor reportar o corte como defeito e
+contamina a ronda. Na faixa `completa` (Passo 2), `A.txt` e `B.txt` são o arquivo inteiro. Nas faixas
+pequenas, quando a saída traz `trecho`, o próprio script já recortou: cada lado leva só o trecho mudado,
+com a margem de `trecho.margem` linhas, nos números de linha do arquivo; as linhas de fora estão em
+branco e a primeira de cada vão diz `[fora do trecho: linhas a-b]`.
 
-## Passo 2 — ronda 1: as lentes da família certa
+## Passo 2 — ronda 1: a faixa da mudança, depois as lentes da família certa
+
+**Primeiro a faixa: a revisão é proporcional ao diff** (decisão do dono, 2026-10-12). A saída do Passo 1 traz
+`faixa`, `lentes` e `linhasMudadas` (o lado maior do diff contra o HEAD: linhas removidas ou acrescentadas).
+As lentes de cada faixa estão em `scripts/lib/veredito.js` → `lentesDaFaixa`.
+
+| `faixa` | Quando | Quantos inspetores |
+|---|---|---|
+| `uma` | até 3 linhas mudadas: só comentário, número ou frase curta | **1**: `correcao` |
+| `duas` | até 40 linhas de lógica, com teste vermelho e mutação já rodados | **2**: `correcao` e `borda` |
+| `texto` | texto (`.md`, `.markdown`, `.txt`) com mais de 3 linhas mudadas | **2**: `correcao` e `microcopy` |
+| `completa` | arquivo novo, mais de 40 linhas de lógica, estilo, igual ao HEAD ou sem medida | a tabela de famílias, abaixo |
+
+O script mede linhas, não sentido. **Você pode subir de faixa, nunca descer:** 3 linhas que mudam lógica sobem a
+`duas`; `duas` sem teste vermelho e mutação rodados sobe a `completa`; mudança que monta tela sobe a `completa`.
+Diga ao usuário a faixa usada e, se subiu, por quê. A regra de parada (Passo 5) é a mesma em toda faixa.
 
 **Duas famílias, por decisão do dono.** Elas divergem **por desenho**:
 a de código julga código, a de UI julga tela. Não se fundem.
@@ -60,6 +78,10 @@ Briefing de cada um, exatamente nesta forma:
 > Leia também `<caminho de regua.md>`: é a régua do projeto. Achado de valor fora da régua cita o valor dela.
 > Pasta de vereditos: `<caminho de vereditos>`. Não a abra: copie o caminho, sem mexer, no campo `vereditos` do JSON, e ponha a chave da lente (`<chave>`) no campo `lente`.
 > Não abra o repositório. Não abra `mapa.json`. Devolva só o JSON do seu formato.
+
+Quando a saída do Passo 1 traz `trecho`, acrescente ao briefing, logo depois da linha dos dois arquivos:
+
+> A e B são recortes: só o trecho mudado, com margem. A linha `[fora do trecho: linhas a-b]` marca o que ficou de fora, e as linhas em branco depois dela são esse vão. O vão não é defeito: se a resposta depender do que está fora, diga "não consigo ver", e esse achado é no máximo P2.
 
 A linha da régua só entra quando a saída do Passo 1 traz `regua` com um caminho. Quando traz
 `semRegua`, diga ao usuário que a revisão rodou **sem régua do projeto** — o inspetor julgou pelo
@@ -123,7 +145,7 @@ fechou começa **revisão nova**: o `preparar-revisao.js` move a base inteira pa
 
 - **Ronda 1 descobre; as seguintes verificam.**
 - A ronda 2 chama **só as lentes que acharam P0 ou P1**, com o briefing reformulado em pergunta
-  específica sobre o próprio achado. Ordem de grandeza: **9 → 4 → 2**.
+  específica sobre o próprio achado. Ordem de grandeza, na faixa `completa`: **9 → 4 → 2**.
 - Se nenhuma lente achou P0 ou P1, a ronda seguinte chama **ao menos uma** (a de correção): ronda sem
   nenhum veredito não é ronda seca, e o `apurar-ronda.js` para com erro.
 - Antes de cada nova ronda, corrija o que a anterior achou e rode `preparar-revisao.js` de novo.

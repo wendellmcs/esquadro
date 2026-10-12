@@ -91,6 +91,28 @@ function familiasPara(tocaCodigo, tocaTela) {
   return ['codigo', 'ui'];
 }
 
+// D485 (s106): revisao proporcional ao diff. A faixa vem antes das familias: so comentario, numero ou frase curta
+// = 1 inspetor; logica pequena com teste vermelho e mutacao = 2; texto = correcao + microcopy; arquivo novo ou
+// logica grande = a tabela de familias (familiasPara). Os cortes 3 e 40 e a dupla correcao + borda sao escolha
+// tecnica da s108, nao da D485. Sem medida, identico ao HEAD (nao ha diff para medir) ou estilo: a completa.
+const FAIXA_UMA_ATE = 3;
+const FAIXA_DUAS_ATE = 40;
+const LENTES_DA_FAIXA = { uma: ['correcao'], duas: ['correcao', 'borda'], texto: ['correcao', 'microcopy'] };
+
+function faixaDaMudanca(m) {
+  const o = m || {};
+  const n = o.linhasMudadas;
+  if (o.novo || o.identico || o.estilo || !Number.isInteger(n) || n < 0) return 'completa';
+  if (n <= FAIXA_UMA_ATE) return 'uma';
+  if (o.texto) return 'texto';
+  return n <= FAIXA_DUAS_ATE ? 'duas' : 'completa';
+}
+
+/** As chaves das lentes da faixa (copia), ou null na completa: ai vale a tabela de familias. */
+function lentesDaFaixa(faixa) {
+  return Object.prototype.hasOwnProperty.call(LENTES_DA_FAIXA, faixa) ? LENTES_DA_FAIXA[faixa].slice() : null;
+}
+
 const SEVERIDADES = ['P0', 'P1', 'P2'];
 
 // Ronda 1 do 8c.5: a lente entra na chave. Dois defeitos de lentes diferentes na mesma
@@ -437,5 +459,6 @@ function apurar(rondas, opcoes) {
     novos: novosDaUltima, placar: placar }, extra);
 }
 
-module.exports = { LENTES, LENTES_UI, FAMILIAS, SAEM_SO_LOGICA, familiasPara, SEVERIDADES, TETO, chaveAchado, chaveDaLente, errosDoVeredito,
+module.exports = { LENTES, LENTES_UI, FAMILIAS, SAEM_SO_LOGICA, familiasPara, FAIXA_UMA_ATE, FAIXA_DUAS_ATE,
+  faixaDaMudanca, lentesDaFaixa, SEVERIDADES, TETO, chaveAchado, chaveDaLente, errosDoVeredito,
   validarVeredito, apurar, conferirMesmos, DISTANCIA_PAR };

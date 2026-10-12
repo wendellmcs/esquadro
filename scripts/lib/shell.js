@@ -566,4 +566,24 @@ function motivoCdSolto(comando, achado) {
   return linhas.join('\n');
 }
 
-module.exports = { TABELA, semLiterais, conferir, problemasDaTabela, avisoTabela, motivo, cdSolto, motivoCdSolto };
+/**
+ * D486 (s108): o cd solto do Bash se corrige sozinho. O comando inteiro vai num subshell, e o que o cd muda morre
+ * com ele; o resto do estado do shell ja nao passava de uma chamada para a outra. O `)` vem na linha de baixo para
+ * fechar depois de heredoc e de comentario no fim. Devolve null quando nao da para envolver: comando ilegivel
+ * (teto), idioma que nao e o do Bash, ou fim em barra (a barra emendaria a linha do `)`).
+ */
+function envolverEmSubshell(comando, achado) {
+  if (!achado || achado.teto || achado.forma !== 'bash' || typeof comando !== 'string') return null;
+  if (/\\$/.test(comando.replace(/\s+$/, ''))) return null;
+  return '( ' + comando + '\n)';
+}
+
+/** D486: o que o agente fica sabendo quando o comando foi corrigido em vez de negado. */
+function avisoCdCorrigido(achado) {
+  return 'esquadro - cd solto corrigido: o ' + (achado ? achado.achado : 'cd') + ' mudaria a pasta para os comandos ' +
+    'seguintes, entao o comando rodou dentro de um subshell, ( ... ), e a pasta volta sozinha. Escreva assim da ' +
+    'proxima vez: ( cd "<pasta>" && <comando> ), ou git -C "<pasta>" sem mudar de pasta.';
+}
+
+module.exports = { TABELA, semLiterais, conferir, problemasDaTabela, avisoTabela, motivo, cdSolto, motivoCdSolto,
+  envolverEmSubshell, avisoCdCorrigido };

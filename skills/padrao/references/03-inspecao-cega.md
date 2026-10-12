@@ -24,7 +24,8 @@ Artefato mutilado produz veredito inválido, e o inspetor não tem como saber qu
 reporta o corte como se fosse defeito do código, e o voto dele contamina a ronda inteira.
 
 **Regra: entregar o arquivo inteiro.** Comparar duas versões? `git show HEAD:<path>` de um lado, o
-arquivo do disco do outro. Sem fatiar.
+arquivo do disco do outro. Sem fatiar. A exceção é o recorte que o `/esquadro:revisar` faz sozinho nas
+faixas pequenas: ele marca cada vão, mantém os números de linha e avisa o inspetor.
 
 **Se precisar fatiar** — arquivo grande demais, ou o alvo é um trecho isolado — então, antes de
 despachar:

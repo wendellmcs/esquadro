@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const { CALADOS } = require('./continuo.js');
+const { veioDeSubagente } = require('./texto.js');
 
 // Gatilhos CONTAVEIS, do arquivo de regras do projeto. Basta UM; nao e preciso somar.
 // O que nao da para contar nao vira gatilho fingido: fica de fora. O tamanho do contexto conta desde a
@@ -230,10 +231,8 @@ function perguntaSobreSaude(prompt) {
   if (typeof prompt !== 'string') return false;
   const t = prompt.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (!t) return false;
-  // D475: retorno de subagente e aviso de tarefa chegam ao UserPromptSubmit como prompt (queued_command,
-  // transcricoes da s96/s97). O inspetor que CITA a pergunta nao e o usuario perguntando.
-  // s103: no 2.1.296 o retorno vem como "Another Claude session sent a message[ while you were working]:" + a tag.
-  if (/^(?:another claude session sent a message[a-z ]*: )?<(?:agent-message|task-notification)\b/.test(t)) return false;
+  // D475: o inspetor que CITA a pergunta nao e o usuario perguntando (filtro em texto.js, D484).
+  if (veioDeSubagente(prompt)) return false;
   const temCaraDePergunta = t.indexOf('?') !== -1 ||
     /^(?:como|how|is|are|esta|ta|ainda|qual)\b/.test(t) ||
     new RegExp('^(?:o |a |seu |sua |esse |essa |your |the |this )?' + NOME_DA_SAUDE + ' (?:esta|ta|ainda)\\b').test(t);

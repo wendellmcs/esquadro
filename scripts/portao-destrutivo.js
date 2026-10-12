@@ -58,6 +58,15 @@ io.blindar(function () {
     // negado segue negado pelo mesmo motivo e no mesmo balde. O `cd` solto deixa a pasta errada
     // para o comando seguinte; a mensagem mostra a forma certa.
     const solto = shell.cdSolto(comando, e.tool_name, projeto && projeto.plataforma);
+    // D486 (s108): na ferramenta Bash, declarada, o comando vai em subshell pelo updatedInput (provado com
+    // `claude -p` no 2.1.296) em vez de negado. Sem permissionDecision: a pergunta de permissao normal segue. Nao
+    // enche o cd_solto, que e balde de bloqueio. O que nao da para envolver segue negado, abaixo.
+    const envolto = solto && e.tool_name === 'Bash' ? shell.envolverEmSubshell(comando, solto) : null;
+    if (envolto) {
+      return io.permitir({ hookSpecificOutput: { hookEventName: 'PreToolUse',
+        updatedInput: Object.assign({}, e.tool_input, { command: envolto }),
+        additionalContext: shell.avisoCdCorrigido(solto) } });
+    }
     if (solto) {
       // D420/SH-02: idem.
       try { estado.incrementar(e.session_id, 'cd_solto'); } catch (err) { /* idem */ }

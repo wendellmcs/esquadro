@@ -100,3 +100,33 @@ test('texto: causaDoErro corta depois de colapsar (200 sobre o texto ja colapsad
   const r = texto.causaDoErro(new Error('a' + ' '.repeat(300) + 'b'));
   assert.strictEqual(r, 'Error: a b');
 });
+
+// D484 (V3 da triagem s106): o filtro do retorno de subagente vivia copiado em saude.js e correcao.js, preso ao
+// texto da CLI; na s103 o 2.1.296 mudou a forma e os dois deixaram passar. Agora um lugar so.
+test('D484: veioDeSubagente reconhece as formas do retorno de subagente e do aviso de tarefa', () => {
+  const moldura = '[Subagent hand-back] The text below is the final report of a subagent. The report follows:\n  o contexto está bom?';
+  const sim = [
+    '<agent-message from="a03dd88b2fa37386b">\n' + moldura,
+    '\n  <agent-message from="afada5e858d0f67dd">' + moldura,
+    '<task-notification>\n<task-id>a2b689610322d871a</task-id>\n<result>o contexto está bom?</result>',
+    'Another Claude session sent a message:\n<agent-message from="adb8871118893aaf1">\n' + moldura,
+    'Another Claude session sent a message while you were working:\n<agent-message from="a4d07d4ff914ca816">\n' + moldura
+  ];
+  sim.forEach(function (p) {
+    assert.strictEqual(texto.veioDeSubagente(p), true, 'nao reconheceu: ' + JSON.stringify(p.slice(0, 50)));
+  });
+  const nao = ['o contexto está bom?', 'nunca mais faca isso', 'veja o <agent-message> no log', '', '   ', null, undefined, 42];
+  nao.forEach(function (p) {
+    assert.strictEqual(texto.veioDeSubagente(p), false, 'acusou o que nao e de subagente: ' + JSON.stringify(p));
+  });
+});
+
+test('D484: saude.js e correcao.js usam o filtro de texto.js, sem copia propria da regex', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  ['saude.js', 'correcao.js'].forEach(function (nome) {
+    const fonte = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'lib', nome), 'utf8');
+    assert.ok(fonte.indexOf('veioDeSubagente(') !== -1, nome + ' nao chama texto.veioDeSubagente');
+    assert.strictEqual(fonte.indexOf('<(?:agent-message'), -1, nome + ' ainda tem a propria copia da regex');
+  });
+});

@@ -844,3 +844,15 @@ test('T10-7/6: o cd solto no Bash explica o termo subshell: shell filho, cd so l
   assert.ok(/so dentro dele/.test(linha), 'falta dizer que o cd vale so la dentro: ' + linha);
   assert.ok(/volta sozinha/.test(linha), linha);
 });
+
+// D486 (s108): so o cd solto do Bash se envolve em subshell; o PowerShell nao tem subshell que devolva a pasta.
+test('D486: envolverEmSubshell - so o Bash, com o ) na linha de baixo; PowerShell, teto e fim em barra ficam null', () => {
+  const bash = shell.cdSolto('cd sub && ls', 'Bash');
+  assert.strictEqual(shell.envolverEmSubshell('cd sub && ls', bash), '( cd sub && ls\n)');
+  const ps = shell.cdSolto('Set-Location sub; ls', 'PowerShell');
+  assert.ok(ps && ps.forma === 'powershell', 'controle: o PowerShell acha o cd solto');
+  assert.strictEqual(shell.envolverEmSubshell('Set-Location sub; ls', ps), null);
+  assert.strictEqual(shell.envolverEmSubshell('cd sub && ls', null), null);
+  assert.strictEqual(shell.envolverEmSubshell('cd sub && ls \\  ', bash), null);
+  assert.strictEqual(shell.envolverEmSubshell('x', { forma: 'bash', achado: null, teto: true }), null);
+});
