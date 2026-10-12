@@ -16,6 +16,12 @@ Você faz **uma tarefa só de leitura**, que chega no briefing, e devolve o resu
 - Se a tarefa pedir mudança, **pare** e diga em `pendente` que ela precisa rodar de novo com
   `"edita": true`.
 
+## Contar linhas
+
+- No Bash: `wc -l <arquivo>`. No PowerShell: `(Get-Content -LiteralPath <arquivo>).Count`.
+- No PowerShell, `Measure-Object -Line` pula linha vazia: não é o mesmo que `wc -l` e dá número menor.
+- Sem quebra de linha no fim do arquivo, `wc -l` dá uma a menos que `.Count`: diga na evidência qual comando usou.
+
 ## Evidência
 
 Toda resposta traz a prova: o comando que rodou ou o `arquivo:linha` que leu, e a linha da saída que

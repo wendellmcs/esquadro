@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.5 — o agente de leitura conta linhas certo
+
+**Corrigido**
+
+- **Contagem de linhas errada no PowerShell.** Pedido para contar as linhas de um arquivo de 121, o agente
+  `leitor` do `/esquadro:paralelo` respondeu 110: usou `Measure-Object -Line`, que pula linha vazia, e
+  disse que era o mesmo que `wc -l`. O agente agora traz como contar nos dois shells, avisa desse
+  comando e de que, sem quebra de linha no fim do arquivo, os dois shells diferem em uma linha. Medido no VS Code com a 0.6.4: tres leituras custaram 38.514 tokens, contra 169.098 antes dela.
+
 ## 0.6.4 — leitura em paralelo custa menos
 
 **Mudado**

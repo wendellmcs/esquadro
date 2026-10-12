@@ -115,6 +115,22 @@ test('paralelo: o agente leve existe, abre sem CLAUDE.md, nao edita e nao fixa m
   assert.ok(!/^(model|effort):/m.test(cab[1]), 'o leitor nao declara model nem effort');
 });
 
+// D457 (0.6.5): na medicao da s84 o leitor contou 110 linhas num arquivo de 121 com
+// `(Get-Content | Measure-Object -Line).Lines`, que pula linha vazia, e disse que era o mesmo que `wc -l`.
+test('paralelo: o agente leve avisa que Measure-Object -Line pula linha vazia (D457)', () => {
+  const t = fs.readFileSync(path.join(__dirname, '..', 'agents', 'leitor.md'), 'utf8');
+  const corpo = t.replace(/^---\r?\n[\s\S]*?\r?\n---/, '');
+  const linha = corpo.split(/\r?\n/).find((l) => /Measure-Object -Line/.test(l)) || '';
+  assert.ok(linha, 'o corpo do leitor nao cita Measure-Object -Line');
+  assert.ok(/pula linha vazia/.test(linha), 'a linha nao diz que pula linha vazia: ' + linha);
+  assert.ok(/wc -l/.test(corpo) && /\(Get-Content -LiteralPath [^)]*\)\.Count/.test(corpo),
+    'o leitor nao diz como contar certo nos dois shells');
+  // revisao cega da 0.6.5, ronda 2: sem quebra de linha no fim, `wc -l` da 1 e `.Count` da 2 (medido em 'a\nb')
+  const fim = corpo.split(/\r?\n/).find((l) => /quebra de linha/.test(l)) || '';
+  assert.ok(/wc -l/.test(fim) && /uma a menos/.test(fim) && /qual comando usou/.test(fim),
+    'o leitor nao avisa que wc -l e .Count divergem sem quebra de linha no fim: ' + fim);
+});
+
 test('paralelo: teto de 8 por padrao, 16 no maximo, e o que ficou de fora e dito (nada cortado calado)', async () => {
   const dez = Array.from({ length: 10 }, (_, i) => 'tarefa ' + (i + 1));
   const a = await rodar(dez);
