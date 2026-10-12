@@ -73,8 +73,11 @@ io.blindar(function () {
     }
     // Qualidade de resposta: sai em toda abertura, com ou sem projeto.json, depois das regras;
     // so `qualidadeDeResposta: false` no projeto desliga.
+    // D451: a regra de paralelismo, antes da qualidade e no mesmo molde; so `paralelismo: false` desliga.
+    const paralelo = require('./lib/paralelismo.js').bloco(projeto);
+    if (paralelo) process.stdout.write((texto ? '\n' : '') + paralelo);
     const qualidade = require('./lib/qualidade.js').bloco(projeto);
-    if (qualidade) process.stdout.write((texto ? '\n' : '') + qualidade);
+    if (qualidade) process.stdout.write((texto || paralelo ? '\n' : '') + qualidade);
     const heranca = require('./lib/escopo.js').avisoHeranca(cwd, estado.ler(e.session_id).frente);
     if (heranca) process.stdout.write('\n' + heranca + '\n');
 

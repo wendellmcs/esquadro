@@ -417,6 +417,40 @@ ficar sem ele é melhor do que ficar com um inventado.
 Pergunte as anti-referências: *"o que esta interface não pode parecer?"*. Dizer o que a coisa **não**
 pode parecer é verificável; dizer o que ela deve parecer, não é.
 
+## Passo 5c — autorizar o trabalho em paralelo, uma vez só
+
+O plugin traz o workflow `/esquadro:paralelo` (tarefas independentes em paralelo, com teto de 8
+agentes por disparo, modelo barato e isolamento para quem edita) e uma regra, na abertura de toda
+sessão, que manda o Claude **oferecê-lo** com o custo quando houver 3 ou mais tarefas independentes.
+O Claude Code pede aprovação antes de rodar workflow; este passo deixa essa aprovação dada **uma vez**.
+
+**1. Confira antes de perguntar**, de dentro da raiz absoluta do Passo 0:
+
+    node "${CLAUDE_PLUGIN_ROOT}/scripts/autorizar-paralelo.js" --conferir
+
+Se vier `"autorizado": true`, ou se o `projeto.json` atual já tem `"paralelismo": false`, **não
+pergunte**: diga em uma linha o que já está valendo e siga. É isso que faz a pergunta sair uma vez só.
+
+**2. Senão, pergunte com `AskUserQuestion`, em 3 opções, a recomendada primeiro:**
+
+- **(a) Autorizar neste projeto (recomendado)** — grava a permissão; daí em diante o Claude oferece o
+  paralelo com o custo e você só responde "sim". Custo: cada execução gasta os agentes que ela disparar.
+- **(b) Perguntar a cada execução** — nada é gravado; o Claude Code mostra a janela de aprovação toda
+  vez (e um re-init pergunta de novo).
+- **(c) Não usar** — desliga a regra e a oferta: `"paralelismo": false` entra no `projeto.json` que o
+  Passo 7 grava.
+
+**3. Na (a), grave pelo script, nunca pelo `Write`** (o arquivo pode ter outras permissões do dono, e o
+script mescla por JSON):
+
+    node "${CLAUDE_PLUGIN_ROOT}/scripts/autorizar-paralelo.js"
+
+Ele acrescenta `Workflow(esquadro:paralelo)` em `permissions.allow` do `.claude/settings.local.json`
+(o arquivo pessoal do projeto, fora do git). Saída `"erro"`: não grave à mão; mostre o erro ao dono.
+**Diga ao dono o limite que está medido:** a regra libera o workflow sem janela no modo `claude -p`;
+na sessão interativa (terminal ou VS Code), se a janela ainda aparecer na primeira execução, ele
+escolhe **"Yes, and don't ask again"** uma vez e ela não volta neste projeto.
+
 ## Passo 6 — semear as regras
 
 **Este passo vem ANTES de gravar o `projeto.json`, e a ordem não é estilo — é o que faz o passo

@@ -117,9 +117,14 @@ test('readme: toda skill do disco aparece no README', () => {
     'a frase diz ' + ord[1] + ' skill e o disco tem ' + doDisco.length);
 });
 
-test('readme: todo comando citado no README existe como skill no disco', () => {
+test('readme: todo comando citado no README existe como skill ou workflow no disco', () => {
   const doDisco = new Set(fs.readdirSync(path.join(RAIZ, 'skills'), { withFileTypes: true })
     .filter((e) => e.isDirectory()).map((e) => e.name));
+  // D449 (0.6.2): workflow do plugin roda como /esquadro:<meta.name> (workflows/*.js na raiz do plugin)
+  for (const f of fs.readdirSync(path.join(RAIZ, 'workflows')).filter((n) => n.endsWith('.js'))) {
+    const nome = fs.readFileSync(path.join(RAIZ, 'workflows', f), 'utf8').match(/^  name: '([a-z-]+)',$/m);
+    if (nome) doDisco.add(nome[1]);
+  }
   const citados = new Set();
   const re = /esquadro:([a-z-]+)/g;
   let m;

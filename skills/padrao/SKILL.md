@@ -275,6 +275,7 @@ O desvio começa quando o plano passa a ser executado de memória. Gatilhos **co
 - 2 ou mais tarefas com revisão independente fechadas nesta conversa;
 - 3 ou mais decisões do dono registradas nesta conversa;
 - 2 ou mais erros próprios de medição ou instrumento na mesma conversa;
+- a conversa passou de 150 mil tokens de contexto (o fim de turno do plugin mede e avisa);
 - qualquer incidente que exigiu cirurgia (histórico git, ambiente, sessão concorrente);
 - você conseguiria responder sobre o plano sem reabri-lo;
 - o usuário perguntou se o contexto está bom — a pergunta **é** a resposta.
@@ -289,6 +290,25 @@ Handoff em `{{texto:ondeHandoff}}`. Conteúdo obrigatório em
 [05-governanca.md](references/05-governanca.md).
 
 **Se surgiu a dúvida "já é hora?", já era.**
+
+## 6-bis. Trabalho em paralelo
+
+Agente rodando em segundo plano não é motivo para parar. A versão curta desta regra também sai na
+abertura de toda sessão; desligar: `"paralelismo": false` no `projeto.json`.
+
+- **Disparou agente em segundo plano? Siga com a próxima tarefa que não depende dele.** Espere só
+  quando a próxima tarefa precisar do resultado. Dependência real é o único motivo para esperar.
+- **Dois ou mais agentes editando ao mesmo tempo: cada um isolado** (`isolation: worktree`), senão um
+  sobrescreve o outro. Agente que só lê não precisa de isolamento.
+- **Relatório de agente é alegação**, não fato: confira o crítico na fonte antes de dar por pronto.
+- **Freio de custo:** o modelo mais barato que resolve a tarefa (o mapa de modelos do projeto manda);
+  no máximo 8 agentes por disparo. Rigor continua sendo eixo separado do custo.
+- **3 ou mais tarefas independentes: ofereça o `/esquadro:paralelo`**, dizendo quantos agentes, qual
+  modelo e o custo aproximado, e só rode depois do sim. Rodar um workflow sem pedido explícito é
+  proibido pelo próprio Claude Code. Chamada: a ferramenta Workflow com `name: "esquadro:paralelo"` e
+  `args` = lista de tarefas (`[{"tarefa": "...", "edita": false}]`). Ele aplica o freio sozinho: 8 por
+  disparo (diz quais ficaram de fora), Haiku para quem só lê, Sonnet para quem edita, isolamento para
+  quem edita, e devolve cada resultado com a evidência que o agente colou.
 
 ## 7. Como pedir decisão ao dono
 

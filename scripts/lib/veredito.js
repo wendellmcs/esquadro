@@ -44,6 +44,10 @@ const LENTES_UI = [
 
 const FAMILIAS = { codigo: LENTES, ui: LENTES_UI };
 
+// Arquivo so de logica (nao e de estilo e nao monta tela): estas saem da ronda 1. `design` pela decisao do dono de
+// 2026-09-29; `medidor` e `escopo` pela D448 (ronda 1 de 41 revisoes: 11 de 13 e 5 de 6 achados refutados na fonte).
+const SAEM_SO_LOGICA = ['design', 'medidor', 'escopo'];
+
 // L2-ver-1 (S7, D426): sem acento e sem diferenca entre a forma composta e a decomposta (NFD separa as marcas, e
 // elas saem): o inspetor escreve "Correção e regressão" e o titulo canonico e "Correcao e regressao".
 function grafiaSolta(s) { return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase(); }
@@ -403,5 +407,5 @@ function apurar(rondas, opcoes) {
     novos: novosDaUltima, placar: placar }, extra);
 }
 
-module.exports = { LENTES, LENTES_UI, FAMILIAS, familiasPara, SEVERIDADES, TETO, chaveAchado, chaveDaLente, errosDoVeredito,
+module.exports = { LENTES, LENTES_UI, FAMILIAS, SAEM_SO_LOGICA, familiasPara, SEVERIDADES, TETO, chaveAchado, chaveDaLente, errosDoVeredito,
   validarVeredito, apurar, conferirMesmos, DISTANCIA_PAR };

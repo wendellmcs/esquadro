@@ -26,6 +26,9 @@ try {
   const s = entrada.sessao ? estado.ler(String(entrada.sessao)) : {};
   const projeto = config.carregarProjeto(config.raizDoProjeto(process.cwd()));
   const conta = Object.assign({}, s, { contadores: saude.acumular(s) });
+  // D445: o contexto ao vivo do motor vale mais que o gravado no ultimo Stop.
+  const ctx = entrada.uso && entrada.uso.context;
+  if (ctx && typeof ctx.tokens === 'number') conta.tokensDeContexto = ctx.tokens;
   resposta = medidor.linhaDaSessao({
     uso: entrada.uso,
     amostras: entrada.amostras,

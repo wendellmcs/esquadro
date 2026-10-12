@@ -1,15 +1,56 @@
 'use strict';
 
+const fs = require('node:fs');
+
 // Gatilhos CONTAVEIS, do arquivo de regras do projeto. Basta UM; nao e preciso somar.
-// O que nao da para contar (inflacao de contexto) nao vira gatilho fingido: fica de fora.
+// O que nao da para contar nao vira gatilho fingido: fica de fora. O tamanho do contexto conta desde a
+// D445: o Stop nao o recebe, mas recebe o transcript_path, e o ultimo `usage` dele da o numero.
 const LIMIARES_PADRAO = {
   turnosComTrabalho: 15,   // conversa longa com edicao a cada turno
   revisoesFechadas: 2,     // 2+ tarefas com revisao independente fechadas
   bloqueios: 6,            // soma dos disparos de portao: sinal de desgaste
   arquivosTocados: 25,     // diff largo demais para caber na cabeca
   decisoesDoDono: 3,       // T10-2: respostas do dono a AskUserQuestion
-  commits: 3               // T10-3: git commit que passou (3, nao 1: o aviso sai uma vez por sessao)
+  commits: 3,              // T10-3: git commit que passou (3, nao 1: o aviso sai uma vez por sessao)
+  tokensDeContexto: 150000 // D445: medido na s73, 61% das chamadas acima de 150K somavam 71% do custo
 };
+
+// D445: so a cauda do transcript (ele passa de MB numa sessao longa); o ultimo `usage` esta no fim.
+const CAUDA_DO_TRANSCRIPT = 256 * 1024;
+
+/**
+ * D445: tamanho do contexto da linha principal = input + cache_read + cache_creation do ULTIMO `usage`
+ * do transcript (a mesma conta da medicao da s73). Pula linha de subagente (isSidechain), a sintetica
+ * (tudo zero) e linha torta. Sem leitura (sem caminho, arquivo ausente, nenhum usage na cauda): null.
+ * O transcript e escrito de forma assincrona: a leitura pode vir um turno atrasada.
+ */
+function contextoDoTranscript(caminho) {
+  if (typeof caminho !== 'string' || !caminho) return null;
+  let texto;
+  try {
+    const fd = fs.openSync(caminho, 'r');
+    try {
+      const tamanho = fs.fstatSync(fd).size;
+      const n = Math.min(tamanho, CAUDA_DO_TRANSCRIPT);
+      const buf = Buffer.alloc(n);
+      fs.readSync(fd, buf, 0, n, tamanho - n);
+      texto = buf.toString('utf8');
+    } finally { fs.closeSync(fd); }
+  } catch (e) { return null; }
+  const linhas = texto.split('\n');
+  // a primeira linha da cauda pode vir cortada no meio: o JSON.parse a recusa e ela fica de fora
+  for (let i = linhas.length - 1; i >= 0; i--) {
+    if (!linhas[i]) continue;
+    let o;
+    try { o = JSON.parse(linhas[i]); } catch (e) { continue; }
+    if (!o || o.isSidechain === true) continue;
+    const u = o.message && o.message.usage;
+    if (!u) continue;
+    const total = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+    if (total > 0) return total;
+  }
+  return null;
+}
 
 /**
  * Todo balde de trava que NEGA. Balde novo que fique de fora daqui some do
@@ -38,7 +79,7 @@ function soma(contadores, chaves) {
 }
 
 /**
- * Bloco M / M1 (D435): os 6 gatilhos contaveis, cruzados ou nao, com valor e limiar - o que o
+ * Bloco M / M1 (D435): os gatilhos contaveis (7 desde a D445), cruzados ou nao, com valor e limiar - o que o
  * medidor da sessao mostra. Fonte unica da regra: `avaliar` monta os gatilhos daqui.
  * Diferente do `avaliar`, nao se cala com `avisouSaude`: o aviso ja dado nao zera o painel.
  */
@@ -57,6 +98,7 @@ function medir(estado, limiares) {
   // typeof: estado corrompido (objeto, texto) nunca vira aviso.
   const decisoes = typeof e.decisoesDoDono === 'number' ? e.decisoesDoDono : 0;
   const commits = typeof e.commitsFeitos === 'number' ? e.commitsFeitos : 0;
+  const contexto = typeof e.tokensDeContexto === 'number' ? e.tokensDeContexto : 0;
   return [
     item('turnosComTrabalho', 'turnos com trabalho real', turnos, turnos >= L.turnosComTrabalho,
       turnos + ' turnos com trabalho real (limiar ' + L.turnosComTrabalho + ')'),
@@ -71,7 +113,10 @@ function medir(estado, limiares) {
       decisoes + ' decisoes do dono respondidas (limiar ' + L.decisoesDoDono + ')'),
     item('commits', 'commits nesta sessao', commits,
       typeof e.commitsFeitos === 'number' && commits >= L.commits,
-      commits + ' commits nesta sessao (limiar ' + L.commits + ')')
+      commits + ' commits nesta sessao (limiar ' + L.commits + ')'),
+    item('tokensDeContexto', 'tokens de contexto', contexto,
+      typeof e.tokensDeContexto === 'number' && contexto >= L.tokensDeContexto,
+      contexto + ' tokens de contexto (limiar ' + L.tokensDeContexto + ')')
   ];
 }
 
@@ -299,5 +344,5 @@ const MOTIVO_HANDOFF_SEM_PROMPT = [
   'Para desligar este portao no projeto: "portaoHandoff": false em .claude/esquadro/projeto.json.'
 ].join('\n');
 
-module.exports = { LIMIARES_PADRAO, BALDES_DE_BLOQUEIO, medir, acumular, avaliar, instrucaoAoModelo, perguntaSobreSaude,
+module.exports = { LIMIARES_PADRAO, BALDES_DE_BLOQUEIO, contextoDoTranscript, medir, acumular, avaliar, instrucaoAoModelo, perguntaSobreSaude,
   INSTRUCAO_DA_PERGUNTA, ehArquivoDeHandoff, temBlocoDeCodigo, MOTIVO_HANDOFF_SEM_PROMPT };

@@ -35,7 +35,7 @@ a de código julga código, a de UI julga tela. Não se fundem.
 
 | O que mudou | Quantos inspetores | Onde estão as lentes |
 |---|---|---|
-| Só lógica (não é de estilo e não monta tela) | **8** | `scripts/lib/veredito.js` → `LENTES` sem `design` |
+| Só lógica (não é de estilo e não monta tela) | **6** | `scripts/lib/veredito.js` → `LENTES` sem as de `SAEM_SO_LOGICA` (`design`, `medidor`, `escopo`) |
 | Só código | **9** | `scripts/lib/veredito.js` → `LENTES` |
 | Só tela | **8** | `scripts/lib/veredito.js` → `LENTES_UI` |
 | Código e tela | **17** | as duas listas |
@@ -45,8 +45,10 @@ a de código julga código, a de UI julga tela. Não se fundem.
 Na dúvida, **as duas famílias** — a marcha mais rigorosa ganha.
 
 **Arquivo só de lógica** — que não é de estilo e não monta tela — dispensa a lente `design` (decisão
-do dono, 2026-09-29): são 8 inspetores, as de `LENTES` sem a `design`. Na dúvida, as 9 — a
-`design` só sai quando é claro que o arquivo não é de estilo e não monta tela.
+do dono, 2026-09-29) e, desde 2026-10-11, também `medidor` e `escopo` (na ronda 1 de 41 revisões, 11 de 13 e
+5 de 6 achados delas foram refutados na fonte): são 6 inspetores, as de `LENTES` sem as de
+`SAEM_SO_LOGICA`. Na dúvida, as 9 — elas só saem quando é claro que o arquivo não é de estilo e não
+monta tela.
 
 Leia as lentes do arquivo, **não de memória**. Despache todos no mesmo disparo, **um subagente
 `esquadro:inspetor` por lente**.

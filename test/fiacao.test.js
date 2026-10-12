@@ -759,15 +759,36 @@ function abrirComStdinCru(dir, bruto) {
   });
 }
 
-test('fiacao: sem projeto.json a abertura imprime o bloco de qualidade e so ele, nas 4 origens', () => {
+const paralelismo = require('../scripts/lib/paralelismo.js');
+const TITULO_P = '# esquadro - trabalho em paralelo';
+
+// D451 (0.6.2): o bloco de paralelismo sai antes do de qualidade, e os dois so eles quando nao ha projeto.
+test('fiacao: sem projeto.json a abertura imprime o bloco de paralelismo e o de qualidade, e so eles, nas 4 origens', () => {
   for (const origem of ORIGENS_Q) {
     const dir = temp('qualidade-sem-projeto');
     try {
       const r = rodar('abertura.js', dir, { session_id: 'q1-' + origem, cwd: dir, source: origem });
       assert.strictEqual(r.status, 0, r.stderr);
-      assert.strictEqual(r.stdout, qualidade.BLOCO, origem + ': ' + JSON.stringify(r.stdout));
+      assert.strictEqual(r.stdout, paralelismo.BLOCO + '\n' + qualidade.BLOCO, origem + ': ' + JSON.stringify(r.stdout));
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
+});
+
+test('fiacao: paralelismo false some so com o bloco de paralelismo; regras e qualidade seguem', () => {
+  const dir = temp('paralelismo-desligar');
+  try {
+    projetoComRegras(dir, { paralelismo: false });
+    const r = rodar('abertura.js', dir, { session_id: 'p1', cwd: dir, source: 'startup' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(!r.stdout.includes(TITULO_P), 'o false nao desligou: ' + r.stdout);
+    assert.ok(r.stdout.includes(REGRA_Q) && r.stdout.includes(TITULO_Q), r.stdout);
+    projetoComRegras(dir);
+    const l = rodar('abertura.js', dir, { session_id: 'p2', cwd: dir, source: 'startup' });
+    const iR = l.stdout.indexOf(REGRA_Q);
+    const iP = l.stdout.indexOf(TITULO_P);
+    const iQ = l.stdout.indexOf(TITULO_Q);
+    assert.ok(iR !== -1 && iR < iP && iP < iQ, 'ordem: regras, paralelismo, qualidade: ' + l.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('fiacao: o bloco de qualidade sai DEPOIS das regras do projeto', () => {
@@ -852,13 +873,13 @@ test('fiacao: sessao numa subpasta herda o false do projeto acima (e sem o false
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('fiacao: abertura com stdin vazio ou JSON invalido sai com 0 e imprime o bloco de qualidade', () => {
+test('fiacao: abertura com stdin vazio ou JSON invalido sai com 0 e imprime os blocos de paralelismo e de qualidade', () => {
   for (const [nome, bruto] of [['vazio', ''], ['invalido', '{isso nao e json']]) {
     const dir = temp('qualidade-stdin-' + nome);
     try {
       const r = abrirComStdinCru(dir, bruto);
       assert.strictEqual(r.status, 0, nome + ': ' + r.stderr);
-      assert.strictEqual(r.stdout, qualidade.BLOCO, nome + ': ' + JSON.stringify(r.stdout));
+      assert.strictEqual(r.stdout, paralelismo.BLOCO + '\n' + qualidade.BLOCO, nome + ': ' + JSON.stringify(r.stdout));
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 });

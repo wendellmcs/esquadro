@@ -335,6 +335,7 @@ se soma ao laço: espera o próximo fim de turno com trabalho.
 | arquivos tocados | `arquivosTocados` | 25 |
 | decisões suas respondidas (as perguntas de escolha do Claude) | `decisoesDoDono` | 3 |
 | commits que passaram | `commits` | 3 |
+| tamanho da conversa, em tokens de contexto | `tokensDeContexto` | 150000 |
 
 Basta um. Sem `projeto.json`, valem os padrões da tabela; com ele, só as chaves que você escreve
 mudam. O commit entra com 3, e não 1, porque o aviso sai uma vez só: com 1, todo mundo que commita
@@ -347,9 +348,16 @@ Claude recebe a ordem de trocar de chat com o handoff, e isso vale a cada vez qu
 a primeira. Pedido que apenas cita contexto ou memória ("adicione contexto ao README", "memory leak
 no módulo") não dispara.
 
-**O que não dispara:** erro de medição (contagem errada, número lido do lugar errado) e a inflação
-de contexto em si. Hook não enxerga nenhum dos dois — ele dispara em ferramenta, não no tamanho da
-conversa —, então o plugin não finge contá-los. Para esses, vale a sua pergunta acima.
+**O tamanho da conversa conta** (desde a 0.6.2). O fim de turno não recebe esse número, mas recebe o
+caminho do registro da sessão que o Claude Code grava; o plugin lê o fim desse registro e soma o
+contexto da última resposta. Como o registro é gravado com atraso, a leitura pode vir um turno
+atrasada. Por que 150 mil: nas sessões medidas pelo autor, as chamadas acima disso eram 61% do total e
+71% do custo, e abrir chat novo custa menos que seguir. O medidor (`/esquadro-sessao`) usa o número ao
+vivo.
+
+**O que não dispara:** erro de medição (contagem errada, número lido do lugar errado). Hook não o
+enxerga — ele dispara em ferramenta —, então o plugin não finge contá-lo. Para esse, vale a sua
+pergunta acima.
 
 **Como conferir que os ganchos rodam:** ao abrir a sessão aparece a linha
 "esquadro: lendo o estado do repositorio". Se ela não aparece, o `node` não está no `PATH` — todo
@@ -597,12 +605,35 @@ Tokens de saída, somados nas 12 execuções de cada condição: resposta padrã
 
 ---
 
+## Trabalho em paralelo
+
+Desde a 0.6.2, a abertura de toda sessão injeta, antes do bloco de qualidade, quatro regras curtas: agente rodando em
+segundo plano não é motivo para parar (siga com a próxima tarefa que não depende dele); agentes que editam ao mesmo
+tempo rodam isolados (`isolation: worktree`); relatório de agente é alegação; e o freio de custo (o modelo mais barato
+que resolve, no máximo 8 agentes por disparo). A versão completa está na skill `padrao`. Desligar neste projeto: a
+chave `paralelismo` com `false` em `.claude/esquadro/projeto.json` (só o booleano `false` desliga).
+
+Com 3 ou mais tarefas independentes, o Claude **oferece** o workflow `/esquadro:paralelo`, dizendo quantos agentes,
+qual modelo e o custo, e só roda depois do seu sim — o Claude Code não deixa workflow rodar sem pedido. O workflow
+recebe a lista de tarefas (`[{"tarefa": "...", "edita": false}]`) e aplica o freio sozinho: 8 agentes por disparo
+(diz quais ficaram de fora), Haiku para quem só lê e Sonnet para quem edita (cada tarefa pode pedir outro), cópia
+isolada do repositório para quem edita, e cada resultado volta com a evidência que o agente colou, como alegação a
+conferir.
+
+**A autorização é dada uma vez, no `/esquadro:init`.** Ele pergunta, e na resposta "autorizar" grava a regra
+`Workflow(esquadro:paralelo)` em `permissions.allow` do `.claude/settings.local.json` (o arquivo pessoal do projeto,
+fora do git), por script, sem tocar nas outras permissões. Medido no `claude -p` 2.1.296: com a regra o workflow roda
+sem janela; sem ela, a ferramenta recusa. Na sessão interativa (terminal ou VS Code) isso não foi medido: se a janela
+de aprovação aparecer na primeira execução, escolha "Yes, and don't ask again" uma vez e ela não volta neste projeto.
+
+---
+
 ## Os cinco comandos
 
 | Comando | O que faz |
 |---|---|
 | `/esquadro:init` | A entrevista. Varre o repositório, mostra o que inferiu — marcado como inferência — e faz seis perguntas que varredura nenhuma responde. Grava sempre `.claude/esquadro/projeto.json` e `.claude/esquadro/regras.md`, e registra a conferência do catálogo de modelos da instalação em `.claude/esquadro/catalogo.json`. O resto é opcional: `.claude/esquadro/design.json` (só quando há design system) e, cada um só com aprovação explícita e sem sobrescrever arquivo que já exista, os agentes do projeto em `.claude/agents/`, a skill do projeto em `.claude/skills/<slug>/SKILL.md` e o `AGENTS.md` na raiz. |
-| `/esquadro:revisar` | Revisão cega A/B de um arquivo mudado: rotula os dois lados sem autoria, despacha um inspetor por lente, **nove** de código, **oito** de tela, e **dezessete** quando a mudança é de código e de tela, e **oito** quando é só lógica (as de código sem a `design`; na dúvida, as nove), com default reprovar, e apura por script com teto de 3 rondas. |
+| `/esquadro:revisar` | Revisão cega A/B de um arquivo mudado: rotula os dois lados sem autoria, despacha um inspetor por lente, **nove** de código, **oito** de tela, e **dezessete** quando a mudança é de código e de tela, e **seis** quando é só lógica (as de código sem `design`, `medidor` e `escopo`; na dúvida, as nove), com default reprovar, e apura por script com teto de 3 rondas. |
 | `/esquadro:aprender` | Transforma uma correção sua em regra proposta no formato `gatilho -> ação`, mostra pronta, e **só grava depois de aprovação explícita**. |
 | `/esquadro:handoff` | Gera o texto de continuação para um chat novo: caminhos, `HEAD`, em que etapa o trabalho está, decisões já tomadas, pendências e erros de método que custaram tempo. Confere os fatos no disco, não na memória. |
 | `/esquadro:auditar` | Mede o peso de instrução do projeto contra um teto e aponta o que cortar: skills que se sobrepõem, regras que se contradizem e itens fora da rubrica. Não acrescenta — poda. |
@@ -754,8 +785,10 @@ consegue verificar.
 
 ### Os agentes `inspetor` e `juiz-mesmo`
 
-O `inspetor` é quem o `revisar` despacha, um por lente. Não tem `Write` nem `Edit`, recebe só os
-dois artefatos e a régua, e devolve veredito em JSON. O `juiz-mesmo` entra no Passo 3 do `revisar`,
+O `inspetor` é quem o `revisar` despacha, um por lente. Só lê (`Read`, `Grep`, `Glob`: sem `Write`, `Edit`,
+comando ou skill), recebe só os dois artefatos e a régua, e devolve veredito em JSON. Desde a 0.6.2 os dois agentes
+abrem sem a lista de skills e sem as instruções do projeto (`omitClaudeMd`, que pede o Claude Code 2.1.271 ou mais
+novo): abertura menor, custo menor por inspetor. O `juiz-mesmo` entra no Passo 3 do `revisar`,
 quando a apuração lista pares de achados vizinhos: lê só as descrições e diz se cada par é o mesmo
 defeito. É aviso: a contagem da ronda não muda. São os dois únicos arquivos do plugin que declaram
 modelo e esforço — para que toda revisão não saia no modelo mais caro da sessão —, e essa exceção

@@ -4,7 +4,8 @@ description: Decide se pares de achados da revisao cega descrevem o mesmo defeit
 model: haiku
 effort: low
 maxTurns: 3
-disallowedTools: Write, Edit, NotebookEdit
+tools: Read, Grep, Glob
+omitClaudeMd: true
 ---
 
 Você é o juiz de "mesmo defeito". Você recebe, no briefing, uma **lista de pares** de achados de uma

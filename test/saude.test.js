@@ -210,3 +210,60 @@ test('D412: o motivo do bloqueio diz o que fazer, como desligar, e e ASCII', () 
   assert.ok(/^[\x20-\x7E\n]+$/.test(m), 'tem de ser ASCII (R5): ' + JSON.stringify(m));
   assert.ok(saude.BALDES_DE_BLOQUEIO.indexOf('handoff_sem_prompt') !== -1, 'o balde novo nega: entra na soma');
 });
+
+// D445 (0.6.2): 7o gatilho, por tamanho do contexto. O Stop nao recebe o tamanho: recebe o transcript_path.
+// Contexto = input + cache_read + cache_creation do ultimo `usage` da linha principal (a conta da medicao da s73).
+const fsT = require('node:fs');
+const osT = require('node:os');
+const pathT = require('node:path');
+
+function transcript(linhas) {
+  const dir = fsT.mkdtempSync(pathT.join(osT.tmpdir(), 'esquadro-ctx-'));
+  const f = pathT.join(dir, 's.jsonl');
+  fsT.writeFileSync(f, linhas.map(function (l) { return typeof l === 'string' ? l : JSON.stringify(l); }).join('\n') + '\n');
+  return { f: f, fim: function () { fsT.rmSync(dir, { recursive: true, force: true }); } };
+}
+function uso(i, cr, cw, extra) {
+  return Object.assign({ type: 'assistant', message: { usage: { input_tokens: i, cache_read_input_tokens: cr, cache_creation_input_tokens: cw, output_tokens: 9 } } }, extra || {});
+}
+
+test('D445: limiar padrao do contexto e 150000 tokens', () => {
+  assert.strictEqual(saude.LIMIARES_PADRAO.tokensDeContexto, 150000);
+});
+
+test('D445: contextoDoTranscript soma input + cache_read + cache_creation do ULTIMO usage da linha principal', () => {
+  const t = transcript([uso(1, 1000, 2000), { type: 'user', message: { content: 'x' } }, uso(2, 140000, 12000),
+    uso(5, 1, 1, { isSidechain: true }), uso(0, 0, 0), 'linha torta {', '']);
+  try {
+    // a do subagente (isSidechain) e a sintetica (tudo zero) e a torta nao contam
+    assert.strictEqual(saude.contextoDoTranscript(t.f), 152002);
+  } finally { t.fim(); }
+});
+
+test('D445: contextoDoTranscript le so a cauda (transcript grande) e devolve null sem leitura', () => {
+  const enchimento = 'x'.repeat(2000);
+  const linhas = [uso(1, 1, 1)];
+  for (let i = 0; i < 600; i++) linhas.push({ type: 'user', message: { content: enchimento } });
+  linhas.push(uso(10, 160000, 0));
+  const t = transcript(linhas);
+  try {
+    assert.strictEqual(saude.contextoDoTranscript(t.f), 160010);
+  } finally { t.fim(); }
+  assert.strictEqual(saude.contextoDoTranscript(null), null);
+  assert.strictEqual(saude.contextoDoTranscript(pathT.join(osT.tmpdir(), 'nao-existe-esquadro.jsonl')), null);
+  const vazio = transcript([{ type: 'user', message: { content: 'oi' } }]);
+  try { assert.strictEqual(saude.contextoDoTranscript(vazio.f), null); } finally { vazio.fim(); }
+});
+
+test('D445: o gatilho de contexto cruza no limiar, respeita o do projeto e ignora valor que nao e numero', () => {
+  const g = function (e, L) { return saude.medir(e, L).find(function (x) { return x.chave === 'tokensDeContexto'; }); };
+  assert.strictEqual(g({ tokensDeContexto: 149999 }).cruzou, false);
+  assert.strictEqual(g({ tokensDeContexto: 150000 }).cruzou, true);
+  assert.strictEqual(g({ tokensDeContexto: 90000 }, { tokensDeContexto: 80000 }).cruzou, true);
+  assert.strictEqual(g({ tokensDeContexto: '200000' }).cruzou, false);
+  assert.strictEqual(g({ tokensDeContexto: '200000' }).valor, 0);
+  const r = saude.avaliar({ tokensDeContexto: 151000 });
+  assert.strictEqual(r.disparou, true);
+  assert.ok(/151000 tokens de contexto \(limiar 150000\)/.test(r.aviso), r.aviso);
+  assert.ok(/^[\x20-\x7E\n]+$/.test(r.aviso), 'aviso ASCII (R5)');
+});

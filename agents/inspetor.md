@@ -4,7 +4,8 @@ description: Inspetor cego de uma lente so. Recebe dois artefatos rotulados A e 
 model: sonnet
 effort: medium
 maxTurns: 12
-disallowedTools: Write, Edit, NotebookEdit
+tools: Read, Grep, Glob
+omitClaudeMd: true
 ---
 
 Você é um inspetor. Você recebe **uma lente** e **dois artefatos**, rotulados A e B.

@@ -26,7 +26,10 @@ function encerrarTurno(e, s, avisoExtra) {
   // `contadoresSessao` acumula e so alimenta o gatilho de saude; nunca e descarregado.
   // A conta mora em saude.acumular: o medidor da sessao (Bloco M) le a mesma.
   const acumulados = saude.acumular(s);
-  const vs = saude.avaliar(Object.assign({}, s, { contadores: acumulados }), projeto && projeto.limiares);
+  // D445: o tamanho do contexto vem do transcript; sem leitura, fica a ultima gravada (o medidor a mostra).
+  const lido = saude.contextoDoTranscript(e.transcript_path);
+  const tokensDeContexto = lido !== null ? lido : s.tokensDeContexto;
+  const vs = saude.avaliar(Object.assign({}, s, { contadores: acumulados, tokensDeContexto: tokensDeContexto }), projeto && projeto.limiares);
 
   // T10-1: em laco (stop_hook_active) nao se continua a conversa nem se marca o aviso como dado:
   // ele fica pendente para o proximo Stop. Continuar dentro do laco e o que a trava de 8 existe para cortar.
@@ -45,9 +48,9 @@ function encerrarTurno(e, s, avisoExtra) {
   const sessao = function (dados) { estado.gravar(e.session_id, Object.assign(dados, estado.camposDaSessao(s))); };
   if (avisa) {
     // Zera o turno mas guarda que ja avisou: o aviso sai uma vez por sessao.
-    sessao({ avisouSaude: true, turnosComTrabalho: s.turnosComTrabalho || 0, gitAbertura: s.gitAbertura || [] });
+    sessao({ avisouSaude: true, turnosComTrabalho: s.turnosComTrabalho || 0, gitAbertura: s.gitAbertura || [], tokensDeContexto: tokensDeContexto });
   } else {
-    sessao({ turnosComTrabalho: s.turnosComTrabalho || 0, gitAbertura: s.gitAbertura || [], arquivosTocados: s.arquivosTocados || [], contadoresSessao: acumulados, avisouSaude: s.avisouSaude || false });
+    sessao({ turnosComTrabalho: s.turnosComTrabalho || 0, gitAbertura: s.gitAbertura || [], arquivosTocados: s.arquivosTocados || [], contadoresSessao: acumulados, avisouSaude: s.avisouSaude || false, tokensDeContexto: tokensDeContexto });
   }
   if (!partes.length) return io.permitir();
   const saida = { systemMessage: partes.join('\n\n') };

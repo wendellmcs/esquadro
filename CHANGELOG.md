@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.6.2 — menos contexto, mais paralelo
+
+Medido nas sessoes do autor: as chamadas com conversa acima de 150 mil tokens eram 61% do total e 71%
+do custo, e a abertura de cada inspetor carregava listas que ele nunca usa. Esta versao corta os dois e
+ensina o Claude a nao ficar parado esperando agente.
+
+**Novo**
+
+- **Trabalho em paralelo.** A abertura de toda sessao traz quatro regras curtas: agente em segundo
+  plano nao e motivo para parar; agentes que editam ao mesmo tempo rodam isolados; relatorio de agente
+  e alegacao; e o freio de custo (modelo mais barato que resolve, no maximo 8 por disparo). Desligar: a
+  chave `paralelismo` com `false` em `.claude/esquadro/projeto.json`.
+- **Workflow `/esquadro:paralelo`.** Com 3 ou mais tarefas independentes, o Claude oferece o workflow,
+  diz quantos agentes, qual modelo e o custo, e so roda depois do seu sim. Ele aplica o freio sozinho:
+  8 por disparo (diz quais ficaram de fora), Haiku para quem so le e Sonnet para quem edita, copia
+  isolada do repositorio para quem edita, e cada resultado volta com a evidencia que o agente colou.
+- **Autorizacao uma vez so.** O `/esquadro:init` pergunta se o workflow pode rodar sem janela de
+  aprovacao e, no sim, grava a regra em `.claude/settings.local.json` (arquivo pessoal, fora do git)
+  sem tocar nas outras permissoes.
+- **O tamanho da conversa conta.** Setimo gatilho de troca de chat: conversa acima de 150 mil tokens
+  de contexto. O plugin le o fim do registro da sessao no fim de cada turno (pode vir um turno
+  atrasado); o medidor `/esquadro-sessao` usa o numero ao vivo.
+
+**Mudou**
+
+- **Inspetor e juiz mais leves.** Os dois agentes da revisao cega so leem (`Read`, `Grep`, `Glob`) e
+  abrem sem a lista de skills e sem as instrucoes do projeto (pede o Claude Code 2.1.271 ou mais novo).
+- **Revisao de arquivo so de logica: 6 inspetores**, nao 8. Saem as lentes de medidor e de escopo, que
+  quase nunca acharam defeito real nesse tipo de arquivo.
+
 ## 0.6.1 — onze ajustes de uso
 
 Os itens que a revisao da 0.6.0 deixou registrados e que se esbarram no uso normal. Cada um com teste

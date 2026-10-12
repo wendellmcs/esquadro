@@ -26,12 +26,12 @@ function hhmm(iso) {
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
 
-// --- saude.medir: os 6 gatilhos contaveis, cruzados ou nao ---
+// --- saude.medir: os 7 gatilhos contaveis, cruzados ou nao ---
 
-test('medir: devolve os 6 gatilhos na ordem do avaliar, com valor e limiar', () => {
+test('medir: devolve os 7 gatilhos na ordem do avaliar, com valor e limiar', () => {
   const m = saude.medir({}, null);
   assert.deepStrictEqual(m.map(function (g) { return g.chave; }),
-    ['turnosComTrabalho', 'revisoesFechadas', 'bloqueios', 'arquivosTocados', 'decisoesDoDono', 'commits']);
+    ['turnosComTrabalho', 'revisoesFechadas', 'bloqueios', 'arquivosTocados', 'decisoesDoDono', 'commits', 'tokensDeContexto']);
   for (const g of m) {
     assert.strictEqual(g.valor, 0, g.chave);
     assert.strictEqual(g.limiar, saude.LIMIARES_PADRAO[g.chave], g.chave);
@@ -107,7 +107,7 @@ test('linha curta: contexto, janelas com hora de renovar, custo e troca de chat,
   assert.ok(r.curta.indexOf('5h 49% (renova ' + hhmm('2026-10-11T23:20:00.000Z') + ')') !== -1, r.curta);
   assert.ok(r.curta.indexOf('semana 92%') !== -1, r.curta);
   assert.ok(r.curta.indexOf('US$ 4.10') !== -1, r.curta);
-  assert.ok(/troca: 0 de 6/.test(r.curta), r.curta);
+  assert.ok(/troca: 0 de 7/.test(r.curta), r.curta);
   assert.strictEqual(r.cruzou, false);
 });
 
@@ -119,13 +119,13 @@ test('linha curta: campo que o motor nao deu e omitido, nunca vira 0', () => {
   assert.ok(r.curta.indexOf('contexto') === -1, r.curta);
   assert.ok(r.curta.indexOf('5h') === -1 && r.curta.indexOf('semana') === -1, r.curta);
   assert.ok(r.curta.indexOf('US$') === -1, r.curta);
-  assert.ok(/troca: 0 de 6/.test(r.curta), r.curta);
+  assert.ok(/troca: 0 de 7/.test(r.curta), r.curta);
 });
 
 test('gatilho cruzado: cruzou true e a curta manda ao handoff', () => {
   const r = medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: saude.medir({ contadores: { revisao_fechada: 17 } }, null), avisouSaude: false });
   assert.strictEqual(r.cruzou, true);
-  assert.ok(/troca: 1 de 6 cruzou -> \/esquadro:handoff/.test(r.curta), r.curta);
+  assert.ok(/troca: 1 de 7 cruzou -> \/esquadro:handoff/.test(r.curta), r.curta);
   assert.ok(r.longa.indexOf('17 de 2') !== -1, r.longa);
   assert.ok(/handoff/.test(r.longa), r.longa);
 });

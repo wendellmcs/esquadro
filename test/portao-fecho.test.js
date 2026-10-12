@@ -972,3 +972,24 @@ test('S52-fec-1: plano ativo que nao pode ser lido nao passa calado - o fecho av
     assert.ok(!r3.json || !/nao pode ser lido/.test(r3.json.systemMessage || ''), 'avisou com plano legivel: ' + r3.stdout);
   });
 });
+
+// D445 (0.6.2): o Stop le o tamanho do contexto do transcript_path e dispara a troca a partir de 150000.
+test('D445: o fecho le o transcript_path e avisa a troca de chat acima do limiar de contexto', () => {
+  comTmp((tmp) => {
+    const dir = projetoQueDispara(tmp, 'ctx', { turnosComTrabalho: 999 });
+    const linha = (n) => JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: n, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }) + '\n';
+    const baixo = path.join(tmp, 'baixo.jsonl');
+    fs.writeFileSync(baixo, linha(149000));
+    const r1 = turnoComTrabalho(tmp, 'ctx1', dir, { transcript_path: baixo });
+    assert.strictEqual(r1.json, null, 'abaixo do limiar nao avisa: ' + r1.stdout);
+    assert.strictEqual(sessaoDe(tmp, 'ctx1').tokensDeContexto, 149000, 'o fecho grava a leitura no estado (o medidor le)');
+    const alto = path.join(tmp, 'alto.jsonl');
+    fs.writeFileSync(alto, linha(1000) + linha(150500));
+    const r2 = turnoComTrabalho(tmp, 'ctx2', dir, { transcript_path: alto });
+    assert.ok(r2.json && /chat novo/.test(r2.json.systemMessage), 'acima do limiar avisa: ' + r2.stdout);
+    assert.ok(/150500 tokens de contexto \(limiar 150000\)/.test(r2.json.hookSpecificOutput.additionalContext), r2.stdout);
+    const r3 = turnoComTrabalho(tmp, 'ctx3', dir, { transcript_path: path.join(tmp, 'sumiu.jsonl') });
+    assert.strictEqual(r3.status, 0, 'transcript ausente nunca derruba o fecho: ' + r3.stderr);
+    assert.strictEqual(r3.json, null, r3.stdout);
+  });
+});

@@ -256,21 +256,24 @@ test('publicacao: a padrao aponta, na secao do pronto, para o bloco de qualidade
 });
 
 // T2/item 13 da D257 (decisao do dono, 2026-09-29): arquivo so de logica - nao e de estilo e nao
-// monta tela - e revisado com as 9 de codigo sem a `design`. O numero nao e escrito a mao: e
-// LENTES.length - 1, e so faz sentido enquanto a `design` existir em LENTES. Na duvida, as 9.
-test('publicacao: a linha "So logica" do revisar diz LENTES.length - 1, e a lente design existe para sair', () => {
-  assert.ok(veredito.LENTES.some((l) => l.chave === 'design'),
-    'sem a lente design em LENTES o "8" de so logica nao tem sentido');
+// monta tela - e revisado sem a `design`. D448 (2026-10-11): saem tambem `medidor` e `escopo` (11 de 13 e
+// 5 de 6 achados refutados na ronda 1 de 41 revisoes). O numero nao e escrito a mao: e LENTES.length menos
+// SAEM_SO_LOGICA, e cada lente que sai tem de existir em LENTES. Na duvida, as 9.
+test('publicacao: a linha "So logica" do revisar diz LENTES menos SAEM_SO_LOGICA, e cada lente que sai existe', () => {
+  const saem = veredito.SAEM_SO_LOGICA;
+  assert.deepStrictEqual(saem, ['design', 'medidor', 'escopo'], 'D448: saem design, medidor e escopo');
+  saem.forEach((k) => assert.ok(veredito.LENTES.some((l) => l.chave === k), 'lente que sai nao existe: ' + k));
+  const n = veredito.LENTES.length - saem.length;
   const revisar = fs.readFileSync(path.join(RAIZ, 'skills', 'revisar', 'SKILL.md'), 'utf8').split('\n');
   const linha = revisar.find((l) => l.startsWith('| Só lógica '));
   assert.ok(linha, 'a tabela do Passo 2 do revisar nao tem a linha "Só lógica"');
-  assert.ok(linha.includes('**' + (veredito.LENTES.length - 1) + '**'),
-    'so logica tem de dizer LENTES.length - 1: ' + linha);
-  assert.match(linha, /sem\s+`?design`?/, 'a linha tem de dizer que a lente que sai e a design: ' + linha);
+  assert.ok(linha.includes('**' + n + '**'), 'so logica tem de dizer LENTES menos SAEM_SO_LOGICA: ' + linha);
+  saem.forEach((k) => assert.ok(linha.includes('`' + k + '`'), 'a linha tem de nomear a lente que sai (' + k + '): ' + linha));
+  assert.match(linha, /SAEM_SO_LOGICA/, 'a linha tem de apontar a constante, nao a lista de memoria: ' + linha);
   assert.match(revisar.join('\n'), /na d[uú]vida, as 9/i, 'o revisar tem de dizer que na duvida vao as 9');
   const m = README.match(/\*\*(\S+)\*\* quando [ée] s[oó] l[oó]gica/);
   assert.ok(m, 'a linha do /esquadro:revisar no README nao diz o caso so logica');
-  assert.strictEqual(NUMEROS[m[1].toLowerCase()], veredito.LENTES.length - 1, 'o README conta so logica errado');
+  assert.strictEqual(NUMEROS[m[1].toLowerCase()], n, 'o README conta so logica errado');
 });
 
 // Ronda 2 do Passo 8b: "oito travas" batia o README com o CHANGELOG e o manifesto, e o
@@ -389,9 +392,14 @@ function comandosInexistentes(changelog, doDisco) {
   return Array.from(citados).filter((c) => !doDisco.has(c) && !aposentados.has(c)).sort();
 }
 
-test('publicacao: todo comando que o CHANGELOG anuncia existe como skill, ou diz que saiu', () => {
+test('publicacao: todo comando que o CHANGELOG anuncia existe como skill ou workflow, ou diz que saiu', () => {
   const doDisco = new Set(fs.readdirSync(path.join(RAIZ, 'skills'), { withFileTypes: true })
     .filter((e) => e.isDirectory()).map((e) => e.name));
+  // 0.6.2: workflow do plugin roda como /esquadro:<meta.name> (mesmo criterio do readme.test.js)
+  for (const f of fs.readdirSync(path.join(RAIZ, 'workflows')).filter((n) => n.endsWith('.js'))) {
+    const nome = fs.readFileSync(path.join(RAIZ, 'workflows', f), 'utf8').match(/^  name: '([a-z-]+)',$/m);
+    if (nome) doDisco.add(nome[1]);
+  }
   assert.ok(/esquadro:([a-z-]+)/.test(CHANGELOG), 'o CHANGELOG nao anuncia comando nenhum');
   assert.deepStrictEqual(comandosInexistentes(CHANGELOG, doDisco), [],
     'o CHANGELOG anuncia comando que nao existe e nao diz que saiu');
@@ -618,10 +626,23 @@ test('D387: agents/juiz-mesmo.md existe com model haiku e sem Write, e o corpo n
   assert.ok(cab, 'o agente nao tem frontmatter');
   assert.ok(/^name: juiz-mesmo$/m.test(cab[1]), 'o name do agente e juiz-mesmo');
   assert.ok(/^model: haiku$/m.test(cab[1]), 'o juiz roda no apelido haiku');
-  const proibidas = cab[1].match(/^disallowedTools: (.*)$/m);
-  assert.ok(proibidas && /\bWrite\b/.test(proibidas[1]), 'o juiz nao pode ter Write');
+  const ferramentas = cab[1].match(/^tools: (.*)$/m);
+  assert.ok(ferramentas && !/\bWrite\b/.test(ferramentas[1]), 'o juiz nao pode ter Write');
   const corpo = t.slice(cab[0].length);
   assert.ok(!/haiku|sonnet|opus|fable|claude-|\bv?\d+\.\d+\.\d+\b|\$\s?\d/i.test(corpo), 'o corpo do juiz nao nomeia modelo, versao nem preco');
+});
+
+// D447 corte 1 (0.6.2): inspetor e juiz abrem sem a lista de skills, sem as ferramentas adiadas e sem o
+// CLAUDE.md. Lista fechada sem Skill tira as duas listas da abertura (medido: boot 28.5K contra 56.6K);
+// omitClaudeMd tira as instrucoes do projeto. Nenhum dos dois roda comando nem chama skill.
+test('D447: inspetor e juiz-mesmo tem tools fechada so de leitura e omitClaudeMd', () => {
+  for (const nome of ['inspetor', 'juiz-mesmo']) {
+    const cab = ler('agents/' + nome + '.md').match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    assert.ok(cab, nome + ': o agente nao tem frontmatter');
+    assert.ok(/^tools: Read, Grep, Glob$/m.test(cab[1]), nome + ': tools tem de ser Read, Grep, Glob');
+    assert.ok(!/^disallowedTools:/m.test(cab[1]), nome + ': disallowedTools herda a lista inteira (com Skill); use tools');
+    assert.ok(/^omitClaudeMd: true$/m.test(cab[1]), nome + ': falta omitClaudeMd: true');
+  }
 });
 
 test('D387: o Passo 3 do revisar manda despachar esquadro:juiz-mesmo e gravar o mesmos.json', () => {
