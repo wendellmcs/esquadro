@@ -175,3 +175,24 @@ test('abertura.js: o aviso de plano alheio cita um caminho REAL, nunca a variave
     assert.ok(path.isAbsolute(m[1]) && fs.existsSync(m[1]), 'o caminho citado nao existe: ' + m[1]);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('plano.js --proxima-decisao: arquivo ausente avisa no stderr; pasta sai 1 (D460)', () => {
+  const dir = tmp({ 'docs/decisoes.md': '### D41 · a\n' });
+  try {
+    const cli = (alvo) => spawnSync(process.execPath, [path.join(RAIZ_PLUGIN, 'scripts', 'plano.js'), '--proxima-decisao', alvo],
+      { cwd: dir, encoding: 'utf8' });
+    const certo = cli('docs/decisoes.md');
+    assert.strictEqual(certo.status, 0, certo.stderr);
+    assert.strictEqual(certo.stdout, '42\n');
+    assert.strictEqual(certo.stderr, '', 'arquivo certo nao avisa');
+    const errado = cli('doc/decisoes.md');
+    assert.strictEqual(errado.status, 0, errado.stderr);
+    assert.strictEqual(errado.stdout, '1\n', 'projeto novo segue comecando em 1');
+    assert.match(errado.stderr, /nao existe/);
+    assert.ok(errado.stderr.includes(path.join(dir, 'doc', 'decisoes.md')), 'o aviso cita o caminho absoluto: ' + errado.stderr);
+    const pasta = cli('docs');
+    assert.strictEqual(pasta.status, 1, 'pasta no lugar do arquivo: ' + pasta.stdout);
+    assert.strictEqual(pasta.stdout, '');
+    assert.match(pasta.stderr, /nao e um arquivo/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

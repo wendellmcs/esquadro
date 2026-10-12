@@ -41,7 +41,8 @@ function sair(codigo, dados) {
 
 let obj = {};
 if (fs.existsSync(arquivo)) {
-  try { obj = JSON.parse(fs.readFileSync(arquivo, 'utf8')); } catch (e) {
+  // D460: o Set-Content/Out-File do PowerShell 5.1 grava BOM; arquivo vazio vale como {}
+  try { const bruto = fs.readFileSync(arquivo, 'utf8').replace(/^\uFEFF/, ''); obj = bruto.trim() ? JSON.parse(bruto) : {}; } catch (e) {
     sair(1, { autorizado: false, gravou: false, erro: RELATIVO + ' nao e JSON valido (' + e.message + '); corrija e rode de novo' });
   }
 }

@@ -137,3 +137,23 @@ test('autorizar: .git na pasta pessoal (dotfiles) nao vira raiz do projeto (conf
     assert.deepStrictEqual(ler(proj), { permissions: { allow: [REGRA] } });
   });
 });
+
+test('autorizar: settings.local.json com BOM (PowerShell 5.1) ou vazio nao para o init (D460)', () => {
+  for (const [nome, conteudo, esperado] of [
+    ['BOM', '\uFEFF' + JSON.stringify({ model: 'x' }), { model: 'x', permissions: { allow: [REGRA] } }],
+    ['vazio', '', { permissions: { allow: [REGRA] } }],
+    ['so espacos', ' \r\n', { permissions: { allow: [REGRA] } }]
+  ]) {
+    comDir((dir) => {
+      fs.mkdirSync(path.join(dir, '.claude'));
+      fs.writeFileSync(local(dir), conteudo, 'utf8');
+      const c = rodar(dir, '--conferir');
+      assert.strictEqual(c.status, 0, nome + ': ' + c.stdout);
+      assert.strictEqual(c.json.autorizado, false, nome);
+      const r = rodar(dir);
+      assert.strictEqual(r.status, 0, nome + ': ' + r.stdout);
+      assert.strictEqual(r.json.gravou, true, nome);
+      assert.deepStrictEqual(ler(dir), esperado, nome);
+    });
+  }
+});

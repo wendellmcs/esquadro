@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.6 — dois erros calados passam a avisar
+
+**Corrigido**
+
+- **Proxima decisao com caminho errado.** `scripts/plano.js --proxima-decisao` com um caminho que nao
+  existe respondia `1` sem dizer nada, e a decisao saia com o numero 1 num projeto que ja tinha outras. O
+  `1` continua (projeto novo ainda nao tem arquivo de decisoes), mas agora vem com um aviso que mostra
+  o caminho procurado. Uma pasta no lugar do arquivo para com erro.
+- **Autorizacao do paralelo recusava arquivo valido.** O `settings.local.json` gravado pelo PowerShell
+  5.1 comeca com uma marca invisivel (BOM), e o arquivo vazio era tratado como JSON quebrado: nos dois
+  casos a autorizacao do `/esquadro:paralelo` nao era gravada. Agora a marca e ignorada e o arquivo
+  vazio vale como sem configuracao.
+
 ## 0.6.5 — o agente de leitura conta linhas certo
 
 **Corrigido**
