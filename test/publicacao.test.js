@@ -663,3 +663,16 @@ test('D388: o hooks.json liga o portao-decisao.js no PreToolUse com o matcher As
   assert.deepStrictEqual(g[0].hooks.map((h) => path.basename(h.args[0])), ['portao-decisao.js']);
   assert.ok(grupos.indexOf(g[0]) > grupos.findIndex((x) => x.matcher === 'Task|Agent'), 'o portao vem depois do Task|Agent');
 });
+
+// D454: o Git para Windows clona com core.autocrlf=true e o workflow chegava com CR em cada linha; o VS Code
+// recusa o script ("control characters that would be hidden in the approval dialog") antes da janela.
+// Medido: sem .gitattributes o clone sai com CR; com eol=lf sai sem nenhum.
+test('D454: .gitattributes forca LF no clone e o workflow nao tem caractere de controle', () => {
+  const attrs = fs.existsSync(path.join(RAIZ, '.gitattributes')) ? ler('.gitattributes') : '';
+  assert.ok(/^\*(\.js)?[ \t]+(.*[ \t])?eol=lf([ \t]|$)/m.test(attrs), '.gitattributes tem de forcar eol=lf em * ou *.js');
+  for (const f of fs.readdirSync(path.join(RAIZ, 'workflows')).filter((x) => x.endsWith('.js'))) {
+    const s = ler('workflows/' + f);
+    const i = s.search(/[\x00-\x08\x0b-\x1f\x7f-\x9f​-‏‪-‮⁦-⁩﻿]/);
+    assert.strictEqual(i, -1, 'workflows/' + f + ': caractere de controle na posicao ' + i);
+  }
+});

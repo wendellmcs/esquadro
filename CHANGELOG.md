@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.3 — o paralelo roda no VS Code em Windows
+
+**Corrigido**
+
+- **`/esquadro:paralelo` recusado no VS Code em Windows.** O Git para Windows instala o plugin trocando
+  o fim de linha de cada arquivo, e o VS Code recusava o workflow antes da janela de aprovacao, por ver
+  um caractere escondido no script. O repositorio agora fixa o fim de linha (`.gitattributes`), e um
+  teste reprova se o workflow tiver caractere de controle. Quem ja tem a 0.6.2 recebe a correcao na
+  proxima atualizacao do plugin.
+
 ## 0.6.2 — menos contexto, mais paralelo
 
 Medido nas sessoes do autor: as chamadas com conversa acima de 150 mil tokens eram 61% do total e 71%

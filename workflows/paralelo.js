@@ -10,6 +10,7 @@ export const meta = {
 // Freio de custo: teto de agentes por disparo (padrao 8, maximo 16), modelo mais barato que resolve
 // (haiku quando so le, sonnet quando edita), quem edita roda isolado numa copia do repositorio (worktree).
 // O resultado de cada agente volta como ALEGACAO: quem chamou confere o critico na fonte.
+// Este arquivo chega com fim de linha LF (.gitattributes): com CR o VS Code recusa o script antes da janela.
 
 const TETO_PADRAO = 8
 const TETO_MAXIMO = 16
