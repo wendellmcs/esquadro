@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.4 — leitura em paralelo custa menos
+
+**Mudado**
+
+- **Tarefa so de leitura do `/esquadro:paralelo` abre leve.** Cada agente de leitura nascia com as
+  instrucoes do projeto, a memoria e a lista de skills, e tres leituras simples custaram cerca de 169
+  mil tokens. Agora quem so le roda no agente `leitor` do plugin, que abre sem esse peso e sem
+  ferramenta de edicao: medido, uma leitura caiu de cerca de 56 mil para 6 mil tokens. Quem edita
+  segue como antes, com as regras do projeto e copia isolada do repositorio.
+
 ## 0.6.3 — o paralelo roda no VS Code em Windows
 
 **Corrigido**

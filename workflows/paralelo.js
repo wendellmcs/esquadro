@@ -94,6 +94,9 @@ function instrucao(t) {
 // parallel() troca a excecao por null e perde o porque: a excecao e pega aqui, por tarefa, com a mensagem.
 // agent() devolve null quando o usuario pula o agente ou ele morre por erro de API depois das tentativas.
 const SEM_RESPOSTA = 'o agente foi pulado ou morreu por erro de API, sem resposta'
+// Quem so le abre no agente leve do plugin (agents/leitor.md: sem CLAUDE.md, sem lista de skills, sem Edit/Write);
+// o agente padrao abria com ~56 mil tokens por tarefa. Quem edita segue no padrao, com as regras do projeto.
+const LEITOR = 'esquadro:leitor'
 phase('Tarefas')
 const saidas = await parallel(rodam.map((t) => () => agent(instrucao(t), Object.assign({
   label: 'tarefa ' + t.n + (t.edita ? ' (edita)' : ''),
@@ -101,7 +104,7 @@ const saidas = await parallel(rodam.map((t) => () => agent(instrucao(t), Object.
   schema: RESULTADO,
   model: t.modelo,
   effort: t.esforco,
-}, t.edita ? { isolation: 'worktree' } : {})).catch((e) => ({ erroDoAgente: String((e && e.message) || e) }))))
+}, t.edita ? { isolation: 'worktree' } : { agentType: LEITOR })).catch((e) => ({ erroDoAgente: String((e && e.message) || e) }))))
 
 function resultado(t, saida) {
   const base = { n: t.n, tarefa: t.tarefa, edita: t.edita, modelo: t.modelo }

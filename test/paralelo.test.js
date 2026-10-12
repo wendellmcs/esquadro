@@ -87,6 +87,34 @@ test('paralelo: modelo barato por padrao (haiku le, sonnet edita) e worktree so 
   assert.ok(/"edita": true/.test(chamadas[0].prompt), 'diz como pedir a edicao: ' + chamadas[0].prompt);
 });
 
+// D455 (0.6.4): tres leituras triviais custaram 169.098 tokens (~56 mil por agente), porque o agente padrao do
+// workflow abre com CLAUDE.md, MEMORY.md e lista de skills. Quem so le abre leve, no agente do plugin; quem edita
+// segue no agente padrao, com as regras do projeto.
+test('paralelo: leitura abre no agente leve do plugin; quem edita segue no agente padrao (D455)', async () => {
+  const { chamadas } = await rodar([
+    'ler o modulo A',
+    { tarefa: 'corrigir B', edita: true },
+    { tarefa: 'ler C', edita: false, modelo: 'sonnet' },
+  ]);
+  assert.deepStrictEqual(chamadas.map((c) => c.opts.agentType), ['esquadro:leitor', undefined, 'esquadro:leitor']);
+  assert.ok(!('agentType' in chamadas[1].opts), 'quem edita nao recebe agentType nenhum');
+  assert.strictEqual(chamadas[2].opts.model, 'sonnet', 'o modelo pedido continua valendo no agente leve');
+});
+
+test('paralelo: o agente leve existe, abre sem CLAUDE.md, nao edita e nao fixa modelo (D455)', () => {
+  const t = fs.readFileSync(path.join(__dirname, '..', 'agents', 'leitor.md'), 'utf8');
+  const cab = t.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  assert.ok(cab, 'o agente nao tem frontmatter');
+  assert.ok(/^name: leitor$/m.test(cab[1]), 'name leitor -> esquadro:leitor');
+  assert.ok(/^omitClaudeMd: true$/m.test(cab[1]), 'falta omitClaudeMd: true');
+  // lista fechada: sem Skill a lista de skills e as ferramentas adiadas saem da abertura (D447, medido na s78).
+  // Os dois shells: no Windows o `claude -p` so tem PowerShell (medido na s81); o que faltar e ignorado.
+  assert.ok(/^tools: Read, Grep, Glob, Bash, PowerShell$/m.test(cab[1]), 'tools tem de ser Read, Grep, Glob, Bash, PowerShell');
+  assert.ok(!/^disallowedTools:/m.test(cab[1]), 'disallowedTools herda a lista inteira; use tools');
+  // o modelo e o esforco vem de cada tarefa (haiku por padrao); fixar aqui desmentiria o README
+  assert.ok(!/^(model|effort):/m.test(cab[1]), 'o leitor nao declara model nem effort');
+});
+
 test('paralelo: teto de 8 por padrao, 16 no maximo, e o que ficou de fora e dito (nada cortado calado)', async () => {
   const dez = Array.from({ length: 10 }, (_, i) => 'tarefa ' + (i + 1));
   const a = await rodar(dez);

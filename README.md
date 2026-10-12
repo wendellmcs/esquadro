@@ -620,6 +620,11 @@ recebe a lista de tarefas (`[{"tarefa": "...", "edita": false}]`) e aplica o fre
 isolada do repositório para quem edita, e cada resultado volta com a evidência que o agente colou, como alegação a
 conferir.
 
+Desde a 0.6.4, quem só lê roda no agente `leitor` do plugin: abre sem as instruções do projeto e sem a lista de
+skills (`omitClaudeMd` e lista fechada: `Read`, `Grep`, `Glob` e o shell, sem `Edit` nem `Write`). Medido no
+`claude -p` 2.1.296: uma leitura custou 6.347 tokens, contra cerca de 56 mil no agente padrão. Quem edita segue no
+agente padrão, com as regras do projeto.
+
 **A autorização é dada uma vez, no `/esquadro:init`.** Ele pergunta, e na resposta "autorizar" grava a regra
 `Workflow(esquadro:paralelo)` em `permissions.allow` do `.claude/settings.local.json` (o arquivo pessoal do projeto,
 fora do git), por script, sem tocar nas outras permissões. Medido no `claude -p` 2.1.296: com a regra o workflow roda
