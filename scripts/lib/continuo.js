@@ -19,7 +19,7 @@ const VALIDAR = '1. Antes de pedir acao manual ao dono, valide voce mesmo: rode 
 const LIGADO = [
   '2. Modo continuo ligado: so o tamanho da conversa (aviso e alarme) e os bloqueios de portao pedem troca de chat; revisoes, decisoes, commits, turnos e arquivos nao encerram a sessao.',
   '3. Releia o trecho do plano no arquivo antes de cada subitem.',
-  '4. Escolha tecnica dentro do escopo: decida, registre o motivo e liste no fecho. Pergunte ao dono so o irreversivel, o externo (publicar, push, envio), o de custo e o de produto.'
+  '4. Escolha tecnica dentro do escopo: decida, registre o motivo e liste no fecho. Pergunte ao dono so o irreversivel, o externo (publicar, push, envio), credencial, permissao ou seguranca, o de custo e o de produto.'
 ];
 
 /** A chave ligada? So o booleano true (D388/D415): "true" entre aspas nao liga. */

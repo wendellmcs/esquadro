@@ -93,9 +93,11 @@ function linhaDaSessao(entrada) {
   for (const j of janelas(uso)) curta.push(j.nome + ' ' + pct(j.pct) + (j.quando && j.kind === 'five_hour' ? ' (renova ' + j.quando + ')' : ''));
   if (uso && uso.cost && num(uso.cost.usd)) curta.push('US$ ' + uso.cost.usd.toFixed(2));
   for (const p of prev) if (p.curta) curta.push(p.curta);
+  // D468/D490 (M2): o gatilho calado pelo modo continuo nao pode disparar, entao nao entra no "de N".
+  const podem = medidas.filter(function (g) { return g.calado !== true; }).length;
   if (avisou) curta.push('troca: aviso ja dado -> /esquadro:handoff');
-  else if (cruzados.length) curta.push('troca: ' + cruzados.length + ' de ' + medidas.length + ' cruzou -> /esquadro:handoff');
-  else curta.push('troca: 0 de ' + medidas.length + ' gatilhos');
+  else if (cruzados.length) curta.push('troca: ' + cruzados.length + ' de ' + podem + ' cruzou -> /esquadro:handoff');
+  else curta.push('troca: 0 de ' + podem + ' gatilhos');
 
   const longa = ['medidor da sessao'];
   if (ctx && num(ctx.percent)) {

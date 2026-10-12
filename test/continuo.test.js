@@ -25,6 +25,7 @@ test('continuo: com a chave, o bloco diz o que para e o que nao para, e manda de
   assert.ok(/tamanho da conversa/.test(b) && /bloqueios/.test(b), 'o que ainda pede troca');
   assert.ok(/Releia o trecho do plano/.test(b), 'reler o plano antes de cada subitem');
   assert.ok(/irreversivel/.test(b) && /custo/.test(b) && /produto/.test(b), 'quando ainda perguntar');
+  assert.ok(/credencial, permissao ou seguranca/.test(b), 'SP7: credencial, permissao e seguranca vao ao dono');
   assert.ok(b.indexOf('"' + c.CHAVE + '": false') !== -1, 'diz como desligar');
 });
 
@@ -74,6 +75,20 @@ test('continuo: o medidor da sessao mostra o gatilho calado pela chave, sem dize
   const r = medidor.linhaDaSessao({ uso: null, amostras: [], medidas: m, avisouSaude: false });
   const linha = r.longa.split('\n').filter((l) => /turnos com trabalho real/.test(l))[0];
   assert.ok(linha && /modo continuo: nao dispara/.test(linha) && !/cruzou/.test(linha), r.longa);
+});
+
+test('continuo: a linha curta do medidor conta so os gatilhos que podem disparar (M2, D490)', () => {
+  const medidor = require('../scripts/lib/medidor.js');
+  const m = saude.medir({ turnosComTrabalho: 99 }, null, true);
+  const podem = m.filter((g) => g.calado !== true).length;
+  assert.strictEqual(m.length - podem, c.CALADOS.length, 'controle: os cinco calados estao na lista');
+  const r = medidor.linhaDaSessao({ uso: null, amostras: [], medidas: m, avisouSaude: false });
+  assert.ok(new RegExp('troca: 0 de ' + podem + ' gatilhos').test(r.curta), r.curta);
+  const cruzou = medidor.linhaDaSessao({ uso: null, amostras: [], medidas: saude.medir({ tokensDeContexto: 260000 }, null, true), avisouSaude: false });
+  assert.ok(new RegExp('troca: 1 de ' + podem + ' cruzou').test(cruzou.curta), cruzou.curta);
+  // sem a chave, nada se cala: o denominador segue todos
+  const sem = medidor.linhaDaSessao({ uso: null, amostras: [], medidas: saude.medir({}, null), avisouSaude: false });
+  assert.ok(new RegExp('troca: 0 de ' + m.length + ' gatilhos').test(sem.curta), sem.curta);
 });
 
 test('continuo: a esquadro:padrao e o README falam da chave e da validacao pelo proprio agente', () => {

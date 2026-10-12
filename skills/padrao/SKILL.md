@@ -268,7 +268,8 @@ registro repetidas vezes, o problema deixou de ser disciplina e passou a ser cal
 
 ## 6. Saúde de contexto e troca de chat
 
-Com o modo contínuo ligado, valem só os gatilhos do parágrafo "Modo contínuo", mais abaixo.
+Com o modo contínuo ligado (a abertura da sessão diz se está), valem só os gatilhos do parágrafo
+"Modo contínuo", mais abaixo.
 
 O desvio começa quando o plano passa a ser executado de memória. Gatilhos **contáveis** — basta
 **um**:
@@ -304,11 +305,13 @@ outro valor ou sem o arquivo, fica desligado. A abertura da sessão diz se está
 coisas pedem troca de chat: o tamanho da conversa (o aviso dos 175 mil e o alarme dos 450 mil); o
 aviso de bloqueios de portão, que o plugin dá no fim de turno quando a sessão chega ao limiar (6 por
 padrão; um bloqueio só não pede); o incidente que exigiu cirurgia; e a pergunta do usuário sobre o
-contexto. Todo o resto desta seção deixa de pedir troca de chat: os outros gatilhos da lista, a dúvida
-"já é hora?" e os contadores do plugin (revisões fechadas, decisões do dono, commits, turnos com
-trabalho e arquivos tocados), que nem chegam a avisar. Em troca: reler o trecho do plano no arquivo
-antes de cada subitem; escolha técnica dentro do escopo se decide, se registra com o motivo e se lista no fecho; ao dono vai só o irreversível,
-o externo (publicar, push, envio), o de custo e o de produto, no formato da §7.
+contexto. Deixam de pedir troca de chat os outros gatilhos da lista, a dúvida "já é hora?" e os
+contadores do plugin (revisões fechadas, decisões do dono, commits, turnos com trabalho e arquivos
+tocados), que nem chegam a avisar. O "Disparou?" segue valendo para os gatilhos que ficam, e o
+"Sempre" não muda. Em troca: reler o trecho do plano no arquivo antes de cada subitem; escolha técnica
+dentro do escopo se decide, se registra com o motivo e se lista no fecho; ao dono vai só o
+irreversível, o externo (publicar, push, envio), credencial, permissão ou segurança, o de custo e o de
+produto, no formato da §7.
 
 ## 6-bis. Trabalho em paralelo
 

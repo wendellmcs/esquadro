@@ -237,3 +237,51 @@ test('D387/portao-decisao: entrada quebrada libera (R6), sem estourar', () => {
     assert.ok(negou(strings), strings.stdout);
   });
 });
+
+// D489 (PD1): pergunta de fato (sintoma, dado que so o dono tem) nao e decisao. A marca (fato), exata e entre
+// parenteses, em qualquer caixa, no titulo curto (header) libera a pergunta da regra das 3 opcoes.
+function deFato(header, rotulos, texto) {
+  return Object.assign(pergunta(rotulos, texto), { header: header });
+}
+
+test('D489/portao-decisao: (fato) no header libera pergunta de 2 opcoes sem recomendada, em qualquer caixa', () => {
+  comProjeto({ versaoConfig: 1 }, (dir) => {
+    for (const h of ['(fato) Causa', '(Fato) Causa', '(FATO)', 'Causa (fato)']) {
+      liberou(hook(dir, entrada(deFato(h, ['Sim', 'Nao'], 'O erro aparece ao abrir?'))));
+    }
+  });
+});
+
+test('D489/portao-decisao: sem a marca exata no header, a pergunta de fato segue barrada', () => {
+  comProjeto({ versaoConfig: 1 }, (dir) => {
+    for (const h of ['Causa', 'Fato', 'fato: causa', '[fato] Causa', '(fatos)', '(de fato)']) {
+      assert.ok(negou(hook(dir, entrada(deFato(h, ['Sim', 'Nao'])))), 'header ' + JSON.stringify(h) + ' deveria barrar');
+    }
+    // a marca so no texto da pergunta ou num rotulo nao conta: o lugar dela e o header (D489)
+    assert.ok(negou(hook(dir, entrada(deFato('Causa', ['Sim', 'Nao'], '(fato) O erro aparece ao abrir?')))));
+    assert.ok(negou(hook(dir, entrada(deFato('Causa', ['Sim (fato)', 'Nao'])))));
+    // header que nao e texto: decide sem estourar
+    const r = hook(dir, entrada(deFato(null, ['Sim', 'Nao'])));
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(negou(r), r.stdout);
+  });
+});
+
+test('D489/portao-decisao: a mensagem de bloqueio ensina a marca (fato)', () => {
+  comProjeto({ versaoConfig: 1 }, (dir) => {
+    const r = hook(dir, entrada(pergunta(['A', 'B'])));
+    assert.ok(negou(r), r.stdout);
+    assert.match(motivo(r), /\(fato\) no titulo curto \(header\)/);
+    assert.ok(/^[\x20-\x7e\n]*$/.test(motivo(r)), 'o motivo sai em ASCII: ' + motivo(r));
+  });
+});
+
+test('D489/portao-decisao: a marca vale por pergunta; a decisao ao lado segue o padrao', () => {
+  comProjeto({ versaoConfig: 1 }, (dir) => {
+    liberou(hook(dir, entrada(deFato('(fato) Causa', ['Sim', 'Nao']), pergunta(TRES))));
+    const r = hook(dir, entrada(deFato('(fato) Causa', ['Sim', 'Nao']), pergunta(['A', 'B'])));
+    assert.ok(negou(r), r.stdout);
+    assert.match(motivo(r), /pergunta 2 tem 2 opcoes/);
+    assert.doesNotMatch(motivo(r), /pergunta 1/);
+  });
+});

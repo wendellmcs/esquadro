@@ -13,11 +13,17 @@ const config = require('./lib/config.js');
 // heuristica de linguagem natural virou corrida de bordas na revisao da 0.5.0.
 const MARCA_RECOMENDADA = /\((?:recomendad[oa]|recommended|recom\.)\)/i;
 
+// D489 (PD1): pergunta de fato (sintoma, dado que so o dono tem) nao e decisao. A marca (fato), no mesmo
+// molde da D389 - exata, entre parenteses, qualquer caixa -, so no titulo curto (header), libera a pergunta
+// da regra das 3 opcoes. No texto da pergunta ou num rotulo nao conta.
+const MARCA_FATO = /\(fato\)/i;
+
 /**
  * O que ha de errado na pergunta (1-based em `n`) e o que fazer, ou null quando ela segue o padrao.
  * D396 n. 30: cada causa leva o proprio remedio, depois de " - " (antes uma instrucao so servia as tres).
  */
 function defeitoDaPergunta(q, n) {
+  if (q && typeof q === 'object' && typeof q.header === 'string' && MARCA_FATO.test(q.header)) return null;
   const opcoes = q && typeof q === 'object' ? q.options : null;
   if (!Array.isArray(opcoes)) return 'pergunta ' + n + ' sem a lista de opcoes - mande exatamente 3';
   if (opcoes.length !== 3) {
@@ -68,6 +74,8 @@ io.blindar(function () {
       // D396 n. 40: a marca vai numa opcao so
       'Refaca a pergunta: exatamente 3 opcoes, a recomendada em primeiro com (Recomendado) no rotulo, so nela, ' +
         'cada uma com consequencia pratica e custo.',
+      // D489: pergunta de fato nao e decisao
+      'Se for pergunta de fato (sintoma, dado que so o dono tem), ponha (fato) no titulo curto (header) dela.',
       'Para desligar este portao no projeto: "portaoDecisao": false em .claude/esquadro/projeto.json.'
     ].join('\n'));
   });

@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.7.3 — pergunta de fato passa no portao de decisao e o modo continuo mais claro
+
+**Mudado**
+
+- **Pergunta de fato passa no portao de decisao com `(fato)` no titulo curto.** Ate a 0.7.2 o portao
+  barrava toda pergunta ao dono sem exatamente 3 opcoes e sem a recomendada em primeiro, inclusive a
+  pergunta de sintoma ou de dado que so o dono tem, que nao e decisao (nas sessoes do autor, ela acabou
+  saindo em texto, duas vezes). Agora `(fato)`, exata e entre parenteses, em maiuscula ou minuscula, no
+  `header` (o titulo curto) da pergunta, a libera da regra das 3 opcoes. A marca so conta no `header`: no
+  texto da pergunta ou num rotulo, nao. A decisao sem a marca segue barrada, e a mensagem de bloqueio
+  passa a ensinar a marca.
+
+**Corrigido**
+
+- **Medidor da sessao: o "0 de N" conta so os gatilhos que podem disparar.** Com o modo continuo ligado,
+  os cinco gatilhos que a chave cala entravam no denominador ("troca: 0 de 7"), embora nao pudessem
+  disparar. Agora a linha curta diz "0 de 2". Sem a chave `modoContinuo`, nada muda.
+- **Modo continuo, textos.** A `esquadro:padrao` diz como saber se o modo esta ligado (a abertura da
+  sessao diz), nomeia o que deixa de pedir troca de chat em vez de "todo o resto desta secao" (o
+  "Disparou?" segue para os gatilhos que ficam e o "Sempre" nao muda) e poe credencial, permissao e
+  seguranca na lista do que ainda vai ao dono; o bloco da abertura e o README dizem o mesmo. No README,
+  o item "Ele avisa quando e hora de abrir chat novo" ganha a ressalva do modo continuo.
+- **Teste do Jev pela regra de hoje.** O Jev e um modelo externo; `docs/jev` mede o que ele diz contra a
+  regra do `/esquadro:auditar`. O `docs/jev/jev.test.js` ainda dizia que 1 termo em comum bastava para a
+  sobreposicao de skills; a regra mudou na 0.5.2 (2 termos comuns e fracao de 0,20). O teste agora confere
+  os dois limites. O codigo nao mudou.
+
 ## 0.7.2 — revisao proporcional ao diff, cd solto que se corrige e filtro de subagente num lugar so
 
 **Mudado**

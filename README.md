@@ -271,7 +271,7 @@ O plugin se pendura em dez pontos do ciclo de uma sessão:
 | antes de `Write` e `Edit` | `scripts/portao-escopo.js` | intocáveis, outra frente, "Fora", marcha, escopo, criar sem buscar, catraca (régua que só aperta: teto que não sobe e piso que não desce) e, com design system declarado, token fora do sistema |
 | antes de `Bash` e `PowerShell` | `scripts/portao-destrutivo.js` · `scripts/portao-estilo.js` | comando destrutivo, idioma de shell errado e `cd` solto (no `Bash`, corrige sozinho: o comando roda num subshell); avisa, sem negar, quando a tabela de idioma do PowerShell não se lê. Com design system declarado, nega arquivo de estilo escrito por comando de shell e manda usar `Write` ou `Edit` |
 | antes de `Task` e `Agent` | `scripts/portao-agente.js` · `scripts/portao-apelido.js` | agente caro em marcha rápida; `model:` do agente contra o apelido gravado no projeto |
-| antes de `AskUserQuestion` | `scripts/portao-decisao.js` | barra pergunta ao dono sem exatamente 3 opções ou sem a recomendada em primeiro; desliga com `"portaoDecisao": false` no `projeto.json` |
+| antes de `AskUserQuestion` | `scripts/portao-decisao.js` | barra pergunta ao dono sem exatamente 3 opções ou sem a recomendada em primeiro; pergunta de fato (sintoma, dado que só você tem) passa com `(fato)` no título curto (`header`); desliga com `"portaoDecisao": false` no `projeto.json` |
 | depois de cada ferramenta | `scripts/marcar-trabalho.js` | marca trabalho real, busca feita e arquivos tocados; conta as decisões suas respondidas e os commits que passaram |
 | um inspetor da revisão cega termina | `scripts/gravar-veredito.js` | grava o veredito dele em `vereditos/<lente>.json` da ronda; não barra nada, não sobrescreve, e avisa o que não gravou (essa lente volta a ser gravada à mão) |
 | o turno termina | `scripts/portao-fecho.js` | cobra evidência, barra etapa com subitem aberto, barra o turno que gravou um handoff sem colar o prompt em bloco de código na resposta final, grava os contadores, avisa quando é hora de trocar de chat |
@@ -286,7 +286,9 @@ Cinco coisas acontecem sem você pedir:
   com trabalho, 2 revisões independentes fechadas, 6 bloqueios de portão, 25 arquivos tocados,
   3 decisões suas respondidas ou 3 commits. Basta um, e os limiares se ajustam em `limiares`, no
   `projeto.json`. O aviso não fica só na tela: chega também ao Claude, que roda o handoff e cola o
-  prompt pronto na mesma resposta (detalhe abaixo). Funciona sem o `/esquadro:init`.
+  prompt pronto na mesma resposta (detalhe abaixo). Funciona sem o `/esquadro:init`. Com o modo contínuo
+  ligado, turnos, revisões, decisões, commits e arquivos deixam de avisar; seguem o tamanho da conversa e os
+  bloqueios ([a seção da chave](#menos-paradas-e-modo-contínuo)).
 - **Etapa com subitem aberto não fecha.** Com um plano ativo, dizer que a etapa terminou enquanto ela
   ainda tem caixa aberta é barrado pelo fecho. Para ativar um plano, rode na pasta do projeto:
   `node "<plugin>/scripts/plano.js" --abrir <caminho do plano>`. O `<plugin>` é a pasta onde o plugin
@@ -633,8 +635,8 @@ O **modo contínuo** fica numa chave, `modoContinuo`, desligada por padrão (só
 só três coisas pedem troca de chat: o tamanho da conversa (aviso a 175 mil, alarme a 450 mil, os padrões), os
 bloqueios de portão (quando chegam ao limiar `bloqueios`, 6 por padrão) e a sua pergunta sobre o contexto; revisões, decisões, commits, turnos e arquivos não encerram a sessão (o medidor os mostra com "modo
 contínuo: não dispara"). Em troca, o Claude relê o trecho do plano antes de cada subitem, decide sozinho a escolha
-técnica dentro do escopo (registra o motivo e lista no fecho) e só pergunta o irreversível, o externo, o de custo e
-o de produto. Ligar: `"modoContinuo": true` em `.claude/esquadro/projeto.json`.
+técnica dentro do escopo (registra o motivo e lista no fecho) e só pergunta o irreversível, o externo, credencial,
+permissão ou segurança, o de custo e o de produto. Ligar: `"modoContinuo": true` em `.claude/esquadro/projeto.json`.
 
 ---
 
