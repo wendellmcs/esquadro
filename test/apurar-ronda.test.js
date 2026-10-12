@@ -60,6 +60,48 @@ test('D244/defeito 3: pelo CLI, P1 so do lado antigo fecha por duas rondas secas
   });
 });
 
+// D475 (s99): o par R2/R3 da skills/padrao/SKILL.md reduzido. O lado novo e B na ronda 1 e A na ronda 2; a linha 3
+// do lado novo foi reescrita entre as rondas, e a mesma lente cita P1 nela de novo: evidencia nova, molha.
+test('D475: pelo CLI, P1 na mesma linha do lado novo com texto reescrito entre rondas molha a ronda', () => {
+  comTmp((tmp) => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-apurar-reescrita-'));
+    const vd = (arq) => ({ lente: 'microcopy', melhor: 'A',
+      achados: [{ severidade: 'P1', arquivo: arq, linha: 3, descricao: 'frase ambigua' }] });
+    const texto = (n, rotulo, linha3) => fs.writeFileSync(path.join(cwd, '.claude', 'esquadro', 'revisao', String(n),
+      rotulo + '.txt'), 'um\ndois\n' + linha3 + '\nquatro\n', 'utf8');
+    gravarMapa(cwd, 1, { A: 'HEAD', B: 'trabalho' });
+    gravarRonda(cwd, 1, [vd('B.txt')]);
+    texto(1, 'A', 'frase antiga');
+    texto(1, 'B', 'nem os contadores, turnos e arquivos');
+    gravarMapa(cwd, 2, { A: 'trabalho', B: 'HEAD' });
+    gravarRonda(cwd, 2, [vd('A.txt')]);
+    texto(2, 'A', 'os bloqueios de portao, que o plugin conta');
+    texto(2, 'B', 'frase antiga');
+    const r = rodar(['--sessao', 'reescrita'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.strictEqual(r.json.rondasSecas, 0, r.stdout);
+    assert.strictEqual(r.json.achadosNovosP0P1.length, 1, r.stdout);
+  });
+});
+
+// s104 (R1 da D469 de apurar-ronda.js, estados+manutencao): A.txt/B.txt que EXISTE e nao se le nao e "arquivo que
+// falta". O resto do script so trata ENOENT como ausencia; os outros erros param com a causa (0.3.3, item 1).
+test('D475: pelo CLI, A.txt da ronda que existe e nao se le para com a causa; o que falta segue a conta de antes', () => {
+  comTmp((tmp) => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-apurar-ilegivel-'));
+    gravarMapa(cwd, 1, { A: 'trabalho', B: 'HEAD' });
+    gravarRonda(cwd, 1, [{ lente: 'microcopy', melhor: 'B',
+      achados: [{ severidade: 'P2', arquivo: 'A.txt', linha: 1, descricao: 'x' }] }]);
+    const r0 = rodar(['--sessao', 'falta'], cwd, tmp);
+    assert.strictEqual(r0.status, 0, 'A.txt que falta tem de seguir a conta de antes: ' + r0.stdout);
+    fs.mkdirSync(path.join(cwd, '.claude', 'esquadro', 'revisao', '1', 'A.txt'));
+    const r = rodar(['--sessao', 'ilegivel'], cwd, tmp);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /ERRO: nao consegui ler .*1\/A\.txt/, r.stdout);
+    assert.doesNotMatch(r.stdout, /refutados\.json/, 'a causa nao e o refutados.json: ' + r.stdout);
+  });
+});
+
 test('D244/defeito 3: pelo CLI, refutados.json sem prova para com erro', () => {
   comTmp((tmp) => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-apurar-ref-'));

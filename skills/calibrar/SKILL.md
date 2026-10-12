@@ -5,8 +5,8 @@ description: Mede, nas conversas do proprio projeto, a partir de quantos tokens 
 
 # `/esquadro:calibrar` — o limiar de troca medido no seu projeto
 
-O aviso de troca de chat por tamanho sai a 250 mil tokens. Esse número foi medido nas conversas de
-um projeto só (435 sessões do autor do plugin). Esta skill mede o **seu**: lê as transcrições que o Claude Code guarda
+O aviso de troca de chat por tamanho sai a 175 mil tokens (o padrão). Esse número foi medido nas conversas de
+um projeto só (as sessões do autor do plugin). Esta skill mede o **seu**: lê as transcrições que o Claude Code guarda
 deste projeto, calcula quanto custa cada faixa de contexto, quanto custa uma troca aqui, e simula a
 troca no fim do turno do dono para cada limiar de 150 mil até abaixo do alarme.
 

@@ -200,6 +200,30 @@ test('D244/defeito 3: a mesma linha do mesmo lado e o mesmo achado, mesmo com o 
   assert.strictEqual(r.motivo, 'duas rondas secas seguidas: aprovado', JSON.stringify(r));
 });
 
+// D475 (s99): na R3 da skills/padrao/SKILL.md (0.7.0) a microcopy citou P1 em trabalho:302, mesma chave do P1 da R2,
+// mas a linha 302 tinha sido REESCRITA entre as rondas. Mesmo numero com outro texto e evidencia nova, nao repeticao.
+test('D475: linha reescrita entre rondas e evidencia nova: o P1 da ronda seguinte molha; texto igual segue repeticao', () => {
+  const mic = (arquivo) => ({ lente: 'microcopy', melhor: 'A',
+    achados: [{ severidade: 'P1', arquivo: arquivo, linha: 302, descricao: 'x' }] });
+  const rondas = [[mic('B.txt')], [mic('A.txt')]];
+  const reescrita = (indice) => (indice === 0 ? 'nem os contadores do plugin, turnos e' : 'bloqueios de portao, que o plugin conta');
+  const r = v.apurar(rondas, { mapas: [TRAB_B, TRAB_A], textoDaLinha: reescrita });
+  assert.strictEqual(r.secas, 0, 'P1 sobre texto novo virou repeticao: ' + JSON.stringify(r));
+  assert.strictEqual(r.novos.length, 1);
+  const igual = v.apurar(rondas, { mapas: [TRAB_B, TRAB_A], textoDaLinha: () => 'a mesma frase' });
+  assert.strictEqual(igual.secas, 1, 'mesma linha com o mesmo texto deixou de ser repeticao: ' + JSON.stringify(igual));
+  const semTexto = v.apurar(rondas, { mapas: [TRAB_B, TRAB_A], textoDaLinha: () => null });
+  assert.strictEqual(semTexto.secas, 1, 'sem o texto da linha a conta tem de ser a de antes');
+  // s104 (R1 da D469 de veredito.js, mutacoes M2/M4 sobreviviam): sem texto na 1a vez, a conta segue a de antes
+  // mesmo que a ronda seguinte traga texto; e espaco/fim de linha diferente nao e reescrita.
+  const semTextoAntes = v.apurar(rondas, { mapas: [TRAB_B, TRAB_A],
+    textoDaLinha: (indice) => (indice === 0 ? null : 'bloqueios de portao, que o plugin conta') });
+  assert.strictEqual(semTextoAntes.secas, 1, 'sem texto na 1a vez, o texto da 2a nao pode virar achado novo');
+  const soEspaco = v.apurar(rondas, { mapas: [TRAB_B, TRAB_A],
+    textoDaLinha: (indice) => (indice === 0 ? '  a mesma   frase\r' : 'a mesma frase') });
+  assert.strictEqual(soEspaco.secas, 1, 'so espaco/fim de linha diferente virou linha reescrita');
+});
+
 test('D244/defeito 3: arquivo citado com caminho ainda acha o lado', () => {
   const r = v.apurar([[P1('.claude/esquadro/revisao/1/B.txt', 10)]], { mapas: [TRAB_A] });
   assert.strictEqual(r.secas, 1);

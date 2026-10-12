@@ -316,9 +316,31 @@ if (fs.existsSync(arqMesmos)) {
   }
 }
 
+// D475 (s99): o texto da linha citada, do A.txt/B.txt da propria ronda. Linha reescrita entre rondas com a mesma
+// chave e evidencia nova. Arquivo que falta ou linha fora dele = null, e a conta fica a de antes. Arquivo que existe e
+// nao se le (permissao, pasta no lugar) para com a causa, como o resto deste script (s104).
+const linhasDe = new Map();
+function textoDaLinha(indice, rotulo, linha) {
+  const arq = path.join(base, pastas[indice].name, rotulo + '.txt');
+  if (!linhasDe.has(arq)) {
+    let linhas = null;
+    try { linhas = textoLib.semBom(fs.readFileSync(arq, 'utf8')).split(/\r?\n/); } catch (err) {
+      if (!err || err.code !== 'ENOENT') {
+        process.stdout.write('ERRO: nao consegui ler ' + [baseRel, pastas[indice].name, rotulo + '.txt'].join('/') + ' (' +
+          textoLib.causaDoErro(err) + '). Confira esse arquivo e rode este comando de novo.\n');
+        process.exit(1);
+      }
+    }
+    linhasDe.set(arq, linhas);
+  }
+  const linhas = linhasDe.get(arq);
+  const n = Number.isInteger(linha) ? linha : parseInt(linha, 10);
+  return linhas && n >= 1 && n <= linhas.length ? linhas[n - 1] : null;
+}
+
 let r;
 try {
-  r = veredito.apurar(rondas, { mapas: mapas, refutados: refutados, mesmos: mesmos });
+  r = veredito.apurar(rondas, { mapas: mapas, refutados: refutados, mesmos: mesmos, textoDaLinha: textoDaLinha });
 } catch (err) {
   // 0.3.3, item 7: o erro diz o defeito; a linha seguinte diz onde corrigir e o que fazer depois.
   const doMesmos = err.message.indexOf('mesmos.json') !== -1;

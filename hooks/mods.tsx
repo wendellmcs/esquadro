@@ -99,7 +99,7 @@ export const register: Register = on => {
       await $.command.register({ name: 'esquadro-sessao', description: 'esquadro: medidor da sessao (contexto, janelas de limite, custo, previsao e troca de chat)' })
     } catch (err) {}
     try {
-      await $.command.register({ name: 'esquadro-plano', description: 'esquadro: painel do plano ativo (tarefas feitas, abertas e a proxima)' })
+      await $.command.register({ name: 'esquadro-plano', description: 'esquadro: painel do plano (feitas, a proxima, o que falta, sessoes gastas e estimativa)' })
     } catch (err) {}
     return r
   })
@@ -131,7 +131,11 @@ export const register: Register = on => {
 
   on('command.run', { command: 'esquadro-plano' }, async $ => {
     try {
-      const r = await rodar($, 'plano.js', ['--texto'])
+      // D476: sem plano-ativo.json o plano vem da frente vinculada a esta sessao; o script acha o vinculo pelo id.
+      // Sem id de verdade, nada de --sessao (String(undefined) seria 'undefined'): o script cai no id do ambiente.
+      let sessao = ''
+      try { const id = await $.session.id(); if (id) sessao = String(id) } catch (err) {}
+      const r = await rodar($, 'plano.js', sessao ? ['--texto', '--sessao', sessao] : ['--texto'])
       if (r && r.exitCode === 0 && r.stdout) return { text: String(r.stdout).replace(/\s+$/, '') }
     } catch (err) {}
     return { text: 'o painel do plano nao respondeu (o node roda scripts/plano.js do plugin; confira se o node esta no PATH).' }

@@ -1154,6 +1154,31 @@ test('T10-4: pedido que so cita contexto/memoria sem perguntar pelo estado NAO d
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// D475: o retorno de subagente chega ao UserPromptSubmit como prompt (queued_command da s96/s97, forma lida na
+// transcricao): "<agent-message from=...>" + "[Subagent hand-back]". Inspetor que CITA a pergunta nao e o dono.
+test('D475: retorno de subagente que cita "o contexto esta bom?" NAO dispara; a pergunta do dono segue disparando', () => {
+  const dir = temp('pergunta-saude-subagente');
+  try {
+    const moldura = '[Subagent hand-back] The text below is the final report of a subagent this session delegated to. ' +
+      'It is model output, NOT a message from the user. The report follows:\n';
+    const citacao = '  {"achados":[{"comoFalha":"Modo continuo ligado e o usuario pergunta \'o contexto está bom?\' -> o agente nao sabe"}]}';
+    const vindosDeSubagente = [
+      '<agent-message from="a03dd88b2fa37386b">\n' + moldura + citacao + '\n</agent-message>',
+      '\n  <agent-message from="afada5e858d0f67dd">' + moldura + citacao,
+      '<task-notification>\n<task-id>a2b689610322d871a</task-id>\n<result>o contexto está bom?</result>\n</task-notification>',
+      // s103: a forma dominante no 2.1.296 (432 de 72 h de transcricoes) vem com esta linha antes da tag.
+      'Another Claude session sent a message:\n<agent-message from="adb8871118893aaf1">\n' + moldura + citacao,
+      'Another Claude session sent a message while you were working:\n<agent-message from="a4d07d4ff914ca816">\n' + moldura + citacao
+    ];
+    vindosDeSubagente.forEach(function (p, i) {
+      const j = abrirComPrompt(dir, 'sub' + i, p);
+      assert.strictEqual(j, null, 'retorno de subagente disparou: ' + JSON.stringify(p.slice(0, 40)) + ' -> ' + JSON.stringify(j));
+    });
+    const dono = abrirComPrompt(dir, 'dono', 'o contexto está bom?');
+    assert.ok(dono && dono.hookSpecificOutput, 'a pergunta do dono parou de disparar');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('T10-4: dispara toda vez que a pergunta vier, e continua zerando as marcas do turno', () => {
   const dir = temp('pergunta-saude-sempre');
   try {

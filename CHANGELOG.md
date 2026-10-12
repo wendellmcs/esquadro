@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.7.1 — painel do plano completo e tres correcoes
+
+**Mudado**
+
+- **Troca de chat por tamanho: o padrao passa de 250 mil para 175 mil tokens.** A medicao da 0.7.0
+  contava a leitura do handoff na abertura do chat novo como se fosse a escrita, e a troca saia mais cara
+  do que e; por isso ela achou o empate em 250 mil. Medido de novo, so com a escrita: nas sessoes do autor
+  cada troca custa US$ 1,56, e 175 mil e o menor limiar em que trocar no fim do turno nao sai mais caro
+  que seguir. O alarme firme continua a 450 mil. Quem gravou `limiares.tokensDeContexto` no `projeto.json`
+  fica com o numero dele; para voltar ao padrao da 0.7.0, grave `250000` nessa chave. O
+  `/esquadro:calibrar` passa a medir a amostra contra o padrao novo: conta as conversas que chegaram a 175
+  mil (os minimos seguem 30 sessoes e 10 conversas).
+- **`/esquadro-plano` mostra o plano inteiro.** Sem `plano-ativo.json`, o painel acha o plano pelo ultimo
+  `Plano: <caminho>` do Objetivo da frente vinculada a sessao (antes dizia "nenhum plano ativo" mesmo com
+  plano em curso); le cabecalhos `Tarefa`, `Item`, `Etapa`, `Onda` e `Fase` com numero (`3a` vale) e
+  travessao, e `[FEITO]` no cabecalho quando nao ha caixas; e acrescenta o que falta, as sessoes gastas
+  (marcas `(sessao N` no Objetivo da frente) e a estimativa das que faltam, com a base da conta. O portao
+  de "etapa com subitem aberto" segue lendo so o formato de antes.
+
+**Corrigido**
+
+- **"Hora de trocar de chat" por resposta de subagente.** Quando o retorno de um subagente citava "o
+  contexto esta bom?", o aviso saia como se a pergunta fosse sua. O retorno de subagente e o aviso de
+  tarefa em segundo plano deixam de contar como pergunta, tambem na forma em que o Claude Code 2.1.296 os
+  entrega ("Another Claude session sent a message...", seguido do retorno).
+- **Sugestao de `/esquadro:aprender` sem correcao sua.** O mesmo retorno de subagente, quando trazia uma
+  frase de correcao, era lido como correcao do dono. Mesmo filtro.
+- **Revisao cega que dava ronda seca com P1 novo.** O apurador tratava como repeticao um achado na mesma
+  linha, lente e severidade da ronda anterior, mesmo quando a linha tinha sido reescrita entre as rondas.
+  Agora o apurador le o texto da linha citada no `A.txt`/`B.txt` de cada ronda: se ele mudou (espacos
+  nao contam), o achado conta como novo. O `refutados.json` segue valendo como antes.
+
 ## 0.7.0 — menos paradas
 
 **Mudado**

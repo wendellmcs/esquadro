@@ -13,9 +13,10 @@ const LIMIARES_PADRAO = {
   arquivosTocados: 25,     // diff largo demais para caber na cabeca
   decisoesDoDono: 3,       // T10-2: respostas do dono a AskUserQuestion
   commits: 3,              // T10-3: git commit que passou (3, nao 1: o aviso sai uma vez por sessao)
-  // D464 (revoga o 150000 da D445): 435 sessoes medidas; trocar no fim de turno do dono a 250K empata com
-  // nao trocar (-0,5% de custo), abaixo disso a troca (US$ 3,40 + rampa ate 119K) sai mais cara.
-  tokensDeContexto: 250000,
+  // D475 (revoga o 250000 da D464): a D464 contou o Read da abertura como gravacao do handoff. Medido corrigido
+  // (so a escrita), a troca custa US$ 1,56 e 175K e o menor limiar em que trocar no fim de turno do dono nao
+  // encarece (-1,6%; 250K -3,2%). Quem gravou o proprio limiar no projeto.json fica com ele (medirTodos).
+  tokensDeContexto: 175000,
   // D464: re-aviso firme, uma vez, mesmo depois do aviso de saude: acima de 500K a chamada custa 4x a de 200-300K.
   tokensAlarme: 450000
 };
@@ -229,6 +230,10 @@ function perguntaSobreSaude(prompt) {
   if (typeof prompt !== 'string') return false;
   const t = prompt.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (!t) return false;
+  // D475: retorno de subagente e aviso de tarefa chegam ao UserPromptSubmit como prompt (queued_command,
+  // transcricoes da s96/s97). O inspetor que CITA a pergunta nao e o usuario perguntando.
+  // s103: no 2.1.296 o retorno vem como "Another Claude session sent a message[ while you were working]:" + a tag.
+  if (/^(?:another claude session sent a message[a-z ]*: )?<(?:agent-message|task-notification)\b/.test(t)) return false;
   const temCaraDePergunta = t.indexOf('?') !== -1 ||
     /^(?:como|how|is|are|esta|ta|ainda|qual)\b/.test(t) ||
     new RegExp('^(?:o |a |seu |sua |esse |essa |your |the |this )?' + NOME_DA_SAUDE + ' (?:esta|ta|ainda)\\b').test(t);

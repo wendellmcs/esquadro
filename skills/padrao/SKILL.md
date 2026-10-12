@@ -277,7 +277,7 @@ O desvio começa quando o plano passa a ser executado de memória. Gatilhos **co
 - 2 ou mais tarefas com revisão independente fechadas nesta conversa;
 - 3 ou mais decisões do dono registradas nesta conversa;
 - 2 ou mais erros próprios de medição ou instrumento na mesma conversa;
-- a conversa passou de 250 mil tokens de contexto (o fim de turno do plugin mede e avisa, só no fim
+- a conversa passou de 175 mil tokens de contexto (o fim de turno do plugin mede e avisa, só no fim
   de turno, nunca no meio da tarefa; acima de 450 mil sai um alarme firme, uma vez);
 - qualquer incidente que exigiu cirurgia (histórico git, ambiente, sessão concorrente);
 - você conseguiria responder sobre o plano sem reabri-lo;
@@ -300,7 +300,7 @@ credencial, publicar ou implantar, tela com dado de cliente no login dele — e 
 
 **Modo contínuo (chave `modoContinuo` no `projeto.json`).** Só o booleano `true` liga; sem a chave, com
 outro valor ou sem o arquivo, fica desligado. A abertura da sessão diz se está ligado. Ligado, só quatro
-coisas pedem troca de chat: o tamanho da conversa (o aviso dos 250 mil e o alarme dos 450 mil); o
+coisas pedem troca de chat: o tamanho da conversa (o aviso dos 175 mil e o alarme dos 450 mil); o
 aviso de bloqueios de portão, que o plugin dá no fim de turno quando a sessão chega ao limiar (6 por
 padrão; um bloqueio só não pede); o incidente que exigiu cirurgia; e a pergunta do usuário sobre o
 contexto. Todo o resto desta seção deixa de pedir troca de chat: os outros gatilhos da lista, a dúvida

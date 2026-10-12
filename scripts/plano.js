@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const planoLib = require('./lib/plano.js');
+const estado = require('./lib/estado.js');
 
 function arg(nome) {
   const i = process.argv.indexOf('--' + nome);
@@ -47,12 +48,37 @@ if (process.argv.indexOf('--texto') !== -1) {
     process.stdout.write(planoLib.painelIlegivel(eu) + '\n');
     process.exit(0);
   }
-  let tarefasDoPainel = [];
-  if (ativo && ativo.arquivo) {
-    try { tarefasDoPainel = planoLib.parseTarefas(fs.readFileSync(path.join(cwd, ativo.arquivo), 'utf8')); }
-    catch (e) { process.stdout.write('painel do plano\nnao consegui ler ' + ativo.arquivo + '\n'); process.exit(0); }
+  let alvo = ativo && ativo.arquivo ? ativo : null;
+  if (!alvo) {
+    // D476: sem plano-ativo.json, o plano vem da frente vinculada a sessao (o mod passa --sessao).
+    const sessao = arg('sessao') || process.env.CLAUDE_CODE_SESSION_ID || process.env.CLAUDE_SESSION_ID || null;
+    const achado = planoLib.acharPlanoDaFrente(cwd, sessao ? estado.ler(sessao).frente : null);
+    if (achado && achado.varias) {
+      process.stdout.write(planoLib.painelVariasFrentes(achado.varias, eu) + '\n');
+      process.exit(0);
+    }
+    if (achado && achado.ilegivel) {
+      process.stdout.write(planoLib.painelFrenteIlegivel(achado.frente, achado.ilegivel) + '\n');
+      process.exit(0);
+    }
+    if (achado && !achado.arquivo) {
+      process.stdout.write(planoLib.painelFrenteSemPlano(achado.frente, eu) + '\n');
+      process.exit(0);
+    }
+    if (achado) alvo = { arquivo: achado.arquivo, frente: achado.frente, objetivo: achado.objetivo };
   }
-  process.stdout.write(planoLib.painelTexto(ativo, tarefasDoPainel, eu) + '\n');
+  let tarefasDoPainel = [];
+  if (alvo) {
+    // D476: o painel le o formato real (Item/Etapa/..., travessao, [FEITO]); o JSON abaixo e o portao seguem no de hoje.
+    try { tarefasDoPainel = planoLib.parseItens(fs.readFileSync(path.join(cwd, alvo.arquivo), 'utf8')); }
+    catch (e) {
+      // R2 da revisao cega: caminho com espaco, sem crases, chega cortado no primeiro espaco.
+      process.stdout.write('painel do plano\nnao consegui ler ' + alvo.arquivo + (alvo.frente
+        ? ' (se o caminho tem espaco, ponha-o entre crases no Objetivo: Plano: `meu plano.md`)' : '') + '\n');
+      process.exit(0);
+    }
+  }
+  process.stdout.write(planoLib.painelTexto(alvo, tarefasDoPainel, eu) + '\n');
   process.exit(0);
 }
 

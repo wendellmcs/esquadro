@@ -74,6 +74,6 @@ test('sessao.js: o gatilho de contexto usa uso.context.tokens ao vivo', () => {
     const alto = Object.assign({}, USO, { context: { tokens: 260000, window: 1000000, percent: 26 } });
     const r = rodar(c, { uso: alto, amostras: [], sessao: 'nao-existe' });
     assert.strictEqual(r.cruzou, true, JSON.stringify(r));
-    assert.ok(r.longa.indexOf('tokens de contexto: 260000 de 250000') !== -1, r.longa);
+    assert.ok(r.longa.indexOf('tokens de contexto: 260000 de 175000') !== -1, r.longa);
   });
 });

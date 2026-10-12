@@ -21,9 +21,10 @@ const BANDA = {
 
 type Chamada = { argv: readonly string[]; stdin?: string }
 
-function medidor(on: any, chamadas: Chamada[], resposta: { curta: string; longa: string; cruzou: boolean }) {
+function medidor(on: any, chamadas: Chamada[], resposta: { curta: string; longa: string; cruzou: boolean }, ...id: unknown[]) {
+  // Sem o 4o argumento, 'sess-abc'; com ele (ate undefined), o valor dado - parametro padrao engoliria o undefined.
   on('session.usage', () => ({ value: USO }))
-  on('session.id', () => ({ value: 'sess-abc' }))
+  on('session.id', () => ({ value: id.length ? id[0] : 'sess-abc' }))
   on('process.run', ($: unknown, e: any) => {
     chamadas.push({ argv: e.argv, stdin: e.init && e.init.stdin })
     if (String(e.argv[1]).endsWith('/scripts/plano.js')) {
@@ -65,7 +66,24 @@ test('/esquadro-plano responde o painel do plano.js --texto', async ($, on) => {
   const r = await $.command.run({ command: 'esquadro-plano', args: '' })
   expect(r.text).toMatch(/tarefas: 1 de 3 concluidas/)
   expect(chamadas[0].argv).toContain('--texto')
+  // D476: sem plano-ativo.json o plano vem da frente vinculada a sessao; o script precisa do id para achar o vinculo.
+  const i = chamadas[0].argv.indexOf('--sessao')
+  expect(i).toBeGreaterThan(-1)
+  expect(chamadas[0].argv[i + 1]).toBe('sess-abc')
 })
+
+// D469 (R1 de hooks/mods.tsx, s103): String(undefined) vira 'undefined', verdadeiro; o mod passava --sessao undefined e
+// o plano.js nao caia no CLAUDE_CODE_SESSION_ID do ambiente. Sem id de verdade, nada de --sessao.
+for (const vazio of [undefined, null, '']) {
+  test('/esquadro-plano sem id de sessao (' + String(vazio) + ') nao passa --sessao', async ($, on) => {
+    const chamadas: Chamada[] = []
+    medidor(on, chamadas, { curta: '', longa: '', cruzou: false }, vazio)
+    const r = await $.command.run({ command: 'esquadro-plano', args: '' })
+    expect(r.text).toMatch(/tarefas: 1 de 3 concluidas/)
+    expect(chamadas[0].argv).toContain('--texto')
+    expect(chamadas[0].argv).not.toContain('--sessao')
+  })
+}
 
 test('script que falha: o comando responde o motivo, nao lanca', async ($, on) => {
   on('session.usage', () => ({ value: USO }))

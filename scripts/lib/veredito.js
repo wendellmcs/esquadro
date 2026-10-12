@@ -262,6 +262,30 @@ function conferirMesmos(lista, chavesExistentes) {
 }
 
 /**
+ * D475 (s99): a chave de repeticao de um achado, olhando o texto da linha citada.
+ * variantesDaChave: Map kBase -> [{ texto, chave }], um item por texto ja visto naquela chave (o primeiro leva
+ * a propria kBase). Devolve a chave a usar:
+ *   - primeira vez da kBase: kBase;
+ *   - texto igual a um ja visto: a chave daquele texto (repeticao);
+ *   - texto diferente de todos: kBase + "|r<ronda>" (linha reescrita = achado novo);
+ *   - sem texto (bruto que nao e string), agora ou em alguma vez anterior: kBase, a conta de antes da D475.
+ */
+function chavePeloTexto(kBase, bruto, variantesDaChave, ronda) {
+  const texto = typeof bruto === 'string' ? bruto.replace(/\s+/g, ' ').trim() : null;
+  const variantes = variantesDaChave.get(kBase);
+  if (!variantes) {
+    variantesDaChave.set(kBase, [{ texto: texto, chave: kBase }]);
+    return kBase;
+  }
+  const igual = variantes.find(function (x) { return x.texto === texto; });
+  if (igual) return igual.chave;
+  if (texto === null || variantes.some(function (x) { return x.texto === null; })) return kBase;
+  const chave = kBase + '|r' + ronda;
+  variantes.push({ texto: texto, chave: chave });
+  return chave;
+}
+
+/**
  * rondas: lista de rondas; cada ronda e uma lista de vereditos.
  * Ronda seca = zero achado NOVO de P1 ou acima.
  * D244/defeito 3 - opcoes (opcional; sem ela a conta e a de antes):
@@ -272,6 +296,8 @@ function conferirMesmos(lista, chavesExistentes) {
  *                primaria nao molha. Sem `prova` ou sem `severidade`, lanca erro.
  *   mesmos     = [{ novo, outro, resposta }] (D387, #11c): so ALIMENTA provaveisMesmos; nao entra em
  *                secas, encerrar, motivo, novos, abertos nem no teto. A palavra do juiz e aviso, nao prova.
+ *   textoDaLinha(indiceDaRonda, rotulo, linha) -> texto ou null (D475): com ele, a mesma chave sobre um texto
+ *                diferente do ja visto vira achado novo (chave + "|r<ronda>"); texto igual segue repeticao.
  * paresCandidatos sai sempre: achado P0/P1 novo da ultima ronda x outro achado do lado novo, mesmo
  * arquivo (o lado, com mapa; o rotulo, sem), a ate DISTANCIA_PAR linhas, chave diferente.
  */
@@ -282,6 +308,7 @@ function apurar(rondas, opcoes) {
   const mapas = Array.isArray(op.mapas) ? op.mapas : [];
   const refutados = conferirRefutados(op.refutados);
   const vistos = new Set();
+  const variantesDaChave = new Map();
   const abertos = new Set();
   let secas = 0;
   let novosDaUltima = [];
@@ -315,7 +342,10 @@ function apurar(rondas, opcoes) {
         const lado = mapa && rotulo ? mapa[rotulo] : null;
         // RV-02 (D422): a chave leva a lente CANONICA; "Correcao e regressao" e "correcao" sao a mesma lente.
         const lenteChave = lenteCanonica(vd.lente);
-        const k = lado ? [a.severidade, lado, a.linha, lenteChave].join('|') : chaveAchado(a, lenteChave);
+        const kBase = lado ? [a.severidade, lado, a.linha, lenteChave].join('|') : chaveAchado(a, lenteChave);
+        // D475 (s99): a mesma chave sobre uma linha REESCRITA entre rondas e evidencia nova, nao repeticao.
+        const bruto = typeof op.textoDaLinha === 'function' && rotulo ? op.textoDaLinha(indice, rotulo, a.linha) : null;
+        const k = chavePeloTexto(kBase, bruto, variantesDaChave, indice + 1);
         if (vistos.has(k)) continue;
         vistos.add(k);
         // L2-ver-3 (S7, D426): o que o juiz le leva a lente canonica, a mesma da chave, e nao a grafia do inspetor.

@@ -335,7 +335,7 @@ se soma ao laço: espera o próximo fim de turno com trabalho.
 | arquivos tocados | `arquivosTocados` | 25 |
 | decisões suas respondidas (as perguntas de escolha do Claude) | `decisoesDoDono` | 3 |
 | commits que passaram | `commits` | 3 |
-| tamanho da conversa, em tokens de contexto | `tokensDeContexto` | 250000 |
+| tamanho da conversa, em tokens de contexto | `tokensDeContexto` | 175000 |
 | alarme de tamanho: segundo aviso, firme, mesmo depois do primeiro | `tokensAlarme` | 450000 |
 
 Basta um (com o modo contínuo ligado, só o tamanho, o alarme, os bloqueios e a sua pergunta sobre o
@@ -353,9 +353,15 @@ no módulo") não dispara.
 **O tamanho da conversa conta** (desde a 0.6.2). O fim de turno não recebe esse número, mas recebe o
 caminho do registro da sessão que o Claude Code grava; o plugin lê o fim desse registro e soma o
 contexto da última resposta. Como o registro é gravado com atraso, a leitura pode vir um turno
-atrasada. Por que 250 mil (desde a 0.7.0; antes era 150 mil): nas 435 sessões medidas pelo autor, abrir
-chat novo custa o handoff mais a rampa — o chat novo só faz a primeira edição com ~119 mil tokens —, e
-trocar no fim de turno a 150 mil saía 9% mais caro que não trocar; a 250 mil empata. Para medir no
+atrasada. Por que 175 mil (desde a 0.7.1; na 0.7.0 era 250 mil, antes 150 mil): abrir chat novo custa o
+handoff mais a rampa — o chat novo só faz a primeira edição com ~119 mil tokens. A 0.7.0 contava também a
+leitura do handoff na abertura como se fosse a escrita, e a troca saía mais cara do que é. Contando só a
+escrita, nas 444 sessões do autor (414 trocas medidas) cada troca custa US$ 1,56. Entre os limiares testados de 25 em 25 mil (150,
+175, 200 mil...), 175 mil é o menor em que trocar no fim de turno não sai mais caro que não trocar (a 150 mil
+sai mais caro): o custo total fica 1,6% abaixo do de não trocar. Mais alto, a economia cresce devagar: 200 mil,
+2,6% abaixo; 250 mil, 3,2%; 350 mil, 3,5%. O padrão é o menor limiar que não encarece, não o que mais
+economiza: a conversa troca mais cedo sem pagar mais por isso (escolha do autor). Quem prefere economizar mais
+grava um limiar maior, abaixo do alarme (por exemplo `250000`), em `limiares.tokensDeContexto`. Para medir no
 seu projeto, rode `/esquadro:calibrar`. O erro de ferramenta não subiu com o contexto até 500 mil. O aviso sai só no fim de turno, nunca no meio da
 tarefa. **O alarme** (`tokensAlarme`) é o segundo aviso, mais firme, que sai uma vez mesmo depois do
 primeiro: acima de 500 mil cada chamada custa cerca de 4 vezes a de 200–300 mil. O medidor
@@ -379,10 +385,15 @@ e não os dois-pontos dos outros comandos do esquadro, porque comando de mod nã
 dois-pontos no lugar do hífen, o Claude Code responde que o comando não existe. `/esquadro-sessao` responde o
 medidor da sessão — contexto usado, janelas de limite (5h e semana) com a hora em que renovam, custo,
 previsão em turnos (só depois de 2 turnos com consumo; antes disso diz que não tem dado) e cada
-gatilho da tabela acima com o valor e o limiar. `/esquadro-plano` responde o painel do plano ativo
-(tarefas feitas, abertas e a próxima); sem plano ativo, ele responde "nenhum plano ativo" e o comando
-`--abrir` com o caminho do script na sua máquina (o que é um plano ativo está em "Etapa com subitem aberto não
-fecha", acima). No painel de chat da extensão do VS Code os dois respondem em
+gatilho da tabela acima com o valor e o limiar. `/esquadro-plano` responde o painel do plano:
+tarefas feitas e abertas, a próxima, o que falta, as sessões gastas e a estimativa das que faltam, com a base da
+conta. O plano é o ativo (o que é um plano ativo está em "Etapa com subitem aberto não fecha", acima); sem plano
+ativo, é o último `Plano: <caminho>` do Objetivo da frente vinculada à sessão. As sessões gastas são as marcas
+`(sessão N` desse Objetivo, e a estimativa é a média de sessões por tarefa feita vezes as que faltam (sem tarefa
+feita, ele diz que ainda não há base; com plano aberto por `--abrir`, sem frente, ele não conta). O painel lê
+cabeçalhos `Tarefa`, `Item`, `Etapa`, `Onda` ou `Fase` com número; sem caixas de passo, `[FEITO]` no cabeçalho
+marca a tarefa como feita. Sem plano nenhum, ele responde "nenhum plano ativo" e o comando `--abrir` com o
+caminho do script na sua máquina. No painel de chat da extensão do VS Code os dois respondem em
 texto; no terminal e no app Desktop o medidor também fica na linha de status, e quando um gatilho
 cruza aparece uma faixa acima do prompt com o botão "gerar handoff". Nada disso abre rede: os números
 vêm do próprio Claude Code e dos arquivos do esquadro na sua máquina.
@@ -619,7 +630,7 @@ CDP), ler o resultado, e pedir a você só o que só você pode — credencial, 
 cliente no seu login —, tudo num pedido só.
 
 O **modo contínuo** fica numa chave, `modoContinuo`, desligada por padrão (só o booleano `true` liga). Com ela,
-só três coisas pedem troca de chat: o tamanho da conversa (aviso a 250 mil, alarme a 450 mil, os padrões), os
+só três coisas pedem troca de chat: o tamanho da conversa (aviso a 175 mil, alarme a 450 mil, os padrões), os
 bloqueios de portão (quando chegam ao limiar `bloqueios`, 6 por padrão) e a sua pergunta sobre o contexto; revisões, decisões, commits, turnos e arquivos não encerram a sessão (o medidor os mostra com "modo
 contínuo: não dispara"). Em troca, o Claude relê o trecho do plano antes de cada subitem, decide sozinho a escolha
 técnica dentro do escopo (registra o motivo e lista no fecho) e só pergunta o irreversível, o externo, o de custo e
@@ -804,12 +815,12 @@ aviso não se repetir a cada sessão. Os prazos se ajustam em
 
 ### `/esquadro:calibrar` — o limiar de troca medido no seu projeto
 
-Os 250 mil tokens do aviso de troca de chat foram medidos nas conversas de um projeto só. O
+Os 175 mil tokens do aviso de troca de chat foram medidos nas conversas de um projeto só. O
 `scripts/calibrar.js` mede o seu: lê as transcrições que o Claude Code guarda do projeto (só a
 conversa principal; subagente fica de fora), calcula o custo de cada faixa de contexto e quanto custa
 uma troca aqui — escrever o handoff mais a rampa do chat novo —, e simula a troca no fim do seu turno
 para cada limiar de 150 mil até abaixo do alarme. Sugere o menor limiar em que trocar não sai mais
-caro que não trocar. Com menos de 30 sessões, ou menos de 10 conversas que chegaram a 250 mil, a
+caro que não trocar. Com menos de 30 sessões, ou menos de 10 conversas que chegaram ao padrão (175 mil), a
 amostra é pequena: fica o padrão, e ele diz por quê. Só números saem do script; nenhum trecho de
 conversa. Ele grava `limiares.tokensDeContexto` no `projeto.json` só com `--gravar`, que a skill só
 roda depois do seu sim. Mede dinheiro, não qualidade.

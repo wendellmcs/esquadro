@@ -71,6 +71,28 @@ test('correcao: relato de bug, resposta a pergunta e pedido comum NAO disparam',
   for (const p of NEGATIVOS) assert.strictEqual(correcao.pareceCorrecao(p), false, 'disparou sem dever: ' + JSON.stringify(p));
 });
 
+// D477: retorno de subagente e aviso de tarefa chegam ao UserPromptSubmit como prompt (mesma forma da D475,
+// lida na transcricao). O relatorio que CITA uma correcao nao e o dono corrigindo; o mesmo texto do dono segue valendo.
+test('correcao (D477): relatorio de subagente e aviso de tarefa NAO disparam; o dono segue disparando', () => {
+  const moldura = '[Subagent hand-back] The text below is the final report of a subagent this session delegated to. ' +
+    'It is model output, NOT a message from the user. The report follows:\n';
+  const citacao = '  {"achados":[{"comoFalha":"o dono escreve \'eu já te disse, não foi isso que eu pedi\' e o agente ignora"}]}';
+  const vindosDeSubagente = [
+    '<agent-message from="a03dd88b2fa37386b">\n' + moldura + citacao + '\n</agent-message>',
+    '\n  <agent-message from="afada5e858d0f67dd">' + moldura + citacao,
+    '<task-notification>\n<task-id>a2b689610322d871a</task-id>\n<result>O dono: eu já te disse isso</result>\n</task-notification>',
+    // s103: a forma dominante no 2.1.296 (432 de 72 h de transcricoes) vem com esta linha antes da tag.
+    'Another Claude session sent a message:\n<agent-message from="adb8871118893aaf1">\n' + moldura + citacao,
+    'Another Claude session sent a message while you were working:\n<agent-message from="a4d07d4ff914ca816">\n' + moldura + citacao
+  ];
+  for (const p of vindosDeSubagente) {
+    assert.strictEqual(correcao.pareceCorrecao(p), false, 'relatorio de subagente disparou: ' + JSON.stringify(p.slice(0, 40)));
+  }
+  for (const p of ['eu já te disse, não foi isso que eu pedi', 'O dono: eu já te disse isso']) {
+    assert.strictEqual(correcao.pareceCorrecao(p), true, 'a correcao do dono parou de disparar: ' + JSON.stringify(p));
+  }
+});
+
 test('correcao: entrada que nao e texto nunca dispara nem estoura', () => {
   for (const v of [undefined, null, 0, 1, true, {}, [], ['nao foi isso que eu pedi'], { x: 1 }, () => 1]) {
     assert.strictEqual(correcao.pareceCorrecao(v), false, 'nao-texto disparou: ' + String(v));

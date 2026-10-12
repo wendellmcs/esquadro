@@ -227,8 +227,8 @@ function uso(i, cr, cw, extra) {
   return Object.assign({ type: 'assistant', message: { usage: { input_tokens: i, cache_read_input_tokens: cr, cache_creation_input_tokens: cw, output_tokens: 9 } } }, extra || {});
 }
 
-test('D464: limiar padrao do contexto e 250000 tokens, com alarme em 450000', () => {
-  assert.strictEqual(saude.LIMIARES_PADRAO.tokensDeContexto, 250000);
+test('D475: limiar padrao do contexto e 175000 tokens (era 250000, D464), com alarme em 450000', () => {
+  assert.strictEqual(saude.LIMIARES_PADRAO.tokensDeContexto, 175000);
   assert.strictEqual(saude.LIMIARES_PADRAO.tokensAlarme, 450000);
 });
 
@@ -291,13 +291,13 @@ test('D445: contextoDoTranscript le so a cauda (transcript grande) e devolve nul
 
 test('D445: o gatilho de contexto cruza no limiar, respeita o do projeto e ignora valor que nao e numero', () => {
   const g = function (e, L) { return saude.medir(e, L).find(function (x) { return x.chave === 'tokensDeContexto'; }); };
-  assert.strictEqual(g({ tokensDeContexto: 249999 }).cruzou, false);
-  assert.strictEqual(g({ tokensDeContexto: 250000 }).cruzou, true);
+  assert.strictEqual(g({ tokensDeContexto: 174999 }).cruzou, false);
+  assert.strictEqual(g({ tokensDeContexto: 175000 }).cruzou, true);
   assert.strictEqual(g({ tokensDeContexto: 90000 }, { tokensDeContexto: 80000 }).cruzou, true);
   assert.strictEqual(g({ tokensDeContexto: '200000' }).cruzou, false);
   assert.strictEqual(g({ tokensDeContexto: '200000' }).valor, 0);
-  const r = saude.avaliar({ tokensDeContexto: 251000 });
+  const r = saude.avaliar({ tokensDeContexto: 176000 });
   assert.strictEqual(r.disparou, true);
-  assert.ok(/251000 tokens de contexto \(limiar 250000\)/.test(r.aviso), r.aviso);
+  assert.ok(/176000 tokens de contexto \(limiar 175000\)/.test(r.aviso), r.aviso);
   assert.ok(/^[\x20-\x7E\n]+$/.test(r.aviso), 'aviso ASCII (R5)');
 });
