@@ -7,7 +7,7 @@
 
 <p align="center">
   <strong>Um plugin do Claude Code que força o agente a provar em vez de afirmar.</strong><br>
-  Oito travas: seis portões de custo zero e dois dos cinco comandos. Todo portão é um script determinístico: nenhum modelo no meio.
+  Oito travas: seis portões de custo zero e dois dos seis comandos. Todo portão é um script determinístico: nenhum modelo no meio.
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
   <a href="#como-instalar">Instalar</a> ·
   <a href="#um-exemplo-do-começo-ao-fim">Exemplo</a> ·
   <a href="#as-oito-travas">As travas</a> ·
-  <a href="#os-cinco-comandos">Os comandos</a> ·
+  <a href="#os-seis-comandos">Os comandos</a> ·
   <a href="#o-que-ele-já-pegou-em-uso-real">Casos reais</a> ·
   <a href="#o-que-o-esquadro-não-promete">O que não promete</a>
 </p>
@@ -319,7 +319,7 @@ Se surgiu a duvida "ja e hora?", ja era.
 
 ### O aviso de troca de chat: o que dispara, o que não, e como conferir
 
-O aviso sai **uma vez por sessão**, no fim do turno, e vai para dois lugares: para você (a mensagem
+O aviso sai **uma vez por sessão** (mais o alarme de tamanho, abaixo), no fim do turno, e vai para dois lugares: para você (a mensagem
 acima) e para o Claude, que recebe a ordem de rodar `/esquadro:handoff`, dizer com todas as letras
 que é hora de abrir chat novo, citando o gatilho, e colar o prompt pronto em bloco de código, sem
 perguntar "sigo?" antes. Se o turno já gravou o handoff e a resposta final já tem um bloco de código
@@ -335,9 +335,11 @@ se soma ao laço: espera o próximo fim de turno com trabalho.
 | arquivos tocados | `arquivosTocados` | 25 |
 | decisões suas respondidas (as perguntas de escolha do Claude) | `decisoesDoDono` | 3 |
 | commits que passaram | `commits` | 3 |
-| tamanho da conversa, em tokens de contexto | `tokensDeContexto` | 150000 |
+| tamanho da conversa, em tokens de contexto | `tokensDeContexto` | 250000 |
+| alarme de tamanho: segundo aviso, firme, mesmo depois do primeiro | `tokensAlarme` | 450000 |
 
-Basta um. Sem `projeto.json`, valem os padrões da tabela; com ele, só as chaves que você escreve
+Basta um (com o modo contínuo ligado, só o tamanho, o alarme, os bloqueios e a sua pergunta sobre o
+contexto: ver "Menos paradas e modo contínuo"). Sem `projeto.json`, valem os padrões da tabela; com ele, só as chaves que você escreve
 mudam. O commit entra com 3, e não 1, porque o aviso sai uma vez só: com 1, todo mundo que commita
 receberia o aviso no primeiro commit. A auditoria automática usa mais duas chaves de `limiares`, que
 não são gatilho de troca de chat: `diasEntreAuditorias` e `diasSkillParada` (ver `/esquadro:auditar`).
@@ -351,9 +353,13 @@ no módulo") não dispara.
 **O tamanho da conversa conta** (desde a 0.6.2). O fim de turno não recebe esse número, mas recebe o
 caminho do registro da sessão que o Claude Code grava; o plugin lê o fim desse registro e soma o
 contexto da última resposta. Como o registro é gravado com atraso, a leitura pode vir um turno
-atrasada. Por que 150 mil: nas sessões medidas pelo autor, as chamadas acima disso eram 61% do total e
-71% do custo, e abrir chat novo custa menos que seguir. O medidor (`/esquadro-sessao`) usa o número ao
-vivo.
+atrasada. Por que 250 mil (desde a 0.7.0; antes era 150 mil): nas 435 sessões medidas pelo autor, abrir
+chat novo custa o handoff mais a rampa — o chat novo só faz a primeira edição com ~119 mil tokens —, e
+trocar no fim de turno a 150 mil saía 9% mais caro que não trocar; a 250 mil empata. Para medir no
+seu projeto, rode `/esquadro:calibrar`. O erro de ferramenta não subiu com o contexto até 500 mil. O aviso sai só no fim de turno, nunca no meio da
+tarefa. **O alarme** (`tokensAlarme`) é o segundo aviso, mais firme, que sai uma vez mesmo depois do
+primeiro: acima de 500 mil cada chamada custa cerca de 4 vezes a de 200–300 mil. O medidor
+(`/esquadro-sessao`) usa o número ao vivo.
 
 **O que não dispara:** erro de medição (contagem errada, número lido do lugar errado). Hook não o
 enxerga — ele dispara em ferramenta —, então o plugin não finge contá-lo. Para esse, vale a sua
@@ -605,6 +611,22 @@ Tokens de saída, somados nas 12 execuções de cada condição: resposta padrã
 
 ---
 
+## Menos paradas e modo contínuo
+
+Desde a 0.7.0, a abertura de toda sessão injeta, entre o bloco de paralelismo e o de qualidade, a regra de
+**validar pelo próprio agente antes de pedir ação manual**: rodar o teste, abrir o navegador (Claude in Chrome ou
+CDP), ler o resultado, e pedir a você só o que só você pode — credencial, publicar ou implantar, tela com dado de
+cliente no seu login —, tudo num pedido só.
+
+O **modo contínuo** fica numa chave, `modoContinuo`, desligada por padrão (só o booleano `true` liga). Com ela,
+só três coisas pedem troca de chat: o tamanho da conversa (aviso a 250 mil, alarme a 450 mil, os padrões), os
+bloqueios de portão (quando chegam ao limiar `bloqueios`, 6 por padrão) e a sua pergunta sobre o contexto; revisões, decisões, commits, turnos e arquivos não encerram a sessão (o medidor os mostra com "modo
+contínuo: não dispara"). Em troca, o Claude relê o trecho do plano antes de cada subitem, decide sozinho a escolha
+técnica dentro do escopo (registra o motivo e lista no fecho) e só pergunta o irreversível, o externo, o de custo e
+o de produto. Ligar: `"modoContinuo": true` em `.claude/esquadro/projeto.json`.
+
+---
+
 ## Trabalho em paralelo
 
 Desde a 0.6.2, a abertura de toda sessão injeta, antes do bloco de qualidade, quatro regras curtas: agente rodando em
@@ -633,7 +655,7 @@ de aprovação aparecer na primeira execução, escolha "Yes, and don't ask agai
 
 ---
 
-## Os cinco comandos
+## Os seis comandos
 
 | Comando | O que faz |
 |---|---|
@@ -642,13 +664,14 @@ de aprovação aparecer na primeira execução, escolha "Yes, and don't ask agai
 | `/esquadro:aprender` | Transforma uma correção sua em regra proposta no formato `gatilho -> ação`, mostra pronta, e **só grava depois de aprovação explícita**. |
 | `/esquadro:handoff` | Gera o texto de continuação para um chat novo: caminhos, `HEAD`, em que etapa o trabalho está, decisões já tomadas, pendências e erros de método que custaram tempo. Confere os fatos no disco, não na memória. |
 | `/esquadro:auditar` | Mede o peso de instrução do projeto contra um teto e aponta o que cortar: skills que se sobrepõem, regras que se contradizem e itens fora da rubrica. Não acrescenta — poda. |
+| `/esquadro:calibrar` | Mede, nas conversas do seu projeto, a partir de quantos tokens de contexto trocar de chat ainda compensa, e sugere o limiar de troca. **Só grava no `projeto.json` com o seu sim.** |
 
-A sexta skill instalada, `padrao`, **não é comando**: é o manual de execução, que o agente carrega
+A sétima skill instalada, `padrao`, **não é comando**: é o manual de execução, que o agente carrega
 no começo da tarefa e que traz junto a conferência do mapa de modelos deste projeto.
 
-Dos cinco comandos, só os dois primeiros são travas — a 1 e a 2. Os outros três **não são travas**: `aprender` é o
+Dos seis comandos, só os dois primeiros são travas — a 1 e a 2. Os outros quatro **não são travas**: `aprender` é o
 autoaprimoramento mínimo — o plugin **não aprende sozinho**, ele transforma correção em proposta e
-espera o OK; `handoff` e `auditar` são ferramentas de manutenção, e nenhum dos dois bloqueia nada.
+espera o OK; `handoff`, `auditar` e `calibrar` são ferramentas de manutenção, e nenhum dos três bloqueia nada.
 
 ---
 
@@ -778,6 +801,18 @@ mandando rodar `/esquadro:auditar`, que mostra o relatório inteiro; a data é g
 aviso não se repetir a cada sessão. Os prazos se ajustam em
 `limiares`, no `projeto.json`: `diasEntreAuditorias` (padrão 7) e `diasSkillParada` (padrão 90). Desliga com
 `"auditarNaAbertura": false`; sem a chave, fica ligado. Sem `projeto.json` ela não roda.
+
+### `/esquadro:calibrar` — o limiar de troca medido no seu projeto
+
+Os 250 mil tokens do aviso de troca de chat foram medidos nas conversas de um projeto só. O
+`scripts/calibrar.js` mede o seu: lê as transcrições que o Claude Code guarda do projeto (só a
+conversa principal; subagente fica de fora), calcula o custo de cada faixa de contexto e quanto custa
+uma troca aqui — escrever o handoff mais a rampa do chat novo —, e simula a troca no fim do seu turno
+para cada limiar de 150 mil até abaixo do alarme. Sugere o menor limiar em que trocar não sai mais
+caro que não trocar. Com menos de 30 sessões, ou menos de 10 conversas que chegaram a 250 mil, a
+amostra é pequena: fica o padrão, e ele diz por quê. Só números saem do script; nenhum trecho de
+conversa. Ele grava `limiares.tokensDeContexto` no `projeto.json` só com `--gravar`, que a skill só
+roda depois do seu sim. Mede dinheiro, não qualidade.
 
 ### `padrao` — o manual que o agente carrega
 

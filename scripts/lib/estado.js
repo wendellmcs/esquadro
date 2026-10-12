@@ -169,7 +169,7 @@ function limparVelhos(sessionIdAtual, agoraMs, opcoes) {
  *
  * CAMPOS_DA_SESSAO: o fecho os carrega como estao - os avisos de "uma vez por sessao"
  * e os registros. Os que o proprio fecho recalcula (turnosComTrabalho, gitAbertura,
- * arquivosTocados, contadoresSessao, avisouSaude, tokensDeContexto) nao entram: sao dele.
+ * arquivosTocados, contadoresSessao, avisouSaude, avisouAlarme, tokensDeContexto) nao entram: sao dele.
  * CAMPOS_DO_TURNO: morrem no fecho, de proposito.
  */
 const CAMPOS_DA_SESSAO = ['avisouSemConfig', 'avisouTipoErrado', 'avisouApelido', 'gatilho3', 'abertoEm',

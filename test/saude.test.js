@@ -227,8 +227,42 @@ function uso(i, cr, cw, extra) {
   return Object.assign({ type: 'assistant', message: { usage: { input_tokens: i, cache_read_input_tokens: cr, cache_creation_input_tokens: cw, output_tokens: 9 } } }, extra || {});
 }
 
-test('D445: limiar padrao do contexto e 150000 tokens', () => {
-  assert.strictEqual(saude.LIMIARES_PADRAO.tokensDeContexto, 150000);
+test('D464: limiar padrao do contexto e 250000 tokens, com alarme em 450000', () => {
+  assert.strictEqual(saude.LIMIARES_PADRAO.tokensDeContexto, 250000);
+  assert.strictEqual(saude.LIMIARES_PADRAO.tokensAlarme, 450000);
+});
+
+test('D464: o alarme sai uma vez a partir de 450000, mesmo depois do aviso de saude', () => {
+  const abaixo = saude.avaliar({ avisouSaude: true, tokensDeContexto: 449999 });
+  assert.strictEqual(abaixo.disparou, false);
+  const r = saude.avaliar({ avisouSaude: true, tokensDeContexto: 452000 });
+  assert.strictEqual(r.disparou, true);
+  assert.strictEqual(r.alarme, true);
+  assert.ok(/ALARME/.test(r.aviso), r.aviso);
+  assert.ok(r.gatilhos.some(function (g) { return /452000 tokens de contexto \(alarme 450000\)/.test(g); }), JSON.stringify(r.gatilhos));
+  assert.ok(/^[\x20-\x7E\n]+$/.test(r.aviso), 'aviso ASCII (R5)');
+  // uma vez so: com o alarme dado, nada mais sai
+  assert.strictEqual(saude.avaliar({ avisouSaude: true, avisouAlarme: true, tokensDeContexto: 600000 }).disparou, false);
+  // valor que nao e numero nunca vira alarme
+  assert.strictEqual(saude.avaliar({ avisouSaude: true, tokensDeContexto: '500000' }).disparou, false);
+});
+
+test('D464: acima do alarme sem aviso anterior, sai um aviso so - o de alarme, com o gatilho de tamanho', () => {
+  const r = saude.avaliar({ tokensDeContexto: 460000 });
+  assert.strictEqual(r.disparou, true);
+  assert.strictEqual(r.alarme, true);
+  assert.ok(/ALARME/.test(r.aviso), r.aviso);
+  assert.ok(r.gatilhos.some(function (g) { return /460000 tokens de contexto \(alarme 450000\)/.test(g); }), JSON.stringify(r.gatilhos));
+  // abaixo do alarme o aviso e o comum, sem ALARME
+  const comum = saude.avaliar({ tokensDeContexto: 300000 });
+  assert.strictEqual(comum.disparou, true);
+  assert.strictEqual(comum.alarme, false);
+  assert.ok(!/ALARME/.test(comum.aviso), comum.aviso);
+});
+
+test('D464: o alarme respeita o limiar do projeto', () => {
+  assert.strictEqual(saude.avaliar({ avisouSaude: true, tokensDeContexto: 310000 }, { tokensAlarme: 300000 }).alarme, true);
+  assert.strictEqual(saude.avaliar({ avisouSaude: true, tokensDeContexto: 310000 }).disparou, false);
 });
 
 test('D445: contextoDoTranscript soma input + cache_read + cache_creation do ULTIMO usage da linha principal', () => {
@@ -257,13 +291,13 @@ test('D445: contextoDoTranscript le so a cauda (transcript grande) e devolve nul
 
 test('D445: o gatilho de contexto cruza no limiar, respeita o do projeto e ignora valor que nao e numero', () => {
   const g = function (e, L) { return saude.medir(e, L).find(function (x) { return x.chave === 'tokensDeContexto'; }); };
-  assert.strictEqual(g({ tokensDeContexto: 149999 }).cruzou, false);
-  assert.strictEqual(g({ tokensDeContexto: 150000 }).cruzou, true);
+  assert.strictEqual(g({ tokensDeContexto: 249999 }).cruzou, false);
+  assert.strictEqual(g({ tokensDeContexto: 250000 }).cruzou, true);
   assert.strictEqual(g({ tokensDeContexto: 90000 }, { tokensDeContexto: 80000 }).cruzou, true);
   assert.strictEqual(g({ tokensDeContexto: '200000' }).cruzou, false);
   assert.strictEqual(g({ tokensDeContexto: '200000' }).valor, 0);
-  const r = saude.avaliar({ tokensDeContexto: 151000 });
+  const r = saude.avaliar({ tokensDeContexto: 251000 });
   assert.strictEqual(r.disparou, true);
-  assert.ok(/151000 tokens de contexto \(limiar 150000\)/.test(r.aviso), r.aviso);
+  assert.ok(/251000 tokens de contexto \(limiar 250000\)/.test(r.aviso), r.aviso);
   assert.ok(/^[\x20-\x7E\n]+$/.test(r.aviso), 'aviso ASCII (R5)');
 });

@@ -762,14 +762,18 @@ function abrirComStdinCru(dir, bruto) {
 const paralelismo = require('../scripts/lib/paralelismo.js');
 const TITULO_P = '# esquadro - trabalho em paralelo';
 
+const continuo = require('../scripts/lib/continuo.js');
+const TITULO_C = '# esquadro - menos paradas';
+
 // D451 (0.6.2): o bloco de paralelismo sai antes do de qualidade, e os dois so eles quando nao ha projeto.
-test('fiacao: sem projeto.json a abertura imprime o bloco de paralelismo e o de qualidade, e so eles, nas 4 origens', () => {
+// D467 (0.7.0): entre os dois, o de menos paradas.
+test('fiacao: sem projeto.json a abertura imprime os blocos de paralelismo, menos paradas e qualidade, e so eles, nas 4 origens', () => {
   for (const origem of ORIGENS_Q) {
     const dir = temp('qualidade-sem-projeto');
     try {
       const r = rodar('abertura.js', dir, { session_id: 'q1-' + origem, cwd: dir, source: origem });
       assert.strictEqual(r.status, 0, r.stderr);
-      assert.strictEqual(r.stdout, paralelismo.BLOCO + '\n' + qualidade.BLOCO, origem + ': ' + JSON.stringify(r.stdout));
+      assert.strictEqual(r.stdout, paralelismo.BLOCO + '\n' + continuo.bloco(null) + '\n' + qualidade.BLOCO, origem + ': ' + JSON.stringify(r.stdout));
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 });
@@ -873,15 +877,32 @@ test('fiacao: sessao numa subpasta herda o false do projeto acima (e sem o false
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('fiacao: abertura com stdin vazio ou JSON invalido sai com 0 e imprime os blocos de paralelismo e de qualidade', () => {
+test('fiacao: abertura com stdin vazio ou JSON invalido sai com 0 e imprime os blocos de paralelismo, menos paradas e qualidade', () => {
   for (const [nome, bruto] of [['vazio', ''], ['invalido', '{isso nao e json']]) {
     const dir = temp('qualidade-stdin-' + nome);
     try {
       const r = abrirComStdinCru(dir, bruto);
       assert.strictEqual(r.status, 0, nome + ': ' + r.stderr);
-      assert.strictEqual(r.stdout, paralelismo.BLOCO + '\n' + qualidade.BLOCO, nome + ': ' + JSON.stringify(r.stdout));
+      assert.strictEqual(r.stdout, paralelismo.BLOCO + '\n' + continuo.bloco(null) + '\n' + qualidade.BLOCO, nome + ': ' + JSON.stringify(r.stdout));
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
+});
+
+test('fiacao: o bloco de menos paradas sai entre paralelismo e qualidade, e com a chave traz o modo continuo', () => {
+  const dir = temp('continuo-chave');
+  try {
+    projetoComRegras(dir, { paralelismo: false, modoContinuo: true });
+    const r = rodar('abertura.js', dir, { session_id: 'c1', cwd: dir, source: 'startup' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(r.stdout.includes(continuo.bloco({ modoContinuo: true })), r.stdout);
+    projetoComRegras(dir);
+    const l = rodar('abertura.js', dir, { session_id: 'c2', cwd: dir, source: 'startup' });
+    const iP = l.stdout.indexOf(TITULO_P);
+    const iC = l.stdout.indexOf(TITULO_C);
+    const iQ = l.stdout.indexOf(TITULO_Q);
+    assert.ok(iP !== -1 && iP < iC && iC < iQ, 'ordem: paralelismo, menos paradas, qualidade: ' + l.stdout);
+    assert.ok(!l.stdout.includes('Modo continuo ligado'), 'sem a chave nao diz que esta ligado: ' + l.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 // ------------------------------- ronda 1 do Passo 8b: ler tambem e procurar

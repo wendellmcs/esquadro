@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.7.0 — menos paradas
+
+**Mudado**
+
+- **Troca de chat por tamanho: o padrao passa de 150 mil para 250 mil tokens.** Medido em 435 sessoes:
+  abrir chat novo custa escrever o handoff (o texto de continuacao) mais a rampa (o chat novo so faz a
+  primeira edicao com ~119 mil tokens de contexto), e trocar no fim do turno a 150 mil saia 9% mais caro
+  que nao trocar; a 250 mil empata. O aviso continua saindo so no fim do turno, nunca no meio da tarefa.
+  Chave: `limiares.tokensDeContexto`. Quem ja gravou essa chave no `projeto.json` fica com o numero dela;
+  para voltar ao antigo, grave `150000` nela.
+
+**Novo**
+
+- **Alarme a 450 mil tokens** (`limiares.tokensAlarme`). Um segundo aviso, mais firme, que sai uma vez
+  mesmo depois do primeiro: acima de 500 mil cada chamada custa cerca de 4 vezes a de 200 a 300 mil.
+- **Validar antes de pedir.** A abertura de toda sessao injeta, entre o bloco de paralelismo e o de
+  qualidade, a regra de o agente validar sozinho (rodar o teste, abrir o navegador pelo Claude in Chrome
+  ou pelo protocolo de depuracao do Chrome, ler o resultado) antes de pedir acao manual, e pedir so o que
+  so voce pode, tudo num pedido so. Vale com e sem o modo continuo, e nao tem chave para desligar. A
+  skill `padrao` traz a mesma regra.
+- **Modo continuo** (`"modoContinuo": true` em `.claude/esquadro/projeto.json`, desligado por padrao).
+  So o booleano `true` liga. Com ele, so tres coisas pedem troca de chat: o tamanho da conversa (aviso e
+  alarme), os bloqueios de portao (no limiar `limiares.bloqueios`, 6 por padrao) e a sua pergunta sobre
+  o contexto; revisoes, decisoes, commits, turnos e arquivos nao encerram a sessao. Em troca, o agente
+  rele o plano antes de cada subitem, decide sozinho a escolha tecnica dentro do escopo e lista no fecho;
+  a voce ele segue perguntando o irreversivel, o externo (publicar, push, envio), o de custo e o de produto.
+- **`/esquadro:calibrar`.** Le as transcricoes que o Claude Code guarda deste projeto (so a conversa
+  principal), mede a partir de quantos tokens trocar de chat ainda compensa e sugere o limiar. So numeros
+  saem do script, nenhum trecho de conversa. Com menos de 30 sessoes, ou menos de 10 conversas que chegaram
+  ao limiar padrao, a amostra e pequena e o limiar atual fica. Ele so grava no `projeto.json` com
+  `--gravar` (aceita de 50000 ate abaixo do alarme), que a skill so roda depois do seu sim.
+
 ## 0.6.6 — dois erros calados passam a avisar
 
 **Corrigido**

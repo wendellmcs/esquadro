@@ -76,8 +76,11 @@ io.blindar(function () {
     // D451: a regra de paralelismo, antes da qualidade e no mesmo molde; so `paralelismo: false` desliga.
     const paralelo = require('./lib/paralelismo.js').bloco(projeto);
     if (paralelo) process.stdout.write((texto ? '\n' : '') + paralelo);
+    // D467: menos paradas, entre paralelismo e qualidade; sai sempre (com a chave modoContinuo, com o modo continuo).
+    const continuo = require('./lib/continuo.js').bloco(projeto);
+    process.stdout.write((texto || paralelo ? '\n' : '') + continuo);
     const qualidade = require('./lib/qualidade.js').bloco(projeto);
-    if (qualidade) process.stdout.write((texto || paralelo ? '\n' : '') + qualidade);
+    if (qualidade) process.stdout.write('\n' + qualidade);
     const heranca = require('./lib/escopo.js').avisoHeranca(cwd, estado.ler(e.session_id).frente);
     if (heranca) process.stdout.write('\n' + heranca + '\n');
 

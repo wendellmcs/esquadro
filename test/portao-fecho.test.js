@@ -973,23 +973,61 @@ test('S52-fec-1: plano ativo que nao pode ser lido nao passa calado - o fecho av
   });
 });
 
-// D445 (0.6.2): o Stop le o tamanho do contexto do transcript_path e dispara a troca a partir de 150000.
+// D445 (0.6.2): o Stop le o tamanho do contexto do transcript_path e dispara a troca; D464 (0.7.0): a partir de 250000.
 test('D445: o fecho le o transcript_path e avisa a troca de chat acima do limiar de contexto', () => {
   comTmp((tmp) => {
     const dir = projetoQueDispara(tmp, 'ctx', { turnosComTrabalho: 999 });
     const linha = (n) => JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: n, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }) + '\n';
     const baixo = path.join(tmp, 'baixo.jsonl');
-    fs.writeFileSync(baixo, linha(149000));
+    fs.writeFileSync(baixo, linha(249000));
     const r1 = turnoComTrabalho(tmp, 'ctx1', dir, { transcript_path: baixo });
     assert.strictEqual(r1.json, null, 'abaixo do limiar nao avisa: ' + r1.stdout);
-    assert.strictEqual(sessaoDe(tmp, 'ctx1').tokensDeContexto, 149000, 'o fecho grava a leitura no estado (o medidor le)');
+    assert.strictEqual(sessaoDe(tmp, 'ctx1').tokensDeContexto, 249000, 'o fecho grava a leitura no estado (o medidor le)');
     const alto = path.join(tmp, 'alto.jsonl');
-    fs.writeFileSync(alto, linha(1000) + linha(150500));
+    fs.writeFileSync(alto, linha(1000) + linha(250500));
     const r2 = turnoComTrabalho(tmp, 'ctx2', dir, { transcript_path: alto });
     assert.ok(r2.json && /chat novo/.test(r2.json.systemMessage), 'acima do limiar avisa: ' + r2.stdout);
-    assert.ok(/150500 tokens de contexto \(limiar 150000\)/.test(r2.json.hookSpecificOutput.additionalContext), r2.stdout);
+    assert.ok(/250500 tokens de contexto \(limiar 250000\)/.test(r2.json.hookSpecificOutput.additionalContext), r2.stdout);
     const r3 = turnoComTrabalho(tmp, 'ctx3', dir, { transcript_path: path.join(tmp, 'sumiu.jsonl') });
     assert.strictEqual(r3.status, 0, 'transcript ausente nunca derruba o fecho: ' + r3.stderr);
     assert.strictEqual(r3.json, null, r3.stdout);
+  });
+});
+
+// D464 (0.7.0): depois do aviso de saude (uma vez por sessao), o alarme de 450000 sai uma vez, no fim de turno.
+test('D464: o fecho da o alarme de 450000 depois do aviso, uma vez so, e nao o marca em laco', () => {
+  comTmp((tmp) => {
+    const dir = projetoQueDispara(tmp, 'alarme', { turnosComTrabalho: 999 });
+    const linha = (n) => JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: n, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }) + '\n';
+    const com = (n) => { const f = path.join(tmp, 't' + n + '.jsonl'); fs.writeFileSync(f, linha(n)); return f; };
+    const r1 = turnoComTrabalho(tmp, 'al', dir, { transcript_path: com(300000) });
+    assert.ok(r1.json && /chat novo/.test(r1.json.systemMessage) && !/ALARME/.test(r1.json.systemMessage), r1.stdout);
+    assert.strictEqual(sessaoDe(tmp, 'al').avisouSaude, true);
+    const r2 = turnoComTrabalho(tmp, 'al', dir, { transcript_path: com(400000) });
+    assert.strictEqual(r2.json, null, 'entre o aviso e o alarme, nada: ' + r2.stdout);
+    // em laco (stop_hook_active) o alarme fica pendente para o proximo Stop
+    const laco = turnoComTrabalho(tmp, 'al', dir, { transcript_path: com(455000), stop_hook_active: true });
+    assert.ok(!laco.json || !/ALARME/.test(laco.json.systemMessage || ''), laco.stdout);
+    assert.ok(!sessaoDe(tmp, 'al').avisouAlarme, 'em laco o avisouAlarme nao pode ser marcado');
+    const r3 = turnoComTrabalho(tmp, 'al', dir, { transcript_path: com(460000) });
+    assert.ok(r3.json && /ALARME/.test(r3.json.systemMessage), 'o alarme sai: ' + r3.stdout);
+    assert.ok(/460000 tokens de contexto \(alarme 450000\)/.test(r3.json.hookSpecificOutput.additionalContext), r3.stdout);
+    assert.strictEqual(sessaoDe(tmp, 'al').avisouAlarme, true);
+    assert.strictEqual(sessaoDe(tmp, 'al').avisouSaude, true);
+    const r4 = turnoComTrabalho(tmp, 'al', dir, { transcript_path: com(470000) });
+    assert.strictEqual(r4.json, null, 'o alarme sai uma vez so: ' + r4.stdout);
+  });
+});
+
+// D468 (0.7.0): com "modoContinuo": true no projeto, o gatilho de turnos nao pede troca no fim de turno.
+test('D468: o fecho le a chave modoContinuo do projeto e cala os gatilhos contaveis dela', () => {
+  comTmp((tmp) => {
+    const dir = projetoQueDispara(tmp, 'cont', { turnosComTrabalho: 1 });
+    const pj = path.join(dir, '.claude', 'esquadro', 'projeto.json');
+    const controle = turnoComTrabalho(tmp, 'cont0', dir);
+    assert.ok(controle.json && /chat novo/.test(controle.json.systemMessage), 'controle sem a chave: ' + controle.stdout);
+    fs.writeFileSync(pj, JSON.stringify(Object.assign(JSON.parse(fs.readFileSync(pj, 'utf8')), { modoContinuo: true })), 'utf8');
+    const r = turnoComTrabalho(tmp, 'cont1', dir);
+    assert.strictEqual(r.json, null, 'com a chave o gatilho de turnos cala: ' + r.stdout);
   });
 });

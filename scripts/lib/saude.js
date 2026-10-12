@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const { CALADOS } = require('./continuo.js');
 
 // Gatilhos CONTAVEIS, do arquivo de regras do projeto. Basta UM; nao e preciso somar.
 // O que nao da para contar nao vira gatilho fingido: fica de fora. O tamanho do contexto conta desde a
@@ -12,7 +13,11 @@ const LIMIARES_PADRAO = {
   arquivosTocados: 25,     // diff largo demais para caber na cabeca
   decisoesDoDono: 3,       // T10-2: respostas do dono a AskUserQuestion
   commits: 3,              // T10-3: git commit que passou (3, nao 1: o aviso sai uma vez por sessao)
-  tokensDeContexto: 150000 // D445: medido na s73, 61% das chamadas acima de 150K somavam 71% do custo
+  // D464 (revoga o 150000 da D445): 435 sessoes medidas; trocar no fim de turno do dono a 250K empata com
+  // nao trocar (-0,5% de custo), abaixo disso a troca (US$ 3,40 + rampa ate 119K) sai mais cara.
+  tokensDeContexto: 250000,
+  // D464: re-aviso firme, uma vez, mesmo depois do aviso de saude: acima de 500K a chamada custa 4x a de 200-300K.
+  tokensAlarme: 450000
 };
 
 // D445: so a cauda do transcript (ele passa de MB numa sessao longa); o ultimo `usage` esta no fim.
@@ -83,7 +88,14 @@ function soma(contadores, chaves) {
  * medidor da sessao mostra. Fonte unica da regra: `avaliar` monta os gatilhos daqui.
  * Diferente do `avaliar`, nao se cala com `avisouSaude`: o aviso ja dado nao zera o painel.
  */
-function medir(estado, limiares) {
+function medir(estado, limiares, continuo) {
+  return medirTodos(estado, limiares).map(function (g) {
+    // D468: com o modo continuo (so o booleano true), os gatilhos da lista do continuo.js nao cruzam.
+    return continuo === true && CALADOS.indexOf(g.chave) !== -1 ? Object.assign(g, { cruzou: false, calado: true }) : g;
+  });
+}
+
+function medirTodos(estado, limiares) {
   const e = estado || {};
   const L = Object.assign({}, LIMIARES_PADRAO, limiares || {});
   const c = e.contadores || {};
@@ -131,24 +143,40 @@ function acumular(estado) {
   return acumulados;
 }
 
-function avaliar(estado, limiares) {
+/**
+ * O aviso de saude sai uma vez por sessao (`avisouSaude`). D464: o alarme de tamanho (`tokensAlarme`) e
+ * um segundo aviso, firme, que sai uma vez (`avisouAlarme`) mesmo depois do primeiro; acima dele sem
+ * aviso anterior, sai um aviso so, o de alarme, com o gatilho de tamanho trocado pelo do alarme.
+ */
+function avaliar(estado, limiares, continuo) {
   const e = estado || {};
-  if (e.avisouSaude) return { disparou: false, gatilhos: [], aviso: null };
+  const L = Object.assign({}, LIMIARES_PADRAO, limiares || {});
+  // typeof, como no medir: estado corrompido nunca vira alarme.
+  const alarme = typeof e.tokensDeContexto === 'number' && e.avisouAlarme !== true &&
+    e.tokensDeContexto >= L.tokensAlarme;
+  if (e.avisouSaude && !alarme) return { disparou: false, alarme: false, gatilhos: [], aviso: null };
 
-  const gatilhos = medir(e, limiares)
-    .filter(function (g) { return g.cruzou; })
-    .map(function (g) { return g.texto; });
+  let cruzados = e.avisouSaude ? [] : medir(e, limiares, continuo).filter(function (g) { return g.cruzou; });
+  if (alarme) {
+    cruzados = cruzados.filter(function (g) { return g.chave !== 'tokensDeContexto'; });
+    cruzados.push({ texto: e.tokensDeContexto + ' tokens de contexto (alarme ' + L.tokensAlarme + ')' });
+  }
+  const gatilhos = cruzados.map(function (g) { return g.texto; });
 
-  if (!gatilhos.length) return { disparou: false, gatilhos: [], aviso: null };
+  if (!gatilhos.length) return { disparou: false, alarme: false, gatilhos: [], aviso: null };
 
-  const aviso = [
+  const aviso = (alarme ? [
+    'esquadro - ALARME: a conversa passou do tamanho em que cada chamada custa varias vezes a de um chat novo.',
+    gatilhos.map(function (g) { return '  - ' + g; }).join('\n'),
+    'Troque de chat agora: rode /esquadro:handoff, cole o prompt pronto num chat novo, e continue de la.'
+  ] : [
     'esquadro - hora de abrir chat novo. Gatilho contavel disparou:',
     gatilhos.map(function (g) { return '  - ' + g; }).join('\n'),
     'Rode /esquadro:handoff, cole o prompt pronto num chat novo, e continue de la.',
     'Se surgiu a duvida "ja e hora?", ja era.'
-  ].join('\n');
+  ]).join('\n');
 
-  return { disparou: true, gatilhos: gatilhos, aviso: aviso };
+  return { disparou: true, alarme: alarme, gatilhos: gatilhos, aviso: aviso };
 }
 
 /**

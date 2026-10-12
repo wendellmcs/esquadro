@@ -25,7 +25,8 @@ const LISTAS_LIDAS = ['comandosLiberados', 'comandosBloqueados', 'intocaveis'];
 // D442/5 (S-35, S-68): as seis chaves de liga/desliga do topo. Quem le testa `=== false` (ou `=== true`, no
 // vigia, que e opt-in): so o booleano decide (D388, D415) - `"false"` entre aspas NAO desliga. Por isso o valor
 // torto e avisado na abertura (abertura.js), reprovado em validar() e aceito pelo re-init.
-const CHAVES_LIGA_DESLIGA = ['sugerirAprender', 'auditarNaAbertura', 'qualidadeDeResposta', 'portaoDecisao', 'portaoHandoff', 'vigia', 'paralelismo'];
+// D468 (0.7.0): `modoContinuo` e opt-in como o vigia (so `=== true` liga, continuo.js).
+const CHAVES_LIGA_DESLIGA = ['sugerirAprender', 'auditarNaAbertura', 'qualidadeDeResposta', 'portaoDecisao', 'portaoHandoff', 'vigia', 'paralelismo', 'modoContinuo'];
 
 // Padrao que NUNCA casa um alvo relativo: letra de unidade (C: ou C:\) ou esquema
 // (file://). O alvo que chega aos portoes e sempre relativo a raiz do projeto

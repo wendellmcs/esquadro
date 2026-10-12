@@ -32,7 +32,7 @@ try {
   resposta = medidor.linhaDaSessao({
     uso: entrada.uso,
     amostras: entrada.amostras,
-    medidas: saude.medir(conta, projeto && projeto.limiares),
+    medidas: saude.medir(conta, projeto && projeto.limiares, require('./lib/continuo.js').ativo(projeto)),
     avisouSaude: s.avisouSaude === true
   });
 } catch (e) {

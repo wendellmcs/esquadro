@@ -267,6 +267,8 @@ registro repetidas vezes, o problema deixou de ser disciplina e passou a ser cal
 
 ## 6. Saúde de contexto e troca de chat
 
+Com o modo contínuo ligado, valem só os gatilhos do parágrafo "Modo contínuo", mais abaixo.
+
 O desvio começa quando o plano passa a ser executado de memória. Gatilhos **contáveis** — basta
 **um**:
 
@@ -275,7 +277,8 @@ O desvio começa quando o plano passa a ser executado de memória. Gatilhos **co
 - 2 ou mais tarefas com revisão independente fechadas nesta conversa;
 - 3 ou mais decisões do dono registradas nesta conversa;
 - 2 ou mais erros próprios de medição ou instrumento na mesma conversa;
-- a conversa passou de 150 mil tokens de contexto (o fim de turno do plugin mede e avisa);
+- a conversa passou de 250 mil tokens de contexto (o fim de turno do plugin mede e avisa, só no fim
+  de turno, nunca no meio da tarefa; acima de 450 mil sai um alarme firme, uma vez);
 - qualquer incidente que exigiu cirurgia (histórico git, ambiente, sessão concorrente);
 - você conseguiria responder sobre o plano sem reabri-lo;
 - o usuário perguntou se o contexto está bom — a pergunta **é** a resposta.
@@ -290,6 +293,21 @@ Handoff em `{{texto:ondeHandoff}}`. Conteúdo obrigatório em
 [05-governanca.md](references/05-governanca.md).
 
 **Se surgiu a dúvida "já é hora?", já era.**
+
+**Sempre: validar pelo próprio agente antes de pedir ação manual.** Rodar o teste, abrir o navegador
+(Claude in Chrome ou CDP), ler o resultado. Pedir a `{{campo:quemDecide}}` só o que só ele pode —
+credencial, publicar ou implantar, tela com dado de cliente no login dele — e juntar tudo num pedido só.
+
+**Modo contínuo (chave `modoContinuo` no `projeto.json`).** Só o booleano `true` liga; sem a chave, com
+outro valor ou sem o arquivo, fica desligado. A abertura da sessão diz se está ligado. Ligado, só quatro
+coisas pedem troca de chat: o tamanho da conversa (o aviso dos 250 mil e o alarme dos 450 mil); o
+aviso de bloqueios de portão, que o plugin dá no fim de turno quando a sessão chega ao limiar (6 por
+padrão; um bloqueio só não pede); o incidente que exigiu cirurgia; e a pergunta do usuário sobre o
+contexto. Todo o resto desta seção deixa de pedir troca de chat: os outros gatilhos da lista, a dúvida
+"já é hora?" e os contadores do plugin (revisões fechadas, decisões do dono, commits, turnos com
+trabalho e arquivos tocados), que nem chegam a avisar. Em troca: reler o trecho do plano no arquivo
+antes de cada subitem; escolha técnica dentro do escopo se decide, se registra com o motivo e se lista no fecho; ao dono vai só o irreversível,
+o externo (publicar, push, envio), o de custo e o de produto, no formato da §7.
 
 ## 6-bis. Trabalho em paralelo
 

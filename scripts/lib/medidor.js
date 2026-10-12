@@ -115,7 +115,9 @@ function linhaDaSessao(entrada) {
     : 'previsao: sem dado ainda (precisa de ' + MINIMO_DE_SUBIDAS + ' turnos com consumo)');
   longa.push('troca de chat (basta 1 gatilho):');
   for (const g of medidas) {
-    longa.push('  - ' + g.nome + ': ' + g.valor + ' de ' + g.limiar + (g.cruzou ? '  <- cruzou' : ''));
+    // D468: o gatilho calado pelo modo continuo aparece, mas sem "cruzou".
+    longa.push('  - ' + g.nome + ': ' + g.valor + ' de ' + g.limiar +
+      (g.calado === true ? '  (modo continuo: nao dispara)' : g.cruzou ? '  <- cruzou' : ''));
   }
   if (avisou) longa.push('  (o aviso de troca ja foi dado nesta sessao; os contadores recomecam depois dele)');
   // D442/2: o painel do VS Code le a longa como Markdown; sem a linha em branco, o "o que fazer" emendava

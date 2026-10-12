@@ -29,7 +29,9 @@ function encerrarTurno(e, s, avisoExtra) {
   // D445: o tamanho do contexto vem do transcript; sem leitura, fica a ultima gravada (o medidor a mostra).
   const lido = saude.contextoDoTranscript(e.transcript_path);
   const tokensDeContexto = lido !== null ? lido : s.tokensDeContexto;
-  const vs = saude.avaliar(Object.assign({}, s, { contadores: acumulados, tokensDeContexto: tokensDeContexto }), projeto && projeto.limiares);
+  // D468: com "modoContinuo": true no projeto, os gatilhos de continuo.CALADOS nao pedem troca.
+  const vs = saude.avaliar(Object.assign({}, s, { contadores: acumulados, tokensDeContexto: tokensDeContexto }), projeto && projeto.limiares,
+    require('./lib/continuo.js').ativo(projeto));
 
   // T10-1: em laco (stop_hook_active) nao se continua a conversa nem se marca o aviso como dado:
   // ele fica pendente para o proximo Stop. Continuar dentro do laco e o que a trava de 8 existe para cortar.
@@ -46,11 +48,13 @@ function encerrarTurno(e, s, avisoExtra) {
   // Os campos da SESSAO que os outros portoes gravam - avisos de "uma vez por sessao" e
   // registros - moram em `estado.CAMPOS_DA_SESSAO`: fora dela, morriam a cada turno.
   const sessao = function (dados) { estado.gravar(e.session_id, Object.assign(dados, estado.camposDaSessao(s))); };
+  // D464: o alarme de tamanho tambem sai uma vez por sessao, e em laco fica pendente como o aviso.
+  const avisouAlarme = s.avisouAlarme === true || (avisa && vs.alarme === true);
   if (avisa) {
     // Zera o turno mas guarda que ja avisou: o aviso sai uma vez por sessao.
-    sessao({ avisouSaude: true, turnosComTrabalho: s.turnosComTrabalho || 0, gitAbertura: s.gitAbertura || [], tokensDeContexto: tokensDeContexto });
+    sessao({ avisouSaude: true, avisouAlarme: avisouAlarme, turnosComTrabalho: s.turnosComTrabalho || 0, gitAbertura: s.gitAbertura || [], tokensDeContexto: tokensDeContexto });
   } else {
-    sessao({ turnosComTrabalho: s.turnosComTrabalho || 0, gitAbertura: s.gitAbertura || [], arquivosTocados: s.arquivosTocados || [], contadoresSessao: acumulados, avisouSaude: s.avisouSaude || false, tokensDeContexto: tokensDeContexto });
+    sessao({ turnosComTrabalho: s.turnosComTrabalho || 0, gitAbertura: s.gitAbertura || [], arquivosTocados: s.arquivosTocados || [], contadoresSessao: acumulados, avisouSaude: s.avisouSaude || false, avisouAlarme: avisouAlarme, tokensDeContexto: tokensDeContexto });
   }
   if (!partes.length) return io.permitir();
   const saida = { systemMessage: partes.join('\n\n') };

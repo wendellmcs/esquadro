@@ -71,9 +71,9 @@ test('sessao.js: entrada que nao e JSON -> saida 0, curta mesmo assim e o erro d
 // D445 (0.6.2): o medidor usa o contexto ao vivo (uso.context.tokens) no 7o gatilho.
 test('sessao.js: o gatilho de contexto usa uso.context.tokens ao vivo', () => {
   cenario(function (c) {
-    const alto = Object.assign({}, USO, { context: { tokens: 160000, window: 1000000, percent: 16 } });
+    const alto = Object.assign({}, USO, { context: { tokens: 260000, window: 1000000, percent: 26 } });
     const r = rodar(c, { uso: alto, amostras: [], sessao: 'nao-existe' });
     assert.strictEqual(r.cruzou, true, JSON.stringify(r));
-    assert.ok(r.longa.indexOf('tokens de contexto: 160000 de 150000') !== -1, r.longa);
+    assert.ok(r.longa.indexOf('tokens de contexto: 260000 de 250000') !== -1, r.longa);
   });
 });
