@@ -5,7 +5,7 @@ const path = require('node:path');
 const calibracao = require('./lib/calibracao.js');
 const config = require('./lib/config.js');
 const texto = require('./lib/texto.js');
-const { LIMIARES_PADRAO } = require('./lib/saude.js');
+const { LIMIARES_PADRAO, limiaresValidos } = require('./lib/saude.js');
 
 /**
  * Item 2 da 0.7 (D466/D467): o calibrador por projeto (skill /esquadro:calibrar).
@@ -31,7 +31,8 @@ function sair(codigo, dados) {
 const raiz = config.raizDoProjeto(process.cwd());
 const projeto = config.carregarProjeto(raiz);
 const limiares = (projeto && projeto.limiares) || {};
-const alarme = typeof limiares.tokensAlarme === 'number' ? limiares.tokensAlarme : LIMIARES_PADRAO.tokensAlarme;
+// D495: o alarme gravado so vale se for numero positivo, como no medidor (saude.limiaresValidos).
+const alarme = Object.assign({}, LIMIARES_PADRAO, limiaresValidos(limiares)).tokensAlarme;
 
 if (process.argv.indexOf('--gravar') !== -1) {
   const bruto = valor('--gravar');

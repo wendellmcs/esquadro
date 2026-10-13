@@ -27,13 +27,14 @@ function mil(n) {
   return Number.isFinite(v) && v % 1000 === 0 ? (v / 1000) + ' mil' : String(v);
 }
 
-// Os numeros que o medidor usa: o aviso como saude.medir (o do projeto, se numero; senao o do modo continuo)
-// e o alarme como saude.avaliar (o do projeto, cru, por cima do padrao). saude.js requer este arquivo no
-// topo, por isso o require aqui dentro.
+// Os numeros que o medidor usa: o aviso como saude.medir (o do projeto, se numero positivo; senao o do modo
+// continuo) e o alarme como saude.avaliar (o do projeto, se numero positivo; senao o padrao; D495).
+// saude.js requer este arquivo no topo, por isso o require aqui dentro.
 function tamanho(projeto) {
-  const L = projeto.limiares || {};
-  const aviso = typeof L.tokensDeContexto === 'number' ? L.tokensDeContexto : TOKENS_CONTEXTO;
-  const alarme = Object.assign({}, require('./saude.js').LIMIARES_PADRAO, L).tokensAlarme;
+  const saude = require('./saude.js');
+  const L = saude.limiaresValidos(projeto.limiares);
+  const aviso = 'tokensDeContexto' in L ? L.tokensDeContexto : TOKENS_CONTEXTO;
+  const alarme = Object.assign({}, saude.LIMIARES_PADRAO, L).tokensAlarme;
   return '(aviso a ' + mil(aviso) + ', alarme a ' + mil(alarme) + ')';
 }
 

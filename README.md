@@ -342,7 +342,7 @@ se soma ao laço: espera o próximo fim de turno com trabalho.
 
 Basta um (com o modo contínuo ligado, só o tamanho, o alarme, os bloqueios e a sua pergunta sobre o
 contexto: ver "Menos paradas e modo contínuo"). Sem `projeto.json`, valem os padrões da tabela; com ele, só as chaves que você escreve
-mudam. O commit entra com 3, e não 1, porque o aviso sai uma vez só: com 1, todo mundo que commita
+mudam, e só com número positivo (desde a 0.7.5, `0`, negativo, texto ou `null` caem no padrão). O commit entra com 3, e não 1, porque o aviso sai uma vez só: com 1, todo mundo que commita
 receberia o aviso no primeiro commit. A auditoria automática usa mais duas chaves de `limiares`, que
 não são gatilho de troca de chat: `diasEntreAuditorias` e `diasSkillParada` (ver `/esquadro:auditar`).
 
@@ -368,7 +368,8 @@ contínuo ligado (desde a 0.7.4), o padrão já é 250 mil: a sessão longa é o
 gravar continua mandando. Para medir no
 seu projeto, rode `/esquadro:calibrar`. O erro de ferramenta não subiu com o contexto até 500 mil. O aviso sai só no fim de turno, nunca no meio da
 tarefa. **O alarme** (`tokensAlarme`) é o segundo aviso, mais firme, que sai uma vez mesmo depois do
-primeiro: acima de 500 mil cada chamada custa cerca de 4 vezes a de 200–300 mil. O medidor
+primeiro. Ele sai a 450 mil, antes da faixa acima de 500 mil, onde cada chamada custa cerca de 4 vezes a de
+200–300 mil. O medidor
 (`/esquadro-sessao`) usa o número ao vivo.
 
 **O que não dispara:** erro de medição (contagem errada, número lido do lugar errado). Hook não o

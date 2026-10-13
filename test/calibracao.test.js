@@ -221,6 +221,20 @@ test('calibrar.js: --gravar poe limiares.tokensDeContexto no projeto.json e pres
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('calibrar.js (D495): alarme gravado que nao e numero positivo cai no padrao', () => {
+  for (const alarme of [0, null, -1]) {
+    const dir = pasta();
+    const arq = path.join(dir, '.claude', 'esquadro', 'projeto.json');
+    fs.mkdirSync(path.dirname(arq), { recursive: true });
+    fs.writeFileSync(arq, JSON.stringify({ shell: 'bash', limiares: { tokensAlarme: alarme } }));
+    try {
+      const r = rodar(['--gravar', '300000'], dir);
+      assert.strictEqual(r.status, 0, String(alarme) + ': ' + r.stdout + r.stderr);
+      assert.strictEqual(JSON.parse(fs.readFileSync(arq, 'utf8')).limiares.tokensDeContexto, 300000);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
 test('calibrar.js: --gravar recusa valor torto ou no alarme e nao grava; sem projeto.json manda rodar o init', () => {
   const dir = pasta();
   const arq = path.join(dir, '.claude', 'esquadro', 'projeto.json');

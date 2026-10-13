@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.5 — limiar invalido no projeto.json cai no padrao
+
+**Corrigido**
+
+- **Limiar que nao e numero positivo cai no padrao.** Um valor de `limiares` no `projeto.json` igual a `null`,
+  `0`, negativo ou texto entrava cru na conta: `tokensAlarme: null` fazia o alarme de tamanho sair no comeco da
+  conversa, e `tokensDeContexto: 0` fazia o aviso sair a zero. Agora so numero positivo vale; o resto fica com
+  o padrao. Vale para o medidor, o alarme, o bloco da abertura (que diz os numeros que o medidor usa) e o
+  `/esquadro:calibrar`. Um numero escrito como texto (`"300000"`) tambem deixa de valer: grave sem aspas
+  (`300000`) para o seu limiar continuar mandando.
+- **Textos.** O README liga o alarme de 450 mil a faixa acima de 500 mil, onde a chamada custa cerca de 4 vezes
+  mais, e diz que limiar invalido cai no padrao. Na 0.7.4, "o bloco da abertura diz os 250 mil" vale para o
+  padrao: com limiar gravado no projeto, o bloco diz o numero dele.
+
 ## 0.7.4 — com o modo continuo ligado, o aviso de tamanho sai a 250 mil
 
 **Mudado**

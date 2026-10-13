@@ -81,6 +81,19 @@ const BALDES_DE_BLOQUEIO = [
   'handoff_sem_prompt'
 ];
 
+/**
+ * D495: so o limiar gravado que e numero positivo vale; o resto (null, 0, negativo, texto) cai no padrao.
+ * Sem isso, `>= null` cruzava com zero: `tokensAlarme: null` dava o alarme no comeco da conversa.
+ */
+function limiaresValidos(limiares) {
+  const L = {};
+  for (const k of Object.keys(LIMIARES_PADRAO)) {
+    const v = limiares && limiares[k];
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) L[k] = v;
+  }
+  return L;
+}
+
 function soma(contadores, chaves) {
   return chaves.reduce(function (t, k) { return t + ((contadores && contadores[k]) || 0); }, 0);
 }
@@ -92,9 +105,10 @@ function soma(contadores, chaves) {
  */
 function medir(estado, limiares, continuo) {
   // D493: com o modo continuo, o padrao do tamanho e o do continuo.js; o numero gravado pelo projeto manda.
-  const proprio = !!limiares && typeof limiares.tokensDeContexto === 'number';
+  const validos = limiaresValidos(limiares);
+  const proprio = 'tokensDeContexto' in validos;
   const L = continuo === true && !proprio
-    ? Object.assign({}, limiares, { tokensDeContexto: TOKENS_CONTEXTO }) : limiares;
+    ? Object.assign({}, validos, { tokensDeContexto: TOKENS_CONTEXTO }) : validos;
   return medirTodos(estado, L).map(function (g) {
     // D468: com o modo continuo (so o booleano true), os gatilhos da lista do continuo.js nao cruzam.
     return continuo === true && CALADOS.indexOf(g.chave) !== -1 ? Object.assign(g, { cruzou: false, calado: true }) : g;
@@ -156,7 +170,7 @@ function acumular(estado) {
  */
 function avaliar(estado, limiares, continuo) {
   const e = estado || {};
-  const L = Object.assign({}, LIMIARES_PADRAO, limiares || {});
+  const L = Object.assign({}, LIMIARES_PADRAO, limiaresValidos(limiares));
   // typeof, como no medir: estado corrompido nunca vira alarme.
   const alarme = typeof e.tokensDeContexto === 'number' && e.avisouAlarme !== true &&
     e.tokensDeContexto >= L.tokensAlarme;
@@ -380,5 +394,5 @@ const MOTIVO_HANDOFF_SEM_PROMPT = [
   'Para desligar este portao no projeto: "portaoHandoff": false em .claude/esquadro/projeto.json.'
 ].join('\n');
 
-module.exports = { LIMIARES_PADRAO, BALDES_DE_BLOQUEIO, contextoDoTranscript, medir, acumular, avaliar, instrucaoAoModelo, perguntaSobreSaude,
+module.exports = { LIMIARES_PADRAO, BALDES_DE_BLOQUEIO, contextoDoTranscript, limiaresValidos, medir, acumular, avaliar, instrucaoAoModelo, perguntaSobreSaude,
   INSTRUCAO_DA_PERGUNTA, ehArquivoDeHandoff, temBlocoDeCodigo, MOTIVO_HANDOFF_SEM_PROMPT };

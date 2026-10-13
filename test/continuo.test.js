@@ -100,11 +100,13 @@ test('D493 (P1 da revisao): o bloco diz o aviso e o alarme que o medidor usa, co
     assert.ok(b.indexOf('(aviso a ' + aviso + ', alarme a ' + alarme + ')') !== -1, JSON.stringify(limiares) + '\n' + b);
     assert.ok(/^[\x20-\x7E\n]+$/.test(b) && b.length <= c.TETO, 'ASCII e teto com ' + JSON.stringify(limiares));
   }
-  // ronda 2 (borda): o alarme e o que o avaliar compara (valor cru, sem conferir o tipo), nao o padrao
-  for (const [tokensAlarme, alarme, dispara] of [['300000', '300 mil', 300000], [null, '0 mil', 0]]) {
+  // ronda 2 (borda) e D495: o alarme e o que o avaliar compara; valor que nao e numero positivo cai no padrao
+  for (const tokensAlarme of ['300000', null, 0, -1, NaN]) {
     const b = c.bloco({ modoContinuo: true, limiares: { tokensAlarme: tokensAlarme } });
-    assert.ok(b.indexOf('alarme a ' + alarme + ')') !== -1, JSON.stringify(tokensAlarme) + '\n' + b);
-    assert.strictEqual(saude.avaliar({ avisouSaude: true, tokensDeContexto: dispara }, { tokensAlarme: tokensAlarme }, true).alarme, true);
+    assert.ok(b.indexOf('alarme a 450 mil)') !== -1, String(tokensAlarme) + '\n' + b);
+    const av = (n) => saude.avaliar({ avisouSaude: true, tokensDeContexto: n }, { tokensAlarme: tokensAlarme }, true).alarme;
+    assert.strictEqual(av(449999), false, String(tokensAlarme) + ': alarme antes do padrao');
+    assert.strictEqual(av(450000), true, String(tokensAlarme) + ': sem alarme no padrao');
   }
   const torto = c.bloco({ modoContinuo: true, limiares: { tokensAlarme: 'três mil' } });
   assert.ok(/^[\x20-\x7E\n]+$/.test(torto), 'valor torto nao tira o bloco do ASCII');
@@ -112,6 +114,21 @@ test('D493 (P1 da revisao): o bloco diz o aviso e o alarme que o medidor usa, co
   const L = { tokensDeContexto: 120000 };
   assert.strictEqual(saude.medir({}, L, true).find((x) => x.chave === 'tokensDeContexto').limiar, 120000);
   assert.ok(c.bloco({ modoContinuo: true }).indexOf((c.TOKENS_CONTEXTO / 1000) + ' mil') !== -1);
+});
+
+test('D495: limiar que nao e numero positivo cai no padrao (aviso, alarme e os outros gatilhos)', () => {
+  const lim = (L, chave, continuo) => saude.medir({}, L, continuo).find((x) => x.chave === chave).limiar;
+  for (const v of [0, -5, null, '120000', NaN, Infinity]) {
+    // o aviso: com a chave, o do modo continuo; sem, o padrao da D475
+    assert.strictEqual(lim({ tokensDeContexto: v }, 'tokensDeContexto', true), c.TOKENS_CONTEXTO, String(v));
+    assert.strictEqual(lim({ tokensDeContexto: v }, 'tokensDeContexto'), saude.LIMIARES_PADRAO.tokensDeContexto, String(v));
+    assert.ok(c.bloco({ modoContinuo: true, limiares: { tokensDeContexto: v } }).indexOf('(aviso a 250 mil, alarme a 450 mil)') !== -1, String(v));
+    // os outros: `>= null` cruzaria com zero
+    assert.strictEqual(lim({ bloqueios: v }, 'bloqueios'), saude.LIMIARES_PADRAO.bloqueios, String(v));
+    assert.strictEqual(saude.avaliar({ contadores: {} }, { bloqueios: v }).disparou, false, String(v));
+  }
+  assert.deepStrictEqual(saude.limiaresValidos({ commits: 5, bloqueios: 0, tokensAlarme: null, x: 1 }), { commits: 5 });
+  assert.deepStrictEqual(saude.limiaresValidos(null), {});
 });
 
 test('continuo: o medidor da sessao mostra o gatilho calado pela chave, sem dizer que cruzou', () => {
