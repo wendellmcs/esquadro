@@ -53,6 +53,11 @@ selected.
 - **Sucesso parcial é estado de primeira classe** — quando o dado vem de várias fontes e uma falha,
   isso nunca colapsa em erro genérico.
 
+**Evidência dos estados:** o componente visto sozinho, com todos os estados da checklist lado a lado
+— a página dele no catálogo de componentes do projeto, se houver um; sem catálogo, uma página de
+estados montada para a revisão (pode ser a página Artifact da escolha visual). Estado que só aparece
+navegando o fluxo inteiro passa despercebido.
+
 **P0:** ação assíncrona sem loading que permite clique duplo destrutivo. **P1:** qualquer estado da
 checklist ausente, ou erro/vazio sem a informação exigida. **P2:** estado presente mas com microcopy
 melhorável.
@@ -95,7 +100,11 @@ referência.
 outline nativo; se a régua nomeia um anel de foco, é ele) · todo controle alcançável e operável por
 teclado · rótulo acessível ou semântica nativa onde o elemento não é autoexplicativo · status
 **nunca** só por cor (ícone, texto ou forma junto) · movimento curto, guiado por estado, respeitando
-`prefers-reduced-motion` · alvos dimensionados para uso repetido.
+`prefers-reduced-motion` · alvos dimensionados para uso repetido, e no mínimo **24 × 24 px** (WCAG
+2.2, critério 2.5.8, nível AA), salvo as exceções do critério: alvo menor cujo círculo de 24 px de
+diâmetro, centrado nele, não cruza outro alvo nem o círculo de outro alvo menor; link dentro de
+frase; a mesma função em outro controle da página que cumpre os 24 px; tamanho decidido pelo
+navegador, sem estilo do autor; ou tamanho essencial para a informação.
 
 **"Status só por cor" tem exemplo literal, e ele é P0.** Um badge, ponto, bolinha, barra ou célula
 **sem texto e sem rótulo acessível**, distinguido apenas pela cor de fundo, **é** status só por cor.
@@ -121,7 +130,8 @@ estado; aí exigir atributo extra é falso positivo.
 
 **P0:** foco removido sem substituto, controle inalcançável por teclado, status só por cor.
 **P1:** contraste abaixo de AA, rótulo acessível ausente onde a semântica não basta, estado de
-seleção só em classe de estilo. **P2:** alvo pequeno mas utilizável.
+seleção só em classe de estilo, alvo abaixo de 24 × 24 px fora das exceções. **P2:** alvo que cumpre
+o mínimo mas é pequeno para uso repetido.
 
 ---
 
@@ -165,10 +175,14 @@ hero-metric · borda lateral grossa como decoração genérica de card · layout
 **Checklist:** a prova de pronto da área passa (`{{campo:provaDePronto}}`) · nomes, IDs e chaves de
 armazenamento intactos · ordem de carga e pontos de entrada preservados · dados estruturados
 manipulados por parser/API, não por texto frágil · sem refatoração oportunista no diff · nenhuma
-mudança em arquivo não relacionado ao objetivo · nada tocado em `{{campo:intocaveis}}`.
+mudança em arquivo não relacionado ao objetivo · nada tocado em `{{campo:intocaveis}}` · resposta ao
+clique: em tela web, o **INP** (Interaction to Next Paint, o tempo do clique até a tela responder) é
+bom até **200 ms** e ruim acima de **500 ms** (web.dev, percentil 75); sem medição, a lente diz que
+não mediu, e não presume.
 
 **P0:** regressão funcional, ordem de carga alterada, chave de armazenamento renomeada, intocável
-tocado. **P1:** teste falhando, teste removido. **P2:** dívida técnica observada.
+tocado. **P1:** teste falhando, teste removido, INP medido acima de 500 ms. **P2:** dívida técnica
+observada, INP medido entre 200 e 500 ms.
 
 ---
 

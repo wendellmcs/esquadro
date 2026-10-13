@@ -357,6 +357,16 @@ proposta × referência, ou um mock fotografado com a folha real), **espere o en
 turno seguinte faça as 3 opções, dizendo numa frase o que a recomendada **não** vai mudar. Se a tela
 mostra número, declare se a veracidade do dado foi conferida.
 
+**O meio preferido é uma página Artifact** (página privada no claude.ai, que você publica e o dono
+abre pelo link), quando a sessão tiver a ferramenta: antes × proposta × referência lado a lado, em
+claro e escuro, nas larguras de tela que o projeto declara (sem declaração, as que o produto
+comprovadamente atende, ditas na página: a de notebook, e a de celular só se ele roda em celular —
+largura que ele não atende gera achado falso), para o dono ver, comentar e pedir ajuste antes de
+você mexer no produto. O rito é o da
+imagem: publique, espere o link confirmar e só no turno seguinte faça as 3 opções. Sem a
+ferramenta, a imagem de sempre. A página sai do computador do dono: só dado fictício. Se a tela tem
+dado de cliente ou credencial, troque por dado fictício antes de publicar, ou fique na imagem local.
+
 **Ação manual do dono é passo a passo clique a clique.** Quando a entrega exigir que ele mexa em
 console, painel, planilha ou navegador: numerar os passos, dizer **o que ele vai ver em cada tela**
 (não só o que fazer), dar o texto exato de botões e campos, dizer o resultado esperado de cada passo

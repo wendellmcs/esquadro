@@ -717,3 +717,46 @@ test('D454: .gitattributes forca LF no clone e o workflow nao tem caractere de c
     assert.strictEqual(i, -1, 'workflows/' + f + ': caractere de controle na posicao ' + i);
   }
 });
+
+// D497/D498 (0.7.6): a escolha visual prefere a pagina Artifact; as lentes de tela ganham o que faltava.
+const secao = (s, de, ate) => {
+  const i = s.indexOf(de);
+  const f = s.indexOf(ate, i + de.length);
+  assert.ok(i !== -1 && f > i, 'sumiu o trecho entre ' + de + ' e ' + ate);
+  return plano(s.slice(i, f));
+};
+
+test('D497: a escolha visual prefere a pagina Artifact e cai na imagem sem a ferramenta', () => {
+  const p = secao(ler('skills/padrao/SKILL.md'), '**Escolha visual:', '**Ação manual do dono');
+  assert.ok(/p[áa]gina Artifact/.test(p), 'D497: o paragrafo nao cita a pagina Artifact');
+  assert.ok(/claro e escuro/.test(p), 'D497: o paragrafo nao pede claro e escuro');
+  assert.ok(/notebook/.test(p) && /celular/.test(p), 'D497: o paragrafo nao pede notebook e celular');
+  // revisao R1 da 0.7.6: celular atropelava o viewport que o projeto tirou; a pagina pulava a espera do envio
+  assert.ok(/larguras de tela que o projeto declara \(sem declara[çc][ãa]o/.test(p), 'D497: as larguras nao seguem as que o projeto declara');
+  // revisao R2: sem larguras declaradas, celular so entra se o produto roda em celular
+  assert.ok(/celular s[óo] se ele roda em celular/.test(p), 'D497: sem declaracao, a largura de celular entra mesmo sem o produto rodar nela');
+  assert.ok(/[Oo] rito [ée] o da imagem[^.]*turno seguinte/.test(p), 'D497: a pagina nao segue o rito da imagem (envio, depois as 3 opcoes)');
+  assert.ok(/[Ss]em a ferramenta[^.]*imagem/.test(p), 'D497: o paragrafo nao diz que sem a ferramenta cai na imagem');
+  assert.ok(/s[óo] (com )?dado fict[íi]cio/i.test(p), 'D497: o paragrafo nao manda usar so dado ficticio');
+});
+
+test('D498: as lentes 2, 4 e 7 da rubrica de tela dizem catalogo, alvo de 24 px e INP', () => {
+  const r = ler('skills/padrao/references/02-rubrica-aaa.md');
+  const l2 = secao(r, '## Lente 2', '## Lente 3');
+  assert.ok(/cat[áa]logo de componentes/.test(l2) && /p[áa]gina de estados/.test(l2), 'D498 n. 2: a Lente 2 nao cita catalogo ou pagina de estados');
+  const l4 = secao(r, '## Lente 4', '## Lente 5');
+  assert.ok(/24 × 24 px/.test(l4) && /2\.5\.8/.test(l4), 'D498 n. 5: a Lente 4 nao cita o alvo de 24 x 24 px (WCAG 2.5.8)');
+  assert.ok(/\*\*P1:\*\*[^*]*24 × 24/.test(l4), 'D498 n. 5: alvo abaixo de 24 x 24 px nao e P1 na Lente 4');
+  // revisao R2: na WCAG 2.5.8 o controle equivalente cumpre os 24 px; "do mesmo tamanho" isentava o alvo pequeno
+  assert.ok(/outro controle da p[áa]gina que cumpre os 24 px/.test(l4) && !/do mesmo tamanho/.test(l4),
+    'D498 n. 5: a excecao do controle equivalente nao exige que ele cumpra os 24 px');
+  const l7 = secao(r, '## Lente 7', '## Lente 8');
+  assert.ok(/INP/.test(l7) && /200 ms/.test(l7) && /500 ms/.test(l7), 'D498 n. 4: a Lente 7 nao cita o INP com 200 e 500 ms');
+  assert.ok(/\*\*P1:\*\*[^*]*500 ms/.test(l7), 'D498 n. 4: INP medido acima de 500 ms nao e P1 na Lente 7');
+});
+
+test('D498: a Marcha AAA pede comparacao de print antes x depois e entrega o roteiro de 5 usuarios', () => {
+  const m = secao(ler('skills/padrao/references/01-marchas-e-gates.md'), '## Marcha 3', '## Regra de d');
+  assert.ok(/compara[çc][ãa]o (autom[áa]tica )?de print antes × depois/.test(m), 'D498 n. 1: o portao visual nao cita a comparacao de print');
+  assert.ok(/5 usu[áa]rios/.test(m) && /n[ãa]o bloqueia/.test(m), 'D498 n. 3: a Marcha AAA nao entrega o roteiro de 5 usuarios sem bloquear');
+});

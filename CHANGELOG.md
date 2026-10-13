@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.7.6 — a escolha visual numa pagina Artifact e as lentes de tela mais completas
+
+**Mudado**
+
+- **Escolha visual numa pagina Artifact.** A `esquadro:padrao` ja mandava mostrar a imagem antes de pedir uma
+  escolha visual. Agora, quando a sessao tem a ferramenta Artifact (pagina privada no claude.ai), o meio
+  preferido e uma pagina com antes, proposta e referencia lado a lado, em claro e escuro, nas larguras de tela que
+  o projeto declara (sem declaracao, as que o produto comprovadamente atende: a de notebook, e a de celular so se
+  ele roda em celular). O rito e o da imagem: o link primeiro, as 3 opcoes no turno seguinte. Sem a ferramenta, a
+  imagem de sempre. A pagina sai do computador: so dado ficticio; tela com dado de cliente ou credencial troca por
+  dado ficticio antes de publicar, ou fica na imagem local.
+- **Lentes de tela.** A Lente 2 (estados) pede o componente visto sozinho com todos os estados: a pagina dele no
+  catalogo de componentes do projeto, ou uma pagina de estados montada para a revisao. A Lente 4
+  (acessibilidade) pede alvo de pelo menos 24 x 24 px (WCAG 2.2, criterio 2.5.8, com as excecoes do criterio);
+  abaixo disso e P1. A Lente 7 (regressao) mede a resposta ao clique pelo INP (Interaction to Next Paint, o
+  tempo do clique ate a tela responder): bom ate 200 ms, ruim acima de 500 ms (web.dev); medido acima de 500 ms
+  e P1, entre 200 e 500 ms e P2, sem medicao a lente diz que nao mediu.
+- **Marcha AAA.** Com gerador de print, a regressao de tela se prova por comparacao automatica de print antes x
+  depois; sem ele, a comparacao foi a olho, e isso se declara. Em funcao visivel nova, o fecho entrega ao dono um
+  roteiro de teste de uso com 5 usuarios reais (cerca de 85% dos problemas de uso), que nao bloqueia a entrega.
+
 ## 0.7.5 — limiar invalido no projeto.json cai no padrao
 
 **Corrigido**

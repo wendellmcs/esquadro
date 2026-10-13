@@ -147,7 +147,9 @@ release, decisão de difícil reversão.
    **Passo 0 do portão, nesta ordem:** (a) existe gerador para esta área? (b) o ambiente responde?
    Se qualquer resposta for não, **declarar no plano, antes de executar**, que a lente 3 vai rodar por
    leitura de código e estilo. Descobrir isso no fecho já é tarde — o plano prometeu evidência que
-   não existia.
+   não existia. Com gerador, a regressão de tela se prova por **comparação automática de print antes
+   × depois** das mesmas telas e viewports, apontando o que mudou fora do pedido; sem o instrumento,
+   declarar que a comparação foi a olho.
 7. **Gate de release** se o artefato publicável mudou.
 8. **Documentação no mesmo conjunto de mudanças**: toda função visível nova atualiza permissões,
    telas administrativas, ajuda, testes e docs juntos. O par "tocou X, tem de ter tocado Y" está em
@@ -156,6 +158,12 @@ release, decisão de difícil reversão.
 
 **Evidência mínima:** saída de cada comando colada, vereditos das rondas com contagem de agentes,
 caminho dos artefatos gerados, e a lista do que **não** rodou com o motivo.
+
+**Entrega do fecho que não bloqueia — roteiro de teste de uso, em função visível nova.** Não é
+portão: o fecho sai sem ele esperar resposta, mas o roteiro vai ao dono junto. A tarefa que o usuário
+vai fazer, em uma frase; 5 usuários reais, um de cada vez, fazendo sem ajuda enquanto alguém observa
+calado; anotar onde cada um travou. Cinco acham a maior parte dos problemas de uso (cerca de 85%, pela
+curva de Nielsen e Landauer); mais que isso repete o já visto.
 
 ---
 
