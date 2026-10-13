@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.7 — o README conta tudo o que o plugin instala
+
+**Mudado**
+
+- **README completo.** O README passa a cobrir tudo o que o plugin instala e o que esperar de cada coisa: uma
+  secao com tudo o que vem instalado (skills, o workflow `esquadro:paralelo`, os agentes, os ganchos por evento e os
+  paineis `/esquadro-sessao` e `/esquadro-plano`), os portoes fora da tabela das oito travas (decisao, apelido,
+  estilo, handoff, qualidade de resposta, vigia), o `projeto.json` chave por chave, a parte visual (lentes de tela, a escolha visual
+  na pagina Artifact, catalogo de estados, alvo de 24 x 24 px, INP, print antes x depois, roteiro de 5 usuarios), os
+  scripts de linha de comando que faltavam, o que mora em `modelos/` e nas referencias da `padrao`, e os
+  comportamentos das versoes 0.6.0 a 0.7.6 que o README ainda nao contava. Nenhuma frase antiga mudou de sentido.
+- **Teste.** O teste do README le do disco as skills, o workflow, os agentes, os eventos de gancho, os paineis, os
+  scripts, as chaves do `projeto.json`, as travas, os `modelos/` e as referencias da `padrao`: item novo que chega
+  sem README reprova sozinho.
+
 ## 0.7.6 — a escolha visual numa pagina Artifact e as lentes de tela mais completas
 
 **Mudado**

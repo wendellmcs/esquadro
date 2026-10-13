@@ -265,3 +265,49 @@ test('D442/3: o paragrafo dos mods diz o efeito dos dois-pontos, a causa plugin 
   assert.ok(p.indexOf('claude plugin update esquadro@esquadro-local') !== -1, 'falta a causa plugin antigo, com o comando');
   assert.ok(p.indexOf('nenhum plano ativo') !== -1 && p.indexOf('--abrir') !== -1, 'falta o que o painel diz sem plano e como abrir');
 });
+
+// D499 (censo da s37): o README cobre tudo o que o plugin instala. A lista sai do disco, entao o item novo que
+// chega sem README reprova aqui, sem ninguem lembrar de acrescentar.
+function faltamNoReadme(termos) {
+  return termos.filter((t) => README.indexOf(t) === -1);
+}
+function nomes(pasta, ext) {
+  return fs.readdirSync(path.join(RAIZ, pasta)).filter((f) => !ext || f.endsWith(ext));
+}
+
+test('D499: o README cita cada skill, o workflow, cada agente, cada evento de gancho e cada painel', () => {
+  const skills = nomes('skills').map((s) => (s === 'padrao' ? '`padrao`' : 'esquadro:' + s));
+  const workflows = nomes('workflows', '.js').map((w) => 'esquadro:' + w.replace(/\.js$/, ''));
+  const agentes = nomes('agents', '.md').map((a) => a.replace(/\.md$/, ''));
+  const eventos = Object.keys(JSON.parse(fs.readFileSync(path.join(RAIZ, 'hooks', 'hooks.json'), 'utf8')).hooks);
+  const mods = fs.readFileSync(path.join(RAIZ, 'hooks', 'mods.tsx'), 'utf8');
+  const paineis = Array.from(mods.matchAll(/name: '([^']+)'/g)).map((m) => '/' + m[1]);
+  assert.ok(paineis.length > 0, 'o leitor do mods.tsx nao achou painel: mudou a forma do register?');
+  assert.deepStrictEqual(faltamNoReadme(skills.concat(workflows, agentes, eventos, paineis)), []);
+});
+
+test('D499: o README cita cada script de scripts/', () => {
+  assert.deepStrictEqual(faltamNoReadme(nomes('scripts', '.js')), []);
+});
+
+test('D499: o README cita cada chave do projeto.json e cada trava', () => {
+  const projeto = require(path.join(RAIZ, 'scripts', 'lib', 'projeto.js'));
+  const chaves = projeto.CHAVES.concat(projeto.CHAVES_LIGA_DESLIGA);
+  assert.ok(chaves.length >= 23 && projeto.TRAVAS.length >= 4, 'projeto.js exporta menos chaves que o censo da s37 (15 + 8 e 4 travas)');
+  // A chave entre crases inteira (`vigia` nao casa `vigia-puxar.js`); a trava pelo caminho (`travas.escopo`, nao `escopo.md`).
+  const faltam = chaves.filter((c) => README.indexOf('`' + c + '`') === -1 && README.indexOf('"' + c + '"') === -1)
+    .concat(projeto.TRAVAS.filter((t) => README.indexOf('travas.' + t) === -1).map((t) => 'travas.' + t));
+  assert.deepStrictEqual(faltam, []);
+});
+
+test('D499: o README cita cada arquivo de modelos/ e cada referencia do padrao', () => {
+  assert.deepStrictEqual(faltamNoReadme(nomes('modelos').concat(nomes(path.join('skills', 'padrao', 'references')))), []);
+});
+
+test('D499 (D497/D498): o README conta a parte visual', () => {
+  assert.deepStrictEqual(faltamNoReadme([
+    'lentes de tela', 'escolha visual', 'página Artifact', 'só dado fictício', 'catálogo de estados', 'INP',
+    '200 ms', '500 ms', '24 × 24', '2.5.8', 'antes × depois', '5 usuários', 'DESIGN.md', 'design.json',
+    'contraste', 'claro e escuro', 'celular'
+  ]), []);
+});

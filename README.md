@@ -307,6 +307,15 @@ Cinco coisas acontecem sem você pedir:
   skills repetidas, regras que se contradizem e skills paradas, e só fala se algo passou do limite
   (detalhe em `/esquadro:auditar`, abaixo).
 
+**Como o fecho lê o que o agente diz.** Intenção não é alegação: "vou concluir a tarefa", "antes de fechar a etapa"
+e "concluindo a fase" não disparam a cobrança; "Tarefa 3: concluída", "tarefa nº 3", "a tarefa 3 já está concluída",
+"onda 7b concluída" e "tarefa 1.2 concluída" disparam. Com plano ativo, o fecho cobra a tarefa citada (todas, quando
+são várias) ou, sem número, a que está em andamento — nunca uma tarefa futura. Um id que o plano não tem como
+cabeçalho `Tarefa N` (como `7b` ou `1.2`) é cobrado pela tarefa em andamento, nunca pela Tarefa 7 ou pela 1 por
+engano. O plano ativo que não pode ser lido é avisado, e não tratado como ausente; o `plano-ativo.json` gravado com
+BOM (comum no Windows) vale. O portão da "etapa com subitem aberto" lê só o formato de cabeçalho de antes do painel
+`/esquadro-plano`, que entende mais (ver "Ver os números a qualquer hora", abaixo).
+
 <details>
 <summary>O aviso de troca de chat, literal</summary>
 
@@ -350,7 +359,10 @@ não são gatilho de troca de chat: `diasEntreAuditorias` e `diasSkillParada` (v
 ("o contexto está bom?", "contexto tá cheio?", "is the context ok?"), a pergunta é a resposta: o
 Claude recebe a ordem de trocar de chat com o handoff, e isso vale a cada vez que perguntar, não só
 a primeira. Pedido que apenas cita contexto ou memória ("adicione contexto ao README", "memory leak
-no módulo") não dispara.
+no módulo") não dispara. O retorno de um subagente que cita "o contexto está bom?" também não conta como pergunta
+sua, nem a frase de correção que ele traz vira sugestão de `/esquadro:aprender`: o filtro vale também na forma como
+o Claude Code 2.1.296 entrega o retorno ("Another Claude session sent a message…", seguido do retorno), e mora numa
+função só, usada pelos dois ganchos.
 
 **O tamanho da conversa conta** (desde a 0.6.2). O fim de turno não recebe esse número, mas recebe o
 caminho do registro da sessão que o Claude Code grava; o plugin lê o fim desse registro e soma o
@@ -371,6 +383,12 @@ tarefa. **O alarme** (`tokensAlarme`) é o segundo aviso, mais firme, que sai um
 primeiro. Ele sai a 450 mil, antes da faixa acima de 500 mil, onde cada chamada custa cerca de 4 vezes a de
 200–300 mil. O medidor
 (`/esquadro-sessao`) usa o número ao vivo.
+
+**Os números na tela são os que valem no seu projeto.** Com o modo contínuo ligado, o bloco que a abertura injeta
+diz o aviso e o alarme com os números em vigor: o `limiares.tokensDeContexto` gravado (se for número positivo) ou
+250 mil, e o `limiares.tokensAlarme`. O medidor `/esquadro-sessao` mostra o mesmo limiar que vale, e a linha curta
+(por exemplo "troca: 0 de 2") conta só os gatilhos que podem disparar, sem os cinco que a chave cala. Sem a chave
+`modoContinuo`, nada disso muda.
 
 **O que não dispara:** erro de medição (contagem errada, número lido do lugar errado). Hook não o
 enxerga — ele dispara em ferramenta —, então o plugin não finge contá-lo. Para esse, vale a sua
@@ -402,6 +420,15 @@ caminho do script na sua máquina. No painel de chat da extensão do VS Code os 
 texto; no terminal e no app Desktop o medidor também fica na linha de status, e quando um gatilho
 cruza aparece uma faixa acima do prompt com o botão "gerar handoff". Nada disso abre rede: os números
 vêm do próprio Claude Code e dos arquivos do esquadro na sua máquina.
+
+**O medidor e o painel, nos detalhes.** A medida que chega enquanto outra mede não se perde; se a leitura de uso
+travar, a linha de status diz isso e mede de novo, em vez de congelar no último número. O percentual sai inteiro, e
+janela sem nome, gatilho incompleto e previsão infinita são omitidos, em vez de virar "undefined" ou "Infinity". No
+painel do VS Code, o texto de "o que fazer" não emenda mais no último item. No painel do plano, o
+`plano-ativo.json` gravado com BOM vale; o plano que existe mas não se lê é dito, em vez de "nenhum plano ativo"; e
+a saída JSON do `scripts/plano.js` não conta como concluída a tarefa sem caixa de passo (`semCaixas`). Com a
+`--proxima-decisao` e um caminho que não existe, o `plano.js` responde `1` (projeto novo ainda sem arquivo de
+decisões) **com um aviso** que mostra o caminho procurado; uma pasta no lugar do arquivo para com erro.
 
 **Do que o gatilho de commit depende:** de o plugin ver que o `git commit` passou. Ele conta o commit
 pelo `gitOperation.commit.sha` que o Claude Code informa na resposta (medido no Claude Code 2.1.258)
@@ -448,6 +475,27 @@ node "<plugin>/scripts/uso.js"
 
 Ele lê `.claude/esquadro/contadores.json` e lista os disparos em ordem decrescente, com o total.
 É daí que sai o que entra na v2 — não da matriz da pesquisa.
+
+O que os portões leem, além do que a tabela diz:
+
+- **Comando destrutivo.** O portão barra também o `git push` forçado com `-f` agrupado a outras opções, o `git clean`
+  com o `-f` depois de outra opção, o `git checkout`, o `git restore` e o `git switch` que descartam a árvore
+  inteira (inclusive o `git restore` com opção antes do `.`, como `-q`, `--ours`, `--theirs`, `--merge`,
+  `--conflict=` ou a abreviação `--work` de `--worktree`) e a escrita direta em disco (`mkfs`, `dd if=`). Opção
+  global do `git` com valor entre aspas não escapa. Seguem liberados `git checkout -- <arquivo>`,
+  `git restore --staged .`, `git restore --staged -q .` (só o índice) e `git restore -p .` (interativo). Padrão
+  inválido em `comandosLiberados` não libera nada.
+- **`cd` solto no `Bash`.** O comando corrigido para rodar num subshell não conta como bloqueio para o aviso de
+  troca de chat. Seguem negados o `cd` solto no `PowerShell`, o comando que termina em barra e o que o portão não
+  consegue ler inteiro.
+- **Estado.** Se a pasta onde o plugin guarda o estado não aceita escrita, nada que estaria barrado passa por causa
+  disso. E o `projeto.json` que existe mas não é um JSON válido é dito como inválido, e não como ausente, também
+  na abertura.
+- **Catraca.** `max-width`, `min()`, `maxWidth` e a variável local `max` ou `min` deixam de ser régua; a constante
+  em caixa alta, o nome com sufixo e o número com unidade seguem sendo. A anotação de tipo entre o nome e o número
+  não esconde a régua.
+- **Token fora do design system.** O seletor de id com letras hexadecimais (como `#add-btn`) não é cor; cor em
+  valor de várias linhas, em argumento de mixin e em fallback de `var()` é achada; comentário de bloco é respeitado.
 
 <details>
 <summary>O que cada portão responde quando nega — saída literal desta versão</summary>
@@ -568,6 +616,50 @@ Para desligar este portao no projeto: "portaoHandoff": false em .claude/esquadro
 
 ---
 
+## Os portões que não são travas
+
+Além das oito travas, o plugin traz portões e avisos que não entram na conta delas: ou só avisam, ou dependem de
+um módulo opcional, ou têm a própria chave. Cada um abaixo diz o que faz e como desligar.
+
+| Portão | O que faz | Como desligar |
+|---|---|---|
+| Decisão (`scripts/portao-decisao.js`, antes de `AskUserQuestion`) | barra a pergunta ao dono que não tem exatamente 3 opções, ou cuja primeira não traz a marca `(Recomendado)` (valem também `(Recomendada)`, `(Recommended)` e `(Recom.)`, em qualquer caixa), ou que marca a recomendada em mais de uma opção | `"portaoDecisao": false` |
+| Apelido (`scripts/portao-apelido.js`, antes de `Task` e `Agent`) | confere o `model:` de cada agente do projeto contra o apelido gravado em `agentes.degraus`; se divergir, **avisa e deixa passar**, uma vez por sessão, a você e ao Claude, com o conserto em três opções (corrigir o arquivo do agente, corrigir o mapa do `projeto.json`, ou não mexer agora) | não há chave: sem a pasta `.claude/agents` ou sem `agentes.degraus` gravados ele não tem com o que comparar e fica calado |
+| Estilo (`scripts/portao-estilo.js`, antes de `Bash` e `PowerShell`) | com `.claude/esquadro/design.json` declarado, nega o arquivo de estilo escrito por comando de shell e manda usar `Write` ou `Edit`, que o portão de escopo confere | não ter o `design.json` (módulo opcional, sem trava) |
+| Prompt do handoff (`scripts/portao-fecho.js`, no fim do turno) | barra o turno que gravou um arquivo de handoff e não colou o prompt em bloco de código na resposta final | `"portaoHandoff": false` (ver "Como desligar uma trava") |
+| Qualidade de resposta (a abertura) | injeta as seis regras de clareza das respostas no chat; não barra nada | `"qualidadeDeResposta": false` (ver "Qualidade de resposta") |
+| Vigia (a abertura) | mostra uma vez a "novidade da semana" do plugin; só para quem mantém o plugin | **desligado por padrão**; `"vigia": true` liga |
+
+**A pergunta de fato passa.** O portão de decisão existe para a decisão. A pergunta de sintoma, ou de um dado que só
+você tem, não é decisão: ponha `(fato)` (exata, entre parênteses, em maiúscula ou minúscula) no `header`, o título curto da
+pergunta, e ela passa sem a regra das 3 opções. A marca só vale no `header`: no texto da pergunta ou num rótulo, não.
+A decisão sem a marca segue barrada, e a mensagem de bloqueio ensina a marca.
+
+**O vigia, por inteiro.** É opt-in: `"vigia": true` no `projeto.json`. A abertura mostra o arquivo `novidades.md`
+que o `scripts/vigia-puxar.js` trouxe para `~/.claude/esquadro/vigia` (ou para a pasta da variável
+`ESQUADRO_VIGIA`), marcado como dado, não como instrução. Quem busca o arquivo é uma tarefa agendada, rodando o
+`vigia-puxar.js`, que traz `vigia/novidades.md` do ramo `claude/vigia` de um repositório privado pelo `git`;
+gancho nenhum abre rede. O arquivo só é gravado se a primeira linha for `semana: AAAA-MM-DD` válida, então um
+arquivo quebrado nunca sobrescreve a última novidade boa; o script sai com 0 quando grava, 1 quando falha e 2
+quando falta `--repo`. Na abertura: semana nova, mostra e marca como vista; a mesma semana, silêncio. A novidade sai em
+até 12 linhas, e a linha longa quebra em até três, sem partir o link. Se o arquivo sumiu, não se lê, não traz a
+linha `semana:` ou a semana vista já tem 14 dias ou mais, a abertura avisa no máximo uma vez por dia; quando a última
+busca falhou, o aviso diz quando e por quê.
+
+**Valor entre aspas não desliga.** Todas as chaves de liga/desliga só aceitam o booleano `true` ou `false`, sem
+aspas. `"portaoDecisao": "false"` não desliga nada: o portão segue ligado. Você não precisa descobrir isso sozinho. A
+abertura da sessão avisa, para qualquer uma das chaves:
+
+~~~text
+esquadro: ATENCAO - valor de tipo errado em .claude/esquadro/projeto.json: portaoDecisao tem de ser true ou false. Para ligar ou desligar vale so true ou false, sem aspas: "false" entre aspas NAO desliga.
+~~~
+
+E a conferência final do `/esquadro:init` (`scripts/validar.js`) reprova o arquivo com a mesma frase, `<chave> tem
+de ser true ou false`. O `vigia` e o `modoContinuo` são o contrário (só `true` liga), e `"true"` entre aspas também
+não liga. A lista das oito chaves, com o padrão de cada uma, está em "O `projeto.json` chave por chave".
+
+---
+
 ## Qualidade de resposta
 
 Toda sessão abre com um bloco de seis regras de clareza para as respostas que o agente escreve para você no chat:
@@ -670,6 +762,78 @@ fora do git), por script, sem tocar nas outras permissões. Medido no `claude -p
 sem janela; sem ela, a ferramenta recusa. Na sessão interativa (terminal ou VS Code) isso não foi medido: se a janela
 de aprovação aparecer na primeira execução, escolha "Yes, and don't ask again" uma vez e ela não volta neste projeto.
 
+**O que o paralelo garante, além do teto.** O 8 é o padrão: quem chama pode pedir outro teto, inteiro de 1 a 16, em
+`{"tarefas": [...], "teto": N}`. Chave de tarefa com nome errado (`edit`, `model`) é recusada com a lista das certas,
+em vez de rodar calada como leitura sem cópia isolada. O `leitor` traz como contar linhas nos dois shells e avisa que
+o `Measure-Object -Line` do PowerShell pula linha vazia (um arquivo de 121 linhas saiu com 110), e que, sem quebra de
+linha no fim do arquivo, os dois shells diferem em uma linha; medido no VS Code com a 0.6.4, três leituras custaram
+38.514 tokens, contra 169.098 antes dela. A autorização do `scripts/autorizar-paralelo.js` ignora a marca invisível
+(BOM) que o PowerShell 5.1 põe no `settings.local.json` e trata o arquivo vazio como sem configuração; arquivo
+ilegível ou de forma inesperada **não** é sobrescrito (sai 1 e diz por quê), e uma regra igual em `permissions.deny`
+vence a de `allow`. No Windows, o repositório fixa o fim de linha (`.gitattributes`), porque o Git para Windows
+trocava o fim de linha de cada arquivo e o VS Code recusava o workflow antes da janela de aprovação; um teste
+reprova se o workflow tiver caractere de controle.
+
+---
+
+## A parte visual
+
+Quando o projeto tem interface, o visual é tratado como o resto: com referência nomeada e prova, nunca por gosto. Há
+duas camadas, e a diferença importa. O script só confere o `design.json`. O resto vive na skill `padrao` e na
+rubrica, e é instrução: o agente e os inspetores a seguem, e uma instrução pode ser pulada (a mesma ressalva dos
+limites mais abaixo).
+
+**A régua: `design.json` e `DESIGN.md`.** O `/esquadro:init` procura sinal de design system (um `DESIGN.md`, arquivos
+como `tokens.*` ou `theme.css`, uma pasta `design-system`), confirma com você que são mesmo os tokens do projeto e, só então,
+grava `.claude/esquadro/design.json` com `cores`, `raios`, `espacos`, `sombras` e `antiReferencias` (o que a
+interface não pode parecer). O arquivo é opcional: sem ele, o módulo não existe e nada dispara. Com ele, a escrita
+de arquivo de estilo (`.css`, `.scss`, `.sass`, `.less`, `.styl`) com cor ou medida em `px`, `rem` ou `em` que o
+sistema não tem é negada, com a lista dos valores e o que existe no sistema; e o estilo escrito por comando de shell
+é negado (portão de estilo). Medida em `%` e em outras unidades não é conferida (está na lista do que o `esquadro`
+não promete).
+
+**As lentes de tela.** Quando a mudança é visível, o `/esquadro:revisar` despacha as lentes de tela, uma por
+inspetor (a lista está em "Por dentro de cada comando"). A rubrica completa, com a pergunta e o corte de severidade
+de cada uma, está em `skills/padrao/references/02-rubrica-aaa.md`. Três delas pedem mais do que a tabela diz:
+
+- **Estados (Lente 2): o catálogo de estados.** O componente é visto sozinho, com todos os estados lado a lado
+  (padrão, hover, foco visível, desabilitado, carregando, erro, vazio e selecionado): a página dele no catálogo de
+  componentes do projeto, se houver um, ou uma página de estados montada para a revisão (pode ser a página
+  Artifact da escolha visual). Estado que só aparece navegando o fluxo inteiro passa despercebido. Estado ausente é P1.
+- **Acessibilidade (Lente 4): contraste e alvo de toque.** O contraste tem de atingir o AA e o foco tem de ser
+  visível. O alvo mede no mínimo 24 × 24 px (WCAG 2.2, critério 2.5.8, nível AA), com as exceções do próprio critério
+  (alvo menor cujo círculo de 24 px, centrado nele, não cruza outro alvo; link dentro de frase; a mesma função em outro
+  controle que cumpre os 24 px; tamanho decidido pelo navegador; tamanho essencial para a informação). Abaixo disso, fora das
+  exceções, é P1. Status só por cor é P0.
+- **Regressão (Lente 7): INP.** Em tela web, a resposta ao clique se mede pelo INP (Interaction to Next Paint, o
+  tempo do clique até a tela responder): bom até 200 ms, ruim acima de 500 ms (web.dev, percentil 75). Medido acima
+  de 500 ms é P1; entre 200 e 500 ms, P2. Sem medição, a lente diz que não mediu, e não presume.
+
+**A escolha visual: mostrar antes de perguntar.** Opção descrita em texto não comunica o que se vê, e a escolha feita
+sem ter visto vira retrabalho no dia seguinte. Por isso, quando a decisão que o Claude leva a você é uma escolha
+visual, ele mostra primeiro e só depois pergunta:
+
+1. **O meio preferido é uma página Artifact**, quando a sessão tem a ferramenta: uma página privada no claude.ai,
+   que o Claude publica e você abre pelo link. Ela traz o antes × a proposta × a referência lado a lado, em claro e escuro,
+   nas larguras de tela que o projeto declara. Sem declaração, só as que o produto comprovadamente atende: a de
+   notebook, e a de celular apenas se ele roda em celular (largura que ele não atende gera achado falso).
+2. **O link vai primeiro, as 3 opções no turno seguinte.** O Claude publica, espera o link confirmar e só então faz as
+   3 opções, a recomendada em primeiro, dizendo numa frase o que ela **não** vai mudar.
+3. **A página leva só dado fictício**, porque sai do seu computador. Tela com dado de cliente ou credencial troca
+   por dado fictício antes de publicar, ou fica na imagem local.
+4. **Sem a ferramenta, a imagem de sempre:** antes × proposta × referência (ou um mock fotografado com a folha
+   real), enviada e confirmada antes das opções. Se a tela mostra número, o Claude declara se a veracidade do dado
+   foi conferida.
+
+**Na Marcha AAA: print antes × depois e o roteiro de 5 usuários.** Com gerador de print no projeto, a regressão de
+tela se prova por comparação automática de print antes × depois, das mesmas telas e viewports, apontando o que mudou
+fora do pedido. Isso se decide no começo: se não há gerador ou o ambiente não responde, o plano declara, antes de
+executar, que a lente de responsividade vai por leitura de código e estilo; e, sem o instrumento, a comparação foi a
+olho, e isso se declara. Em função visível nova, o fecho entrega a você um roteiro de teste de uso: a tarefa em uma
+frase; 5 usuários reais, um de cada vez, fazendo sem ajuda enquanto alguém observa calado; anotar onde cada um
+travou. Cinco acham a maior parte dos problemas de uso (cerca de 85%, pela curva de Nielsen e Landauer); mais que
+isso repete o já visto. O roteiro não bloqueia o fecho: sai junto, sem esperar resposta.
+
 ---
 
 ## Os seis comandos
@@ -689,6 +853,64 @@ no começo da tarefa e que traz junto a conferência do mapa de modelos deste pr
 Dos seis comandos, só os dois primeiros são travas — a 1 e a 2. Os outros quatro **não são travas**: `aprender` é o
 autoaprimoramento mínimo — o plugin **não aprende sozinho**, ele transforma correção em proposta e
 espera o OK; `handoff`, `auditar` e `calibrar` são ferramentas de manutenção, e nenhum dos três bloqueia nada.
+
+---
+
+## Tudo o que vem instalado
+
+O que o `claude plugin install` coloca na sua máquina, por tipo. Nada daqui roda fora do que o Claude Code
+chama: a skill é carregada quando a tarefa pede, o agente e o workflow só rodam despachados, e cada gancho
+dispara no evento dele.
+
+| Tipo | Nome | O que é |
+|---|---|---|
+| Skills dos comandos | `esquadro:init`, `esquadro:revisar`, `esquadro:aprender`, `esquadro:handoff`, `esquadro:auditar`, `esquadro:calibrar` | os comandos da tabela acima; cada um é uma skill que você chama pelo nome |
+| Skill-manual | `padrao` | não é comando: o manual de execução que o agente carrega no começo da tarefa (marchas, lentes, loop de revisão, decisão em três opções, o que um "pronto" precisa provar). Traz as seis referências listadas mais abaixo |
+| Workflow | `esquadro:paralelo` | tarefas independentes em paralelo, com teto de agentes, modelo barato e cópia isolada para quem edita; só roda depois do seu sim (ver "Trabalho em paralelo") |
+| Agentes | `inspetor`, `juiz-mesmo`, `leitor` | `inspetor` e `juiz-mesmo` são da revisão cega; `leitor` é o agente de leitura leve do paralelo (ver "Por dentro de cada comando" e "Trabalho em paralelo") |
+| Ganchos | um script por evento | scripts `node` que o Claude Code roda em momentos fixos; a tabela seguinte lista evento por evento |
+| Painéis | `/esquadro-sessao`, `/esquadro-plano` | o medidor da sessão e o painel do plano (ver "Ver os números a qualquer hora", na seção "Como funciona") |
+
+Os ganchos, um por evento, com o que cada um deixa na sua tela:
+
+| Evento | Script | O que faz | O que você vê |
+|---|---|---|---|
+| `SessionStart` (a sessão abre, reabre ou compacta) | `scripts/abertura.js` | fotografa o `git status`, reinjeta as suas regras e o escopo, injeta os blocos de paralelismo, menos paradas e qualidade de resposta, e avisa o que está torto na configuração | a linha "esquadro: lendo o estado do repositorio" enquanto roda; o resto vai ao contexto do Claude |
+| `UserPromptSubmit` | `scripts/abrir-turno.js` | zera as marcas do turno; reconhece a sua pergunta sobre o contexto e a correção do jeito de ele trabalhar | nada na tela; o Claude recebe a ordem de trocar de chat ou de oferecer virar regra |
+| `PreToolUse` em `Write` e `Edit` | `scripts/portao-escopo.js` | escopo, intocáveis, outra frente, "Fora", criar sem buscar, catraca e design | a escrita volta negada, com o motivo e as saídas |
+| `PreToolUse` em `Bash` e `PowerShell` | `scripts/portao-destrutivo.js`, `scripts/portao-estilo.js` | comando destrutivo, idioma de shell, `cd` solto e estilo escrito por shell | o comando volta negado com o motivo; o `cd` solto no `Bash` roda corrigido, e o Claude fica sabendo |
+| `PreToolUse` em `Task` e `Agent` | `scripts/portao-agente.js`, `scripts/portao-apelido.js` | agente caro em marcha rápida; `model:` do agente contra o apelido gravado | o primeiro nega com o motivo; o segundo só avisa, uma vez por sessão, a você e ao Claude |
+| `PreToolUse` em `AskUserQuestion` | `scripts/portao-decisao.js` | a pergunta ao dono: 3 opções, a recomendada em primeiro | a pergunta volta negada, e a mensagem diz o que refazer |
+| `PostToolUse` em `Write`, `Edit`, `Bash`, `PowerShell`, `Grep`, `Glob`, `Read` e `AskUserQuestion` | `scripts/marcar-trabalho.js` | marca trabalho real, busca feita e arquivos tocados; conta as decisões suas respondidas e os commits que passaram | nada na tela: alimenta os contadores do aviso de troca de chat |
+| `SubagentStop` (só do agente `inspetor`) e `PostToolUse` em `SubagentHandback` | `scripts/gravar-veredito.js` | grava o veredito do inspetor em `vereditos/<lente>.json` da ronda | nada quando grava; se algo não foi gravado, uma mensagem diz o quê e por quê |
+| `Stop` | `scripts/portao-fecho.js` | cobra evidência, etapa com subitem aberto e o prompt do handoff; grava os contadores | o turno volta com o motivo, ou fecha, com o aviso de troca de chat quando um gatilho cruzou |
+| `SessionEnd` | `scripts/fim-sessao.js` | apaga os arquivos de sessão parados há mais de 7 dias | nada |
+
+Os portões que nomeiam uma chave de liga/desliga estão em "Os portões que não são travas"; as chaves, em "O
+`projeto.json` chave por chave".
+
+### O que mora em `modelos/` e nas referências do `padrao`
+
+| Arquivo | O que é |
+|---|---|
+| `modelos/agente.md` | o molde do agente do projeto, que o `scripts/gerar-agentes.js` preenche, um por degrau da escada |
+| `modelos/agents-md.md` | o molde do `AGENTS.md` (o resumo que viaja), que o `scripts/gerar-agents-md.js` preenche |
+| `modelos/skill-projeto.md` | o molde da skill de manual do projeto, que o `scripts/gerar-skill.js` preenche |
+| `modelos/boa-skill.md` | os critérios de uma boa skill de projeto, cada um com a falha de origem; lido pelo `/esquadro:init` antes de preencher o molde, pelo `/esquadro:aprender` antes de propor regra e pelo `/esquadro:auditar` para apontar item fora da rubrica |
+| `modelos/regras.md` | as regras semeadas em `gatilho -> ação`, que o `/esquadro:init` copia para `.claude/esquadro/regras.md` do projeto |
+| `modelos/limites.json` | o teto de instrução que o `/esquadro:auditar` mede, o ponto em que ele começa a avisar e os plugins conhecidos que já cobrem parte do trabalho, para o init não duplicar |
+| `modelos/shell-win32.json` | a tabela de idioma de shell do Windows (o que o portão de shell nega e o que sugere no lugar), com as regras que só valem para o PowerShell 5.1 |
+| `modelos/volateis.json` | os padrões de fato volátil (versão, nome de modelo, preço, nome de evento de hook, flag de linha de comando) que o `/esquadro:aprender` recusa gravar como regra |
+| `modelos/qualidade-prompts.json` | as perguntas congeladas da medição A/B de "Qualidade de resposta" |
+
+| Referência do `padrao` | O que é |
+|---|---|
+| `skills/padrao/references/01-marchas-e-gates.md` | as três marchas, os portões de cada uma, a regra de dúvida entre modelo e marcha, e a delegação |
+| `skills/padrao/references/02-rubrica-aaa.md` | as lentes de tela: a pergunta, a evidência e o corte de severidade (P0, P1, P2) de cada uma |
+| `skills/padrao/references/03-inspecao-cega.md` | o protocolo da revisão cega: preparar o material, despachar as lentes, o formato do veredito e a convergência |
+| `skills/padrao/references/04-verificacao.md` | o que vale como evidência, a regra da mutação plantada e como não se enganar com o próprio instrumento |
+| `skills/padrao/references/05-governanca.md` | a ordem de leitura das fontes, o registro de decisão humana, o conjunto de mudanças e o handoff |
+| `skills/padrao/references/06-ambiente.md` | as armadilhas de ambiente que já custaram sessão inteira: script por arquivo, encoding, gramática de shell, índice do git e CRLF |
 
 ---
 
@@ -713,7 +935,11 @@ acha vira pergunta:
 6. Quais agentes existem aqui, do mais barato ao mais caro — e com que apelido cada um roda?
 
 Cada resposta vira um campo do `projeto.json`. Rodado de novo no mesmo projeto, ele reabre a
-configuração: pergunta só o que faz sentido reperguntar e mostra o que mudou antes de gravar.
+configuração: pergunta só o que faz sentido reperguntar e mostra o que mudou antes de gravar. O que a entrevista não
+perguntou de novo fica como está: os `limiares`, as chaves postas à mão (as de liga/desliga inclusive) e as subchaves
+de `agentes` não são zeradas, e o escopo é declarado antes de gravar a configuração. Num agente gerado, valor com
+`: ` no cabeçalho sai entre aspas, e quebra de linha ali é recusada. Ao fim, o `scripts/validar.js` confere o
+arquivo gravado.
 
 ### `/esquadro:revisar` — quem escreveu não julga
 
@@ -734,11 +960,17 @@ produziu o bug reproduz o bug.
   faixa: até 3 linhas, um inspetor; lógica de até 40 linhas com teste vermelho e mutação, dois; texto,
   dois; arquivo novo, lógica maior ou estilo, as lentes da família inteira. Quem revisa pode subir de
   faixa, nunca descer.
+- **Nas faixas pequenas, o inspetor lê só o trecho mudado.** O `A.txt` e o `B.txt` levam o trecho com 20 linhas de
+  margem; o resto fica em branco, com uma linha `[fora do trecho: linhas a-b]` no início de cada vão. Os números de
+  linha seguem os do arquivo, então a apuração e a refutação não mudam, e o inspetor sabe que o vão não é defeito: o
+  que depender dele vira "não consigo ver". Na faixa completa, o arquivo inteiro.
 - **A régua do projeto vai junto.** A seção "Régua" do `regras.md` entra no pacote, e o inspetor
   cita o valor dela — não o gosto dele. Sem régua declarada, a revisão diz que rodou sem régua.
 - **Quem decide é o script.** O `apurar-ronda.js` conta só os achados do lado novo; o que
   aponta para o lado antigo é informação, não bloqueio. Achado refutado na fonte primária entra
-  em `refutados.json` **com a prova**, ou o script para com erro.
+  em `refutados.json` **com a prova**, ou o script para com erro. Achado na mesma linha, lente e severidade da
+  ronda anterior só é repetição se o texto da linha citada não mudou: o script lê a linha no `A.txt` e no `B.txt` de
+  cada ronda, e a linha reescrita entre as rondas (espaços não contam) faz o achado contar como novo.
 - **Convergência com teto.** Duas rondas secas seguidas aprovam. A ronda 1 descobre; as seguintes
   só chamam as lentes que acharam P0 ou P1, com a pergunta reformulada. No teto de 3 rondas com
   achado aberto, **para** e leva a decisão ao dono em três opções.
@@ -782,7 +1014,9 @@ agora e não daqui a um mês. Depois transforma a correção em `gatilho -> aç�
 decai em conversa longa; gatilho é convocado pela própria ação —, recusa fato volátil (versão,
 preço, nome de modelo), propõe com o `propor-regra.js` do plugin (que a skill roda por você) **sem gravar**, e pergunta em três
 opções. Só grava depois do sim, e avisa quando o arquivo de regras passa de umas 40, porque regra
-demais dilui a atenção que ela devia concentrar.
+demais dilui a atenção que ela devia concentrar. A regra é uma linha só: gatilho ou ação com quebra de linha é
+recusado. E a duplicata é a linha inteira: a regra que é só o começo de outra já gravada não é mais recusada como
+"JA EXISTE".
 
 **Você não precisa lembrar do comando.** Quando a sua mensagem parece uma correção ao comportamento
 do Claude ("eu já te disse", "não foi isso que pedi", "pare de…", "da próxima vez…"), o `abrir-turno.js`
@@ -961,11 +1195,28 @@ dois lugares, como na tabela.
 | `node "<plugin>/scripts/cicatriz.js" --manual <pasta ou arquivo do seu manual> --corpus <pasta com o seu histórico em .md>` | para cada regra do seu manual: existe decisão, incidente ou achado atrás dela? Sem `--corpus` o script avisa que não leu histórico e não separa nada; sem `--manual` mede as skills do próprio plugin |
 | `node "<plugin>/scripts/plataforma.js" --raiz "<plugin>"` | em que sistemas cada trecho dependente de plataforma foi de fato exercitado |
 | `node "<plugin>/scripts/sanitar.js"` | se algum dado seu vazou, nas três superfícies: conteúdo, autoria do histórico e mensagem de commit; age sobre a pasta atual, ou sobre outra com `--raiz <pasta>` |
+| `node "<plugin>/scripts/auditar.js" --memoria <caminho do MEMORY.md>` | o relatório do `/esquadro:auditar`, em JSON (peso de instrução, sobreposições, contradições, itens fora da rubrica, regras sem cicatriz); a skill roda por você. Sem `--memoria`, ou sem valor depois dela, a chave `memoria` diz "nao medida" e a causa |
+| `node "<plugin>/scripts/varrer.js" <pasta>` | a varredura do `/esquadro:init`, em JSON: o teto (quantos arquivos leu, se cortou, quanto custou), o ambiente detectado, o peso de instrução e o que ela inferiu, marcado como inferência; sem `<pasta>`, a atual |
+| `node "<plugin>/scripts/validar.js" <pasta>` | confere o `.claude/esquadro/projeto.json` e, se existir, o `regras.md`: `OK` e saída 0, ou a lista do que está errado e saída 1; sem `<pasta>`, a atual |
+| `node "<plugin>/scripts/gerar-agentes.js" [--fatias] [--respostas <arquivo.json>] [--gravar]` | os agentes do projeto, um por degrau da escada, a partir de `modelos/agente.md`. Sem `--gravar` só propõe e não escreve nada; com ele, escreve em `.claude/agents/` e **pula** o que já existe. `--fatias` lista o que o molde pergunta. Para com erro (saída 1) sem degraus gravados ou com a escada torta |
+| `node "<plugin>/scripts/gerar-skill.js" [--fatias] [--respostas <arquivo.json>] [--gravar]` | a skill de manual do projeto, em `.claude/skills/<slug>/SKILL.md`, a partir de `modelos/skill-projeto.md`. Recusa a que não passa no validador e na rubrica de boa skill, e não sobrescreve a que já existe |
+| `node "<plugin>/scripts/gerar-agents-md.js" [--fatias] [--respostas <arquivo.json>] [--gravar]` | o `AGENTS.md` da raiz, a partir de `modelos/agents-md.md`. Sem `--gravar` só mostra; com ele, recusa sobrescrever um `AGENTS.md` que já existe |
+| `node "<plugin>/scripts/autorizar-paralelo.js" [--conferir]` | grava a regra `Workflow(esquadro:paralelo)` em `permissions.allow` do `.claude/settings.local.json`; com `--conferir`, só lê e diz se já está autorizado. Saída em JSON (`autorizado`, `gravou`, `arquivo`) |
+| `node "<plugin>/scripts/vigia-puxar.js" --repo <pasta do clone> [--remote backup] [--ramo claude/vigia] [--arquivo vigia/novidades.md] [--destino <pasta>]` | só para quem mantém o plugin: traz a novidade da semana do ramo `claude/vigia` para a pasta do vigia (ver "Os portões que não são travas"). Roda por tarefa agendada, nunca por gancho. Saída 0 se gravou, 1 se falhou, 2 se faltou `--repo` |
 | `node "<clone do plugin>/scripts/exportar.js" --raiz "<clone do plugin>" --destino <pasta>` | só para quem publica o próprio plugin: monta, numa pasta à parte, exatamente o que iria para um repositório público (sem `--gravar` só mostra o que copiaria) |
 | `node "<plugin>/scripts/experimento.js" --manual <pasta do seu manual>` | monta a tabela de obrigações do seu manual e do plugin; depois de preenchida (o script diz onde), rode de novo com `--veredito` para julgar: o plugin bastou, ou ainda falta manual? Sem `--manual` a tabela traz só as obrigações do plugin |
 
 Os dois últimos existem porque este repositório foi publicado e porque o plugin foi posto à prova
 contra um manual de verdade — os dois casos estão contados acima.
+
+Das linhas acima, `varrer.js`, `validar.js`, `gerar-agentes.js`, `gerar-skill.js`, `gerar-agents-md.js` e
+`autorizar-paralelo.js` são ferramentas do `/esquadro:init`, e o `auditar.js` é do `/esquadro:auditar`: as skills
+os rodam por você, e rodá-los à mão serve para conferir o que a skill viu.
+
+O `sanitar.js` não diz LIMPO sem ter lido: arquivo que não abre, vocabulário local quebrado e `excecaoEm` inválido
+saem com 2. Arquivo com acento no nome, UTF-16 com BOM e pasta pessoal do macOS e do Windows, em qualquer caixa,
+entram na conferência; binário sai como "não conferido", com o motivo. O `cicatriz.js` aceita um arquivo, e não só
+uma pasta, em `--manual` e em `--corpus`.
 
 ---
 
@@ -1117,6 +1368,73 @@ Ele lê só a resposta final do turno, e só confere que há um bloco de código
 prompt. No turno que gravou o handoff e já tem um bloco na resposta final, o aviso de troca de chat
 não manda colar o prompt de novo. Com o portão desligado e a resposta sem bloco, nada barra, e o
 aviso de troca de chat, se disparar, continua mandando colar.
+
+---
+
+## O `projeto.json` chave por chave
+
+O `.claude/esquadro/projeto.json` é gravado pelo `/esquadro:init` e lido pelos portões. Você pode editá-lo à mão:
+a abertura da sessão avisa o que está torto, e o `scripts/validar.js` confere o arquivo inteiro. As chaves
+obrigatórias faltando reprovam com `falta a chave <nome>`; as de liga/desliga ficam de fora das obrigatórias de
+propósito, para não invalidar o `projeto.json` de quem já tem um.
+
+**As obrigatórias.**
+
+| Chave | O que muda | Padrão que o init grava |
+|---|---|---|
+| `versaoConfig` | a versão do formato do arquivo; tem de ser `1` | `1` |
+| `geradoEm` | a data (AAAA-MM-DD) da última gravação pelo init; o re-init a atualiza | a data de hoje |
+| `plataforma` | `so` e `shell`, os dois em texto; o shell decide a tabela de idioma que o portão de shell aplica, e a regra do PowerShell 5.1 (sem `&&` e sem `\|\|`) só vale com o shell `powershell` | o que a varredura inferiu |
+| `modeloDeAmeaca` | `interno` ou `publico`; entra no cabeçalho que a abertura reinjeta e orienta a lente de governança (onde o projeto declarou o risco como aceito, propor hardening que ninguém pediu é achado dela) | sem padrão: é resposta da entrevista |
+| `provaDePronto` | o comando cuja saída o agente cola para provar o pronto; texto, ou `null` quando ainda não existe | o que a varredura achou, ou `null` |
+| `quemDecide` | a quem se leva a decisão, em três opções; reinjetado na abertura | sem padrão: é resposta da entrevista |
+| `fontesCanonicas` | os arquivos que mandam de verdade, em ordem; o resto é dado, não instrução; também entram no peso de instrução da auditoria | os candidatos que a varredura achou, ou `[]` |
+| `intocaveis` | padrões de caminho que nem o escopo declarado libera; o padrão que não pega arquivo nenhum é avisado na abertura | `[]` |
+| `marchaPadrao` | a marcha (`rapida`, `padrao` ou `aaa`) do caminho que não está em nenhuma lista de `marchas`; valor desconhecido cai em `padrao` | `padrao` |
+| `marchas` | três listas de padrões de caminho (`aaa`, `padrao`, `rapida`); o caminho que casa em duas listas fica na mais rigorosa; caminho absoluto ou com esquema (`C:`, `file://`) é recusado | as três listas vazias |
+| `comandosBloqueados` | expressões regulares (sem distinção de caixa) que o portão destrutivo trata como destrutivas, além das que já conhece; regex inválida reprova no validar | `[]` |
+| `comandosLiberados` | expressões regulares dos comandos que o portão de shell deixa passar sem conferir; o validar reprova padrão que está nas duas listas e o que neutraliza um bloqueado | `[]` |
+| `travas` | as quatro chaves de liga/desliga das travas (tabela abaixo) | todas `true` |
+| `limiares` | os números dos gatilhos de troca de chat e dos prazos da auditoria (tabela abaixo) | `{}`: valem os padrões |
+| `agentes` | `escada` (os nomes dos agentes, do mais barato ao mais caro) e `degraus` (cada agente com o apelido do modelo dele), na mesma ordem; sem escada de pelo menos dois nomes, a trava 6 só conta | `{ "escada": [] }` |
+
+**As de liga/desliga.** Só o booleano decide, sem aspas (ver "Os portões que não são travas").
+
+| Chave | O que liga ou desliga | Padrão |
+|---|---|---|
+| `sugerirAprender` | a oferta de virar regra quando você corrige o jeito de o Claude trabalhar (no máximo uma a cada cinco turnos) | ligado; `false` desliga |
+| `auditarNaAbertura` | a auditoria automática da abertura, a cada `diasEntreAuditorias` dias | ligado; `false` desliga |
+| `qualidadeDeResposta` | o bloco de seis regras de clareza das respostas | ligado; `false` desliga |
+| `portaoDecisao` | o portão da pergunta ao dono (3 opções, a recomendada em primeiro) | ligado; `false` desliga |
+| `portaoHandoff` | o portão do prompt do handoff no chat | ligado; `false` desliga |
+| `paralelismo` | as regras de trabalho em paralelo que a abertura injeta | ligado; `false` desliga |
+| `vigia` | a novidade da semana na abertura (só para quem mantém o plugin) | desligado; só `true` liga |
+| `modoContinuo` | o modo contínuo: troca de chat só por tamanho, decisão técnica sem parar | desligado; só `true` liga |
+
+**As quatro travas**, dentro de `travas`. As quatro são obrigatórias e booleanas.
+
+| Chave | O que `false` faz | Padrão |
+|---|---|---|
+| `travas.fecho` | desliga a cobrança de evidência no fim do turno (trava 3); o portão do prompt do handoff não desliga com ela | `true` |
+| `travas.destrutivo` | desliga o bloqueio de comando destrutivo e o do `cd` solto, juntos (trava 5) | `true` |
+| `travas.outraFrente` | desliga o bloqueio de escrita em arquivo que outra frente já mexeu (trava 5) | `true` |
+| `travas.escopo` | nada: a chave é exigida pelo schema, mas nenhum portão a lê (ver "Como desligar uma trava") | `true` |
+
+**Os números**, dentro de `limiares`. Só número positivo vale: `0`, negativo, texto e `null` caem no padrão, e
+`"300000"` entre aspas também não vale (grave `300000`).
+
+| Chave | O que muda | Padrão |
+|---|---|---|
+| `limiares.turnosComTrabalho` | turnos com trabalho real que disparam o aviso de troca de chat | 15 |
+| `limiares.revisoesFechadas` | revisões independentes fechadas | 2 |
+| `limiares.bloqueios` | bloqueios de portão, somados | 6 |
+| `limiares.arquivosTocados` | arquivos tocados | 25 |
+| `limiares.decisoesDoDono` | decisões suas respondidas | 3 |
+| `limiares.commits` | commits que passaram | 3 |
+| `limiares.tokensDeContexto` | tamanho da conversa, em tokens de contexto, que dispara o aviso | 175000 (250000 com o modo contínuo) |
+| `limiares.tokensAlarme` | o segundo aviso, firme | 450000 |
+| `limiares.diasEntreAuditorias` | dias entre as auditorias automáticas | 7 |
+| `limiares.diasSkillParada` | dias sem mudar para a skill do projeto contar como parada | 90 |
 
 ---
 
