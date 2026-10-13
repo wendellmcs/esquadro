@@ -363,7 +363,9 @@ escrita, nas 444 sessões do autor (414 trocas medidas) cada troca custa US$ 1,5
 sai mais caro): o custo total fica 1,6% abaixo do de não trocar. Mais alto, a economia cresce devagar: 200 mil,
 2,6% abaixo; 250 mil, 3,2%; 350 mil, 3,5%. O padrão é o menor limiar que não encarece, não o que mais
 economiza: a conversa troca mais cedo sem pagar mais por isso (escolha do autor). Quem prefere economizar mais
-grava um limiar maior, abaixo do alarme (por exemplo `250000`), em `limiares.tokensDeContexto`. Para medir no
+grava um limiar maior, abaixo do alarme (por exemplo `250000`), em `limiares.tokensDeContexto`. Com o modo
+contínuo ligado (desde a 0.7.4), o padrão já é 250 mil: a sessão longa é o objetivo dele; o número que você
+gravar continua mandando. Para medir no
 seu projeto, rode `/esquadro:calibrar`. O erro de ferramenta não subiu com o contexto até 500 mil. O aviso sai só no fim de turno, nunca no meio da
 tarefa. **O alarme** (`tokensAlarme`) é o segundo aviso, mais firme, que sai uma vez mesmo depois do
 primeiro: acima de 500 mil cada chamada custa cerca de 4 vezes a de 200–300 mil. O medidor
@@ -632,8 +634,9 @@ CDP), ler o resultado, e pedir a você só o que só você pode — credencial, 
 cliente no seu login —, tudo num pedido só.
 
 O **modo contínuo** fica numa chave, `modoContinuo`, desligada por padrão (só o booleano `true` liga). Com ela,
-só três coisas pedem troca de chat: o tamanho da conversa (aviso a 175 mil, alarme a 450 mil, os padrões), os
-bloqueios de portão (quando chegam ao limiar `bloqueios`, 6 por padrão) e a sua pergunta sobre o contexto; revisões, decisões, commits, turnos e arquivos não encerram a sessão (o medidor os mostra com "modo
+só quatro coisas pedem troca de chat: o tamanho da conversa (aviso a 250 mil no lugar dos 175 mil, alarme a
+450 mil), os bloqueios de portão (quando chegam ao limiar `bloqueios`, 6 por padrão), o incidente que exigiu
+cirurgia e a sua pergunta sobre o contexto; revisões, decisões, commits, turnos e arquivos não encerram a sessão (o medidor os mostra com "modo
 contínuo: não dispara"). Em troca, o Claude relê o trecho do plano antes de cada subitem, decide sozinho a escolha
 técnica dentro do escopo (registra o motivo e lista no fecho) e só pergunta o irreversível, o externo, credencial,
 permissão ou segurança, o de custo e o de produto. Ligar: `"modoContinuo": true` em `.claude/esquadro/projeto.json`.

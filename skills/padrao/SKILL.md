@@ -302,7 +302,8 @@ credencial, publicar ou implantar, tela com dado de cliente no login dele — e 
 
 **Modo contínuo (chave `modoContinuo` no `projeto.json`).** Só o booleano `true` liga; sem a chave, com
 outro valor ou sem o arquivo, fica desligado. A abertura da sessão diz se está ligado. Ligado, só quatro
-coisas pedem troca de chat: o tamanho da conversa (o aviso dos 175 mil e o alarme dos 450 mil); o
+coisas pedem troca de chat: o tamanho da conversa (o aviso dos 250 mil, no lugar dos 175 mil, e o
+alarme dos 450 mil); o
 aviso de bloqueios de portão, que o plugin dá no fim de turno quando a sessão chega ao limiar (6 por
 padrão; um bloqueio só não pede); o incidente que exigiu cirurgia; e a pergunta do usuário sobre o
 contexto. Deixam de pedir troca de chat os outros gatilhos da lista, a dúvida "já é hora?" e os

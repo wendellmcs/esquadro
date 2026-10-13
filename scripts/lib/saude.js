@@ -1,7 +1,7 @@
 'use strict';
 
 const fs = require('node:fs');
-const { CALADOS } = require('./continuo.js');
+const { CALADOS, TOKENS_CONTEXTO } = require('./continuo.js');
 const { veioDeSubagente } = require('./texto.js');
 
 // Gatilhos CONTAVEIS, do arquivo de regras do projeto. Basta UM; nao e preciso somar.
@@ -91,7 +91,11 @@ function soma(contadores, chaves) {
  * Diferente do `avaliar`, nao se cala com `avisouSaude`: o aviso ja dado nao zera o painel.
  */
 function medir(estado, limiares, continuo) {
-  return medirTodos(estado, limiares).map(function (g) {
+  // D493: com o modo continuo, o padrao do tamanho e o do continuo.js; o numero gravado pelo projeto manda.
+  const proprio = !!limiares && typeof limiares.tokensDeContexto === 'number';
+  const L = continuo === true && !proprio
+    ? Object.assign({}, limiares, { tokensDeContexto: TOKENS_CONTEXTO }) : limiares;
+  return medirTodos(estado, L).map(function (g) {
     // D468: com o modo continuo (so o booleano true), os gatilhos da lista do continuo.js nao cruzam.
     return continuo === true && CALADOS.indexOf(g.chave) !== -1 ? Object.assign(g, { cruzou: false, calado: true }) : g;
   });

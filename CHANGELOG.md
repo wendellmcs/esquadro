@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.4 — com o modo continuo ligado, o aviso de tamanho sai a 250 mil
+
+**Mudado**
+
+- **Modo continuo: aviso de troca de chat a 250 mil tokens.** Com `modoContinuo` ligado, o aviso de tamanho
+  saia no padrao de 175 mil, embora o modo exista para a sessao longa; no teste numa etapa real, o aviso
+  apareceu duas vezes e as sessoes seguiram. Agora, com a chave, o padrao do aviso e 250 mil (o alarme segue
+  em 450 mil). O numero que o projeto gravar em `limiares.tokensDeContexto` continua mandando. Sem a chave,
+  nada muda: 175 mil. O medidor da sessao mostra o limiar que vale.
+- **Modo continuo, textos.** O bloco da abertura, a `esquadro:padrao` e o README dizem os 250 mil; o README
+  passa a nomear as quatro coisas que ainda pedem troca de chat, como a skill (faltava o incidente que exigiu
+  cirurgia).
+
 ## 0.7.3 — pergunta de fato passa no portao de decisao e o modo continuo mais claro
 
 **Mudado**

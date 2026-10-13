@@ -69,6 +69,51 @@ test('D468: com a chave, revisoes, decisoes, commits, turnos e arquivos nao disp
   assert.strictEqual(saude.avaliar(cheio, null, 'true').disparou, true);
 });
 
+test('D493: com a chave, o aviso de tamanho sai a 250000; o limiar do projeto manda; sem a chave, 175000', () => {
+  const g = (e, L, k) => saude.medir(e, L, k).find((x) => x.chave === 'tokensDeContexto');
+  assert.strictEqual(c.TOKENS_CONTEXTO, 250000);
+  assert.strictEqual(g({ tokensDeContexto: 249999 }, null, true).cruzou, false);
+  assert.strictEqual(g({ tokensDeContexto: 250000 }, null, true).cruzou, true);
+  assert.strictEqual(g({}, null, true).limiar, 250000, 'o medidor mostra o limiar que vale');
+  assert.strictEqual(saude.avaliar({ tokensDeContexto: 200000 }, null, true).disparou, false);
+  assert.ok(/260000 tokens de contexto \(limiar 250000\)/.test(saude.avaliar({ tokensDeContexto: 260000 }, null, true).aviso));
+  // o numero gravado pelo projeto manda, com ou sem a chave
+  assert.strictEqual(g({ tokensDeContexto: 180000 }, { tokensDeContexto: 180000 }, true).cruzou, true);
+  assert.strictEqual(g({}, { tokensDeContexto: 180000 }, true).limiar, 180000);
+  // sem a chave (ou com "true" em texto), o padrao da D475
+  assert.strictEqual(g({ tokensDeContexto: 200000 }, null).cruzou, true);
+  assert.strictEqual(g({}, null, 'true').limiar, saude.LIMIARES_PADRAO.tokensDeContexto);
+  assert.strictEqual(saude.LIMIARES_PADRAO.tokensDeContexto, 175000, 'o padrao sem a chave nao muda');
+  // o alarme nao muda com a chave
+  assert.strictEqual(saude.avaliar({ avisouSaude: true, tokensDeContexto: 450000 }, null, true).alarme, true);
+});
+
+test('D493 (P1 da revisao): o bloco diz o aviso e o alarme que o medidor usa, com o limiar do projeto', () => {
+  const casos = [
+    [{}, '250 mil', '450 mil'],
+    [{ tokensDeContexto: 120000 }, '120 mil', '450 mil'],
+    [{ tokensDeContexto: 123456, tokensAlarme: 300000 }, '123456', '300 mil'],
+    [{ tokensDeContexto: '120000' }, '250 mil', '450 mil'] // texto nao e numero: o medidor ignora, o bloco tambem
+  ];
+  for (const [limiares, aviso, alarme] of casos) {
+    const b = c.bloco({ modoContinuo: true, limiares: limiares });
+    assert.ok(b.indexOf('(aviso a ' + aviso + ', alarme a ' + alarme + ')') !== -1, JSON.stringify(limiares) + '\n' + b);
+    assert.ok(/^[\x20-\x7E\n]+$/.test(b) && b.length <= c.TETO, 'ASCII e teto com ' + JSON.stringify(limiares));
+  }
+  // ronda 2 (borda): o alarme e o que o avaliar compara (valor cru, sem conferir o tipo), nao o padrao
+  for (const [tokensAlarme, alarme, dispara] of [['300000', '300 mil', 300000], [null, '0 mil', 0]]) {
+    const b = c.bloco({ modoContinuo: true, limiares: { tokensAlarme: tokensAlarme } });
+    assert.ok(b.indexOf('alarme a ' + alarme + ')') !== -1, JSON.stringify(tokensAlarme) + '\n' + b);
+    assert.strictEqual(saude.avaliar({ avisouSaude: true, tokensDeContexto: dispara }, { tokensAlarme: tokensAlarme }, true).alarme, true);
+  }
+  const torto = c.bloco({ modoContinuo: true, limiares: { tokensAlarme: 'três mil' } });
+  assert.ok(/^[\x20-\x7E\n]+$/.test(torto), 'valor torto nao tira o bloco do ASCII');
+  // o mesmo numero do medidor (sem literal a parte)
+  const L = { tokensDeContexto: 120000 };
+  assert.strictEqual(saude.medir({}, L, true).find((x) => x.chave === 'tokensDeContexto').limiar, 120000);
+  assert.ok(c.bloco({ modoContinuo: true }).indexOf((c.TOKENS_CONTEXTO / 1000) + ' mil') !== -1);
+});
+
 test('continuo: o medidor da sessao mostra o gatilho calado pela chave, sem dizer que cruzou', () => {
   const medidor = require('../scripts/lib/medidor.js');
   const m = saude.medir({ turnosComTrabalho: 99 }, null, true);
