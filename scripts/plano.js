@@ -65,16 +65,35 @@ if (process.argv.indexOf('--texto') !== -1) {
       process.stdout.write(planoLib.painelFrenteSemPlano(achado.frente, eu) + '\n');
       process.exit(0);
     }
-    if (achado) alvo = { arquivo: achado.arquivo, frente: achado.frente, objetivo: achado.objetivo };
+    if (achado && !planoLib.dentroDoProjeto(cwd, achado.arquivo)) {
+      process.stdout.write(planoLib.painelPlanoFora(achado.arquivo, eu) + '\n');
+      process.exit(0);
+    }
+    if (achado) {
+      alvo = { arquivo: achado.arquivo, frente: achado.frente, objetivo: achado.objetivo, escopo: achado.escopo,
+        semVinculo: achado.semVinculo };
+    }
   }
   let tarefasDoPainel = [];
   if (alvo) {
     // D476: o painel le o formato real (Item/Etapa/..., travessao, [FEITO]); o JSON abaixo e o portao seguem no de hoje.
-    try { tarefasDoPainel = planoLib.parseItens(fs.readFileSync(path.join(cwd, alvo.arquivo), 'utf8')); }
+    let textoDoPlano;
+    try { textoDoPlano = fs.readFileSync(path.join(cwd, alvo.arquivo), 'utf8'); }
     catch (e) {
       // R2 da revisao cega: caminho com espaco, sem crases, chega cortado no primeiro espaco.
       process.stdout.write('painel do plano\nnao consegui ler ' + alvo.arquivo + (alvo.frente
         ? ' (se o caminho tem espaco, ponha-o entre crases no Objetivo: Plano: `meu plano.md`)' : '') + '\n');
+      process.exit(0);
+    }
+    // P2 #8 e #15: so a leitura cabe no "nao consegui ler"; erro ao montar a conta de um plano lido e dito como tal.
+    try {
+      // D509: plano achado pelo escopo (tem Objetivo) e com tabela sem marca -> estado pela "ETAPA <id>" do Objetivo.
+      tarefasDoPainel = planoLib.deduzirPeloEscopo(planoLib.parseItens(textoDoPlano), alvo.objetivo);
+      // D502: as sessoes gastas sao as marcas do proprio plano (copia: nao grava no objeto lido do plano-ativo.json).
+      alvo = Object.assign({}, alvo, { sessoesDoPlano: planoLib.sessoesDoPlano(textoDoPlano) });
+    }
+    catch (e) {
+      process.stdout.write(planoLib.painelQueFalhou(alvo.arquivo, e) + '\n');
       process.exit(0);
     }
   }

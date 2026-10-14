@@ -39,6 +39,29 @@ Em `.claude/esquadro/handoff/AAAA-MM-DD-<slug>.md`, com **todas** estas seções
 
 **Nunca inclua segredo, credencial ou dado de cliente.**
 
+Se a sessão trabalha num plano, deixe o painel do plano (`/esquadro-plano`) achá-lo no chat novo:
+
+- no fim do **Objetivo** do escopo em vigor (o arquivo da frente em `.claude/esquadro/escopos/`, ou
+  `.claude/esquadro/escopo.md` sem frente), a linha `Plano: <caminho do plano>`, com o caminho entre
+  crases se tiver espaço. Plano novo: troque o `Plano:` antigo, não acrescente outro;
+- em cada caixa que esta sessão marcar no plano, a marca dela: `- [x] passo (sN: o que foi feito)`. Caixa
+  marcada por sessão anterior não recebe o N desta. As sessões gastas e a estimativa do painel saem dessas
+  marcas. **O N da sessão:** se ela já gravou a sua nota `(sessao N, ...)` no Objetivo, é o N dessa nota. Se
+  ainda não gravou, leia o disco: o maior número já usado entre as notas do Objetivo do escopo em vigor e as
+  marcas `(sN` do plano, mais 1 (1 se não há nenhum); grave a nota com ele antes de marcar caixas ou linhas
+  de tabela. A nota e todas as marcas da sessão, em caixa ou em linha de tabela, levam esse N.
+  Duas sessões abertas ao mesmo tempo podem chegar ao mesmo N: ao gravar a nota, se o N já está na nota
+  de outra sessão, use o seguinte. O painel conta os N distintos: número pulado não muda a conta, e
+  sessão que não deixou marca não entra nela;
+- plano com as etapas numa tabela (1ª coluna `Etapa`, `Fase`, `Item`...): na etapa que a sessão fechou,
+  `[FEITO]` na 1ª célula, depois do id copiado da tabela (`| **P2 motor** [FEITO] | ...`), e a marca da
+  sessão `(sN: o que foi feito)` na última célula da mesma linha. Sem nenhuma marca na tabela, o painel
+  deduz pela `ETAPA <id>` do Objetivo (as anteriores feitas, ela em curso) e avisa que deduziu; a 1ª marca
+  `[FEITO]` encerra a dedução, então, ao pôr a primeira, ponha `[FEITO]` também em cada etapa anterior já
+  feita, senão o painel passa a dá-las como não feitas. Nessas anteriores, quando as notas do Objetivo
+  dizem qual sessão as fechou, ponha também a marca dela, com o N dela (`(s3: o que foi feito)`); sem
+  marca, a etapa conta como feita, mas a sessão que a fechou fica fora das sessões gastas.
+
 ## Passo 3 — oferecer a troca, na mesma resposta
 
 Não basta gerar o arquivo. Na **mesma resposta**:

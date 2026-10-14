@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.7.8 — o painel do plano acha o plano certo, conta as sessoes dele e le etapas em tabela
+
+**Corrigido**
+
+- **Plano da sessao sem frente.** A sessao que nao esta ligada a nenhuma frente le agora o Objetivo do
+  `.claude/esquadro/escopo.md`; antes, ela via o plano de outra frente (a unica com plano anotado), sem aviso. Quando
+  o `escopo.md` nao anota plano e uma so frente anota, o painel mostra o plano dessa frente, diz que a sessao nao esta
+  ligada a ela e qual arquivo editar para ligar; com varias, lista as frentes, como antes.
+- **A forma que as sessoes ja escrevem.** Alem de `Plano: <caminho>`, vale `plano` seguido do caminho entre crases ou
+  aspas, terminado em `.md`. Com as duas formas no Objetivo, vale a que aponta para um arquivo que existe; se os
+  dois existem, vale o `Plano:`; se nenhum existe, tambem vale o `Plano:`, e o painel diz que nao consegue le-lo.
+- **Sessoes gastas do plano, nao da frente.** As sessoes gastas e a estimativa saem agora das marcas de sessao no
+  proprio plano. A sessao 12 anota `(s12: feito)` na caixa `- [x]` do plano que ela marca; caixa refeita por duas
+  sessoes leva as duas, `(s12, s13: refeito)`. Cada numero conta uma vez, tambem no plano aberto por `--abrir`. Antes
+  contavam as marcas da frente inteira (41 para um plano de 2 sessoes). Plano sem marca: o painel diz como anotar.
+- **Plano anotado fora do projeto.** O plano anotado no Objetivo so e lido dentro da pasta do projeto; fora dela, o
+  painel diz que nao le e da as duas saidas: anotar um caminho dentro do projeto ou abrir o plano com `--abrir`. Se
+  o plano e lido mas a conta falha, o painel diz isso, e nao mais "nao consegui ler", e pede para registrar a
+  mensagem como defeito do esquadro.
+
+**Novo**
+
+- **Etapas em tabela.** O painel le o plano que lista as etapas numa tabela: 1a coluna `Etapa`, `Fase`, `Item`,
+  `Tarefa` ou `Onda`, uma etapa por linha, comecando pelo id (como `P0` ou `2b-0`). Para marcar uma etapa como feita,
+  ponha `[FEITO]` na 1a celula dela. Sem nenhum `[FEITO]` na tabela, o painel segue a ultima `ETAPA <id>` do Objetivo
+  do escopo cujo id a tabela tem: as linhas acima dela contam como feitas, e ela como em curso; uma linha "estado
+  pelo escopo:" diz isso e como marcar. Sem `ETAPA` com id da tabela, as etapas ficam sem estado (`[?]`). Com um
+  `[FEITO]` que seja, so as marcas valem. Vale a 1a dessas tabelas; linha sem id fica fora da conta, e o painel avisa
+  quais e pede o id; plano com caixas de passo segue nas caixas. `\|` dentro da celula e barra, nao divisa de coluna,
+  e o plano gravado com BOM (a marca invisivel que editores do Windows poem no comeco do arquivo) le igual. Antes, o
+  plano do APP (etapas P0-P7 numa tabela) dava "o painel nao consegue contar as tarefas".
+
+**Mudado**
+
+- **`/esquadro:handoff`.** O handoff grava a linha `Plano:` no Objetivo do escopo em vigor e pede a marca da sessao
+  em cada caixa marcada, para o painel achar o plano e contar as sessoes no chat novo; no plano em tabela, pede
+  `[FEITO]` na celula da etapa fechada e a marca da sessao na mesma linha, e, na 1a marca `[FEITO]`, tambem nas
+  etapas anteriores ja feitas (a 1a marca encerra a deducao pelo escopo).
+
 ## 0.7.7 — o README conta tudo o que o plugin instala
 
 **Mudado**

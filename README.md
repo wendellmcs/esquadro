@@ -410,23 +410,49 @@ medidor da sessão — contexto usado, janelas de limite (5h e semana) com a hor
 previsão em turnos (só depois de 2 turnos com consumo; antes disso diz que não tem dado) e cada
 gatilho da tabela acima com o valor e o limiar. `/esquadro-plano` responde o painel do plano:
 tarefas feitas e abertas, a próxima, o que falta, as sessões gastas e a estimativa das que faltam, com a base da
-conta. O plano é o ativo (o que é um plano ativo está em "Etapa com subitem aberto não fecha", acima); sem plano
-ativo, é o último `Plano: <caminho>` do Objetivo da frente vinculada à sessão. As sessões gastas são as marcas
-`(sessão N` desse Objetivo, e a estimativa é a média de sessões por tarefa feita vezes as que faltam (sem tarefa
-feita, ele diz que ainda não há base; com plano aberto por `--abrir`, sem frente, ele não conta). O painel lê
-cabeçalhos `Tarefa`, `Item`, `Etapa`, `Onda` ou `Fase` com número; sem caixas de passo, `[FEITO]` no cabeçalho
-marca a tarefa como feita. Sem plano nenhum, ele responde "nenhum plano ativo" e o comando `--abrir` com o
-caminho do script na sua máquina. No painel de chat da extensão do VS Code os dois respondem em
+conta (como o painel encontra o plano e faz a conta, logo abaixo). Sem plano nenhum (nenhum plano ativo, nenhuma frente
+ligada à sessão e nenhum plano anotado no escopo ou nas frentes), ele responde "nenhum plano ativo" e o comando
+`--abrir` com o caminho do script na sua máquina. No painel de chat da extensão do VS Code os dois respondem em
 texto; no terminal e no app Desktop o medidor também fica na linha de status, e quando um gatilho
 cruza aparece uma faixa acima do prompt com o botão "gerar handoff". Nada disso abre rede: os números
 vêm do próprio Claude Code e dos arquivos do esquadro na sua máquina.
+
+**Como o painel do plano acha o plano e conta.**
+
+- **Qual plano.** O plano ativo, se houver (o que é um plano ativo está em "Etapa com subitem aberto não fecha",
+  acima). Sem ele, o plano anotado no Objetivo (o parágrafo `**Objetivo:**` do escopo): na sessão ligada a uma
+  frente, o arquivo dela em `.claude/esquadro/escopos/`; na sessão sem frente, o `.claude/esquadro/escopo.md`. Se o
+  `escopo.md` não anota plano e só uma frente anota, o painel mostra o plano dessa frente, avisa que a sessão não
+  está ligada a ela e diz qual arquivo editar para ligar; com várias, lista as frentes. O `/esquadro:handoff` anota o
+  plano para o chat novo.
+- **Como anotar.** `Plano: <caminho>`, ou `plano` seguido do caminho entre crases (`` plano `docs/x.md` ``). Com as
+  duas formas no Objetivo, vale a que aponta para um arquivo que existe; se os dois arquivos existem, vale o
+  `Plano:`; se nenhum existe, também vale o `Plano:`, e o painel diz que não consegue lê-lo. O caminho é relativo
+  à pasta do projeto, e plano anotado fora dela não é lido (para um plano de fora, use `--abrir`).
+- **Sessões gastas.** Cada sessão tem um número e o anota na caixa que marca: `- [x] passo (s12: feito)`; caixa
+  feita por duas sessões leva as duas, `(s12, s13: refeito)`. As sessões gastas são os números distintos dessas
+  marcas no plano (também vale por extenso, `(sessão 12: feito)`; marca entre crases é exemplo e não conta). A
+  estimativa é a média de sessões por tarefa feita vezes as que faltam; sem tarefa feita, ou com o plano sem marca,
+  o painel diz por quê e como anotar.
+- **Tarefas.** Cabeçalhos `Tarefa`, `Item`, `Etapa`, `Onda` ou `Fase` com número. As caixas de passo mandam; sem
+  elas, `[FEITO]` no cabeçalho marca a tarefa como feita.
+- **Etapas em tabela.** Plano sem caixas de passo pode listar as etapas numa tabela cuja 1ª coluna se chama `Etapa`
+  (ou `Fase`, `Item`, `Tarefa`, `Onda`), uma etapa por linha começando pelo id (`P0`, `P1`, `2b-0`; em negrito
+  também vale). Vale a 1ª dessas tabelas; linha sem id fica fora da conta, e o painel avisa quais e pede o id no
+  começo da 1ª célula. Para marcar uma etapa como feita, ponha `[FEITO]` na 1ª célula dela. Ao pôr o primeiro
+  `[FEITO]`, marque também as etapas anteriores já feitas: com uma marca na tabela, o painel passa a seguir só as
+  marcas. Sem nenhuma marca, ele segue a última `ETAPA <id>` do Objetivo cujo id a tabela tem (as linhas acima dela
+  feitas, ela em curso) e diz isso numa linha "estado pelo escopo"; sem `ETAPA` com id da tabela, as etapas ficam
+  com `[?]`. A marca da sessão vai na linha da etapa, numa célula depois da 1ª
+  (`| **P2** [FEITO] | ... | (s12: feito) |`).
 
 **O medidor e o painel, nos detalhes.** A medida que chega enquanto outra mede não se perde; se a leitura de uso
 travar, a linha de status diz isso e mede de novo, em vez de congelar no último número. O percentual sai inteiro, e
 janela sem nome, gatilho incompleto e previsão infinita são omitidos, em vez de virar "undefined" ou "Infinity". No
 painel do VS Code, o texto de "o que fazer" não emenda mais no último item. No painel do plano, o
-`plano-ativo.json` gravado com BOM vale; o plano que existe mas não se lê é dito, em vez de "nenhum plano ativo"; e
-a saída JSON do `scripts/plano.js` não conta como concluída a tarefa sem caixa de passo (`semCaixas`). Com a
+`plano-ativo.json` e o plano gravados com BOM (a marca invisível que editores do Windows põem no começo do arquivo)
+valem; o plano que existe mas não se lê é dito, em vez de "nenhum plano ativo"; e a saída JSON do
+`scripts/plano.js` não conta como concluída a tarefa sem caixa de passo (ela vai no campo `semCaixas`). Com a
 `--proxima-decisao` e um caminho que não existe, o `plano.js` responde `1` (projeto novo ainda sem arquivo de
 decisões) **com um aviso** que mostra o caminho procurado; uma pasta no lugar do arquivo para com erro.
 
