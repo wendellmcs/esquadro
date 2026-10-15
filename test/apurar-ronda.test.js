@@ -1434,3 +1434,44 @@ test('D503 E5: pelo CLI, lacuna sem arquivo:linha sai em vereditosDescartados', 
     assert.ok(r.json.vereditosDescartados.some((e) => /lacuna sem arquivo:linha/.test(e)), r.stdout);
   }));
 });
+
+// D503 (plano d503, Tarefa 5): o portao de fecho le se uma revisao CONTRA A REFERENCIA fechou na sessao. O apurar
+// conta esse fecho num balde proprio, alem do revisao_fechada; a revisao sem referencia nao entra nele.
+function contadoresDe(tmp, sessionId) {
+  return JSON.parse(fs.readFileSync(path.join(tmp, 'esquadro', sessionId + '.json'), 'utf8')).contadores || {};
+}
+
+test('D503 T5: revisao com referencia que fecha conta revisao_referencia_fechada (e revisao_fechada), uma vez so', () => {
+  comTmp((tmp) => comTmp((cwd) => {
+    const m = { A: 'trabalho', B: 'HEAD' };
+    gravarRondaRef(cwd, 1, m, [vdRef('correcao', 'vence', 'perde')], [vdRef('correcao', 'perde', 'empata')]);
+    gravarRondaRef(cwd, 2, m, [vdRef('correcao', 'vence', 'perde')], [vdRef('correcao', 'perde', 'vence')]);
+    const r = rodar(['--sessao', 'rf1'], cwd, tmp);
+    assert.strictEqual(r.json.encerrar, true, r.stdout);
+    assert.strictEqual(contadoresDe(tmp, 'rf1').revisao_referencia_fechada, 1, r.stdout);
+    assert.strictEqual(contadoresDe(tmp, 'rf1').revisao_fechada, 1);
+    rodar(['--sessao', 'rf1'], cwd, tmp);
+    assert.strictEqual(contadoresDe(tmp, 'rf1').revisao_referencia_fechada, 1, 'apurar de novo nao reconta');
+  }));
+});
+
+test('D503 T5: revisao sem referencia que fecha nao conta revisao_referencia_fechada; com referencia aberta, nada conta', () => {
+  comTmp((tmp) => comTmp((cwd) => {
+    gravarRonda(cwd, 1, [{ lente: 'correcao', melhor: 'B', achados: [] }]);
+    gravarRonda(cwd, 2, [{ lente: 'correcao', melhor: 'B', achados: [] }]);
+    const r = rodar(['--sessao', 'rf2'], cwd, tmp);
+    assert.strictEqual(r.json.encerrar, true, r.stdout);
+    assert.strictEqual(contadoresDe(tmp, 'rf2').revisao_fechada, 1, 'controle: a revisao fechou');
+    assert.strictEqual(contadoresDe(tmp, 'rf2').revisao_referencia_fechada, undefined);
+  }));
+  comTmp((tmp) => comTmp((cwd) => {
+    const m = { A: 'trabalho', B: 'HEAD' };
+    gravarRondaRef(cwd, 1, m, [vdRef('correcao', 'empata', 'perde')], [vdRef('correcao', 'perde', 'perde')]);
+    gravarRondaRef(cwd, 2, m, [vdRef('correcao', 'empata', 'perde')], [vdRef('correcao', 'perde', 'perde')]);
+    const r = rodar(['--sessao', 'rf3'], cwd, tmp);
+    assert.strictEqual(r.json.encerrar, false, r.stdout);
+    let c = {};
+    try { c = contadoresDe(tmp, 'rf3'); } catch (e) { c = {}; }
+    assert.strictEqual(c.revisao_referencia_fechada, undefined, 'aberta nao conta');
+  }));
+});

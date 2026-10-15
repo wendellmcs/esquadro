@@ -32,6 +32,24 @@ function reinjecaoJaAvisou(cwd) {
   } catch (erro) { return false; }
 }
 
+const MARCA_REFERENCIA = 'referencia-avisada.json';
+
+/**
+ * D503 (plano d503, Tarefa 6): o aviso de que falta a referencia de topo, uma vez por projeto. So com o projeto.json
+ * lido e sem a chave; a marca gravada diz que ja avisou. Marca que nao se grava nao derruba nada: a proxima abertura
+ * avisa de novo. R5: ASCII, o texto chega ao Claude.
+ */
+function avisoDaReferencia(cwd, projeto) {
+  if (!projeto || 'referencias' in projeto) return null;
+  const marca = config.caminhoEmEsquadro(cwd, MARCA_REFERENCIA);
+  if (fs.existsSync(marca)) return null;
+  try { fs.writeFileSync(marca, JSON.stringify({ avisadoEm: new Date().toISOString() }) + '\n', 'utf8'); } catch (e) { /* avisa de novo */ }
+  return 'esquadro: este projeto nao declara a referencia de topo (chave referencias do .claude/esquadro/projeto.json): ' +
+    'a melhor peca que existe para cada tipo de entrega (tela, codigo, texto), que o /esquadro:revisar poe ao lado do ' +
+    'trabalho e contra a qual o fecho da entrega AAA cobra a revisao. Para declarar, rode /esquadro:init de novo (Passo 4b) ' +
+    'ou ponha a chave a mao; para nunca usar, grave "referencias": {}. Este aviso sai uma vez so.';
+}
+
 io.blindar(function () {
   io.lerEntrada(function (e) {
     const cwd = config.raizDoProjeto(e.cwd || process.cwd());
@@ -106,12 +124,20 @@ io.blindar(function () {
       process.stdout.write('\nesquadro: ATENCAO - valor de tipo errado em .claude/esquadro/projeto.json: ' + tipos.join('; ') +
         '. Para ligar ou desligar vale so true ou false, sem aspas: "false" entre aspas NAO desliga.\n');
     }
+    // D503 (plano d503, Tarefa 6): sem a chave `referencias`, avisa uma vez por projeto; a marca fica em
+    // .claude/esquadro/ (como a da auditoria, depois da foto do git). Com a chave, ate `{}`, calada.
+    const avisoRef = avisoDaReferencia(cwd, projeto);
+    if (avisoRef) process.stdout.write('\n' + avisoRef + '\n');
     // A2 (D426): auditoria periodica. Depois da foto do git (a marca nao entra nela) e antes do plano
     // ativo, que segue por ultimo. A lib ja nao lanca; o try/catch aqui e a segunda rede, para que
     // nada da auditoria derrube o resto da abertura.
     try {
       const auditoriaTexto = require('./lib/auditoria-periodica.js').avisoDaAuditoria(cwd, projeto);
-      if (auditoriaTexto) process.stdout.write('\n' + auditoriaTexto + '\n');
+      if (auditoriaTexto) {
+        process.stdout.write('\n' + auditoriaTexto + '\n');
+        // Pedido 32 (Tarefa 4 subitem 3): a marca da sessao que acende o botao do /esquadro:auditar na faixa do mod.
+        estado.alterar(e.session_id, function (s) { s.auditoriaAvisou = true; return s; });
+      }
     } catch (erro) {
       // S8/A2-3: aqui so chega falha do `require` da lib (ela propria ja nao lanca). Calar deixava a
       // auditoria morta para sempre sem ninguem saber; uma linha diz que nao rodou e por que. A abertura segue.

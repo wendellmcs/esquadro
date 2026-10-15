@@ -78,7 +78,9 @@ const BALDES_DE_BLOQUEIO = [
   // F6-04: nome de frente invalido e "Fora" declarado tinham o balde fora_do_escopo; agora cada um tem o seu.
   'frente_invalida', 'fora_declarado',
   // D412: handoff gravado no turno sem o prompt no chat.
-  'handoff_sem_prompt'
+  'handoff_sem_prompt',
+  // D503 (0.8.1): entrega AAA sem revisao contra a referencia de topo na sessao.
+  'fecho_sem_referencia'
 ];
 
 /**

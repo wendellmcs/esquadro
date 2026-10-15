@@ -222,12 +222,16 @@ test('D442/7: leitura de uso que nunca responde nao congela o status - a medida 
   expect(status[status.length - 1]).toBe('esquadro | contexto 5%')
 })
 
-test('faixa acima do prompt: nada sem gatilho; com gatilho, botao que poe /esquadro:handoff no prompt', async ($, on) => {
+// Pedido 32 (Tarefa 4 subitem 3): o botao do handoff vem na lista `botoes` do sessao.js, como os outros.
+const HANDOFF = { nome: 'handoff', texto: 'troca de chat - gatilho contavel cruzou.', rotulo: 'gerar handoff', comando: '/esquadro:handoff' }
+
+test('faixa acima do prompt: nada sem gatilho; com gatilho, botao que poe /esquadro:handoff no prompt e some depois de usado', async ($, on) => {
   let cruzou = false
   const preenchido: string[] = []
   on('session.usage', () => ({ value: USO }))
   on('session.id', () => ({ value: 'sess-abc' }))
-  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify({ curta: 'c', longa: 'l', cruzou: cruzou }), stderr: '' } }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify({ curta: 'c', longa: 'l', cruzou: cruzou,
+    botoes: cruzou ? [HANDOFF] : [] }), stderr: '' } }))
   on('ui.status', () => ({ value: undefined }))
   on('ui.invalidate', () => ({ value: undefined }))
   on('turn.complete', () => ({ text: '' }))
@@ -243,11 +247,250 @@ test('faixa acima do prompt: nada sem gatilho; com gatilho, botao que poe /esqua
 
   cruzou = true
   await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
-  for (const surface of ['terminal', 'desktop'] as const) {
+  const ui = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /troca de chat/ })).toBeDefined()
+  await ui.press({ key: 'esquadro-handoff' })
+  await ui.unmount()
+  expect(preenchido).toEqual(['/esquadro:handoff'])
+  // usado: some, mesmo com o gatilho ainda aceso
+  const depois = await $.ui.mount({ ...BANDA, surface: 'desktop' })
+  expect(await depois.find({ key: 'esquadro-handoff' })).toBeUndefined()
+  await depois.unmount()
+})
+
+// Pedido 32 (plano dos pedidos 30-32, Tarefa 4; D519, D522): a faixa na identidade - borda e o nome "esquadro" no
+// acento, o resto sem cor. O acento e a chave de tema `warning` no terminal e no Desktop, e a cor crua no VS Code,
+// onde a chave nao pinta (sonda da s53).
+test('faixa na identidade: borda e marca no acento por tela, um acento so', async ($, on) => {
+  on('session.usage', () => ({ value: USO }))
+  on('session.id', () => ({ value: 'sess-abc' }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify({ curta: 'c', longa: 'l', cruzou: true,
+    plano: 'plano d503 | 4 de 6 | proxima: Tarefa 6 init', botoes: [HANDOFF] }), stderr: '' } }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.invalidate', () => ({ value: undefined }))
+  on('turn.complete', () => ({ text: '' }))
+  on('ui.render', () => ({ type: 'Text', props: {}, children: ['desenho do motor'] }))
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  for (const [surface, acento] of [['terminal', 'warning'], ['desktop', 'warning'], ['vscode', '#F59E0B']] as const) {
     const ui = await $.ui.mount({ ...BANDA, surface })
-    expect(await ui.find({ type: 'Text', text: /troca de chat/ })).toBeDefined()
-    await ui.press({ key: 'esquadro-handoff' })
+    const faixa = await ui.find({ key: 'esquadro-faixa' })
+    expect(faixa && faixa.props.borderColor).toBe(acento)
+    expect(faixa && faixa.props.borderStyle).toBe('round')
+    const textos = await ui.findAll({ type: 'Text' })
+    const coloridos = textos.filter((t: any) => t.props.color !== undefined)
+    expect(textos.map((t: any) => t.text + '=' + String(t.props.color))).toContain('esquadro =' + acento)
+    expect(coloridos.length).toBe(1)
     await ui.unmount()
   }
-  expect(preenchido).toEqual(['/esquadro:handoff', '/esquadro:handoff'])
+})
+
+// Pedido 31 (plano dos pedidos 30-32, Tarefa 3; D520): o mod le do $.store o historico das janelas e o gasto real do
+// mes, manda ao sessao.js e grava de volta o `guardar` que ele devolve. A conta mora no script; o mod so carrega.
+test('medida: manda historico e gastoReal do $.store ao sessao.js e grava o `guardar` de volta', async ($, on) => {
+  const chamadas: Chamada[] = []
+  const memoria: Record<string, unknown> = { historico: { velha: { t: 1, medidas: 3, janelas: {} } }, gastoReal: { '2026-10': { velha: 2 } } }
+  const gravados: string[] = []
+  on('session.usage', () => ({ value: USO }))
+  on('session.id', () => ({ value: 'sess-abc' }))
+  on('store.get', ($: unknown, e: any) => ({ value: memoria[e.key] }))
+  on('store.set', ($: unknown, e: any) => { memoria[e.key] = e.value; gravados.push(e.key); return { value: undefined } })
+  on('process.run', ($: unknown, e: any) => {
+    chamadas.push({ argv: e.argv, stdin: e.init && e.init.stdin })
+    return { value: { exitCode: 0, stdout: JSON.stringify({ curta: 'c', longa: 'l', cruzou: false,
+      guardar: { historico: { nova: { t: 2 } }, gastoReal: { '2026-10': { nova: 3 } } } }), stderr: '' } }
+  })
+  on('ui.status', () => ({ value: undefined }))
+  on('turn.complete', () => ({ text: '' }))
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  const enviado = JSON.parse(String(chamadas[0].stdin))
+  expect(enviado.historico).toEqual({ velha: { t: 1, medidas: 3, janelas: {} } })
+  expect(enviado.gastoReal).toEqual({ '2026-10': { velha: 2 } })
+  expect(memoria.historico).toEqual({ nova: { t: 2 } })
+  expect(memoria.gastoReal).toEqual({ '2026-10': { nova: 3 } })
+  expect(gravados.sort()).toEqual(['gastoReal', 'historico'])
+})
+
+test('medida: sem `guardar` na resposta, o $.store fica como estava', async ($, on) => {
+  const gravados: string[] = []
+  on('session.usage', () => ({ value: USO }))
+  on('session.id', () => ({ value: 'sess-abc' }))
+  on('store.get', () => ({ value: undefined }))
+  on('store.set', ($: unknown, e: any) => { gravados.push(e.key); return { value: undefined } })
+  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify({ curta: 'c', longa: 'l', cruzou: false }), stderr: '' } }))
+  on('ui.status', () => ({ value: undefined }))
+  on('turn.complete', () => ({ text: '' }))
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  expect(gravados).toEqual([])
+})
+
+// Pedido 30 (plano dos pedidos 30-32, Tarefa 2): a sonda da s53 provou que o status desenha uma linha so (o "\n" vira
+// espaco); a linha do plano vai na faixa, sempre visivel, em cima; a troca de chat entra embaixo dela.
+test('faixa acima do prompt: a linha do plano aparece sem gatilho, e em cima da troca quando cruza', async ($, on) => {
+  let cruzou = false
+  on('session.usage', () => ({ value: USO }))
+  on('session.id', () => ({ value: 'sess-abc' }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify({ curta: 'c', longa: 'l', cruzou: cruzou,
+    plano: 'plano d503 | 4 de 6 | proxima: Tarefa 6 init', botoes: cruzou ? [HANDOFF] : [] }), stderr: '' } }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.invalidate', () => ({ value: undefined }))
+  on('turn.complete', () => ({ text: '' }))
+  on('ui.render', () => ({ type: 'Text', props: {}, children: ['desenho do motor'] }))
+
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
+    const ui = await $.ui.mount({ ...BANDA, surface })
+    expect(await ui.find({ type: 'Text', text: /plano d503 \| 4 de 6/ })).toBeDefined()
+    expect(await ui.find({ key: 'esquadro-handoff' })).toBeUndefined()
+    await ui.unmount()
+  }
+
+  cruzou = true
+  await $.turn.complete({ turnId: 't2', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  const ui = await $.ui.mount({ ...BANDA, surface: 'vscode' })
+  const textos = (await ui.findAll({ type: 'Text' })).map((t: any) => String(t.text))
+  const iPlano = textos.findIndex(t => /plano d503/.test(t))
+  const iTroca = textos.findIndex(t => /troca de chat/.test(t))
+  expect(iPlano).toBeGreaterThan(-1)
+  expect(iTroca).toBeGreaterThan(iPlano)
+  expect(await ui.find({ key: 'esquadro-handoff' })).toBeDefined()
+  await ui.unmount()
+})
+
+// Pedido 32 (plano dos pedidos 30-32, Tarefa 4 subitem 3): um botao por comando. O sessao.js decide quais valem
+// (lib/botoes.js) e devolve na ordem de prioridade; o mod desenha o primeiro ainda nao usado, poe o comando no
+// prompt e o esconde ate o sinal passar.
+const BOTOES = [
+  HANDOFF,
+  { nome: 'revisar', texto: 'arquivo AAA com referencia mudou.', rotulo: 'revisar', comando: '/esquadro:revisar src/a.js' },
+  { nome: 'aprender', texto: 'parece uma correcao.', rotulo: 'aprender', comando: '/esquadro:aprender' },
+  { nome: 'init', texto: 'projeto sem configuracao.', rotulo: 'configurar', comando: '/esquadro:init' },
+  { nome: 'auditar', texto: 'a auditoria avisou.', rotulo: 'auditar', comando: '/esquadro:auditar' },
+  { nome: 'calibrar', texto: 'ha conversas para medir.', rotulo: 'calibrar', comando: '/esquadro:calibrar' },
+  { nome: 'paralelo', texto: 'o agente ofereceu paralelo.', rotulo: 'rodar em paralelo', comando: '/esquadro:paralelo' },
+  { nome: 'padrao', texto: 'arquivo AAA sem o manual.', rotulo: 'carregar o padrao', comando: '/esquadro:padrao' },
+]
+
+/** Motor falso da faixa: o sessao.js devolve `lista()`; guarda o que foi ao prompt e o stdin de cada medida. */
+function faixaComBotoes(on: any, lista: () => unknown[], preenchido: string[], stdins: any[] = [], fillFalha = false) {
+  const contagem = { invalidou: 0 }
+  on('session.usage', () => ({ value: USO }))
+  on('session.id', () => ({ value: 'sess-abc' }))
+  on('process.run', ($: unknown, e: any) => {
+    stdins.push(JSON.parse(String(e.init && e.init.stdin)))
+    return { value: { exitCode: 0, stdout: JSON.stringify({ curta: 'c', longa: 'l', cruzou: false, botoes: lista() }), stderr: '' } }
+  })
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.invalidate', () => { contagem.invalidou++; return { value: undefined } })
+  on('turn.complete', () => ({ text: '' }))
+  on('ui.render', () => ({ type: 'Text', props: {}, children: ['desenho do motor'] }))
+  on('prompt.fill', ($: unknown, e: any) => {
+    if (fillFalha) throw new Error('prompt indisponivel')
+    preenchido.push(e.text)
+    return { isFilled: true }
+  })
+  return contagem
+}
+
+for (const b of BOTOES) {
+  test(`botao ${b.nome}: desenha "${b.rotulo}", poe ${b.comando} no prompt e some depois de usado`, async ($, on) => {
+    const preenchido: string[] = []
+    const contagem = faixaComBotoes(on, () => [b], preenchido)
+    await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+    expect(contagem.invalidou).toBe(1)
+    const ui = await $.ui.mount({ ...BANDA, surface: 'vscode' })
+    const botao = await ui.find({ key: 'esquadro-' + b.nome })
+    expect(botao && botao.props.label).toBe(b.rotulo)
+    expect(await ui.find({ type: 'Text', text: b.texto + ' ' })).toBeDefined()
+    await ui.press({ key: 'esquadro-' + b.nome })
+    await ui.unmount()
+    expect(preenchido).toEqual([b.comando])
+    expect(contagem.invalidou).toBe(2)
+    const depois = await $.ui.mount({ ...BANDA, surface: 'vscode' })
+    expect(await depois.find({ key: 'esquadro-' + b.nome })).toBeUndefined()
+    await depois.unmount()
+  })
+}
+
+test('botoes: prompt que falha ao preencher nao some com o botao (ele so conta como usado depois de preencher)', async ($, on) => {
+  const preenchido: string[] = []
+  faixaComBotoes(on, () => [BOTOES[1]], preenchido, [], true)
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  const ui = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  await ui.press({ key: 'esquadro-revisar' })
+  await ui.unmount()
+  const depois = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  expect(await depois.find({ key: 'esquadro-revisar' })).toBeDefined()
+  await depois.unmount()
+})
+
+test('botoes: so o de maior prioridade aparece; usado, o seguinte toma o lugar', async ($, on) => {
+  const preenchido: string[] = []
+  faixaComBotoes(on, () => [BOTOES[1], BOTOES[2]], preenchido)
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  const ui = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  expect(await ui.find({ key: 'esquadro-revisar' })).toBeDefined()
+  expect(await ui.find({ key: 'esquadro-aprender' })).toBeUndefined()
+  await ui.press({ key: 'esquadro-revisar' })
+  await ui.unmount()
+  const depois = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  expect(await depois.find({ key: 'esquadro-revisar' })).toBeUndefined()
+  expect(await depois.find({ key: 'esquadro-aprender' })).toBeDefined()
+  await depois.unmount()
+})
+
+test('botoes: o usado volta quando o sinal passa e acende de novo', async ($, on) => {
+  const preenchido: string[] = []
+  let lista: unknown[] = [BOTOES[2]]
+  faixaComBotoes(on, () => lista, preenchido)
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  let ui = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  await ui.press({ key: 'esquadro-aprender' })
+  await ui.unmount()
+  await $.turn.complete({ turnId: 't2', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  ui = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  expect(await ui.find({ key: 'esquadro-aprender' })).toBeUndefined()
+  await ui.unmount()
+  lista = []
+  await $.turn.complete({ turnId: 't3', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  lista = [BOTOES[2]]
+  await $.turn.complete({ turnId: 't4', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  ui = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  expect(await ui.find({ key: 'esquadro-aprender' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('botoes: comando que nao e do esquadro nao vira botao', async ($, on) => {
+  const preenchido: string[] = []
+  faixaComBotoes(on, () => [{ nome: 'x', texto: 't', rotulo: 'r', comando: 'rm -rf /' }, BOTOES[3]], preenchido)
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  const ui = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  expect(await ui.find({ key: 'esquadro-x' })).toBeUndefined()
+  expect(await ui.find({ key: 'esquadro-init' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('medida: manda ao sessao.js a ultima resposta do agente e se o manual (padrao) foi carregado', async ($, on) => {
+  const stdins: any[] = []
+  faixaComBotoes(on, () => [], [], stdins)
+  on('tool.call', () => ({ result: 'ok' }))
+  await $.turn.complete({ turnId: 't1', answer: 'ofereco o /esquadro:paralelo', durationMs: 10, isAborted: false, usage: null })
+  expect(stdins[stdins.length - 1].resposta).toBe('ofereco o /esquadro:paralelo')
+  expect(stdins[stdins.length - 1].padrao).toBe(false)
+  // turno de subagente nao troca a resposta do agente principal
+  await $.turn.complete({ turnId: 't2', answer: 'relatorio do subagente', durationMs: 10, isAborted: false, usage: null, agentId: 'ag1' })
+  expect(stdins[stdins.length - 1].resposta).toBe('ofereco o /esquadro:paralelo')
+  // a skill carregada por subagente nao conta; a de outro nome tambem nao
+  await $.tool.call({ tool: 'Skill', skill: 'esquadro:padrao', agentId: 'ag1' })
+  await $.tool.call({ tool: 'Skill', skill: 'esquadro:revisar' })
+  await $.turn.complete({ turnId: 't3', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  expect(stdins[stdins.length - 1].padrao).toBe(false)
+  await $.tool.call({ tool: 'Skill', skill: 'esquadro:padrao' })
+  await $.turn.complete({ turnId: 't4', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  expect(stdins[stdins.length - 1].padrao).toBe(true)
+  expect(stdins[stdins.length - 1].resposta).toBe('ok')
+  // resposta longa vai so pelo fim (a oferta do paralelo fecha a resposta)
+  await $.turn.complete({ turnId: 't5', answer: 'x'.repeat(3000) + ' /esquadro:paralelo', durationMs: 10, isAborted: false, usage: null })
+  const ultima = String(stdins[stdins.length - 1].resposta)
+  expect(ultima.length).toBe(2000)
+  expect(ultima.endsWith(' /esquadro:paralelo')).toBe(true)
 })

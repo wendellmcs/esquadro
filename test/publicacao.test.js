@@ -331,7 +331,9 @@ const TRAVA_DO_BALDE = {
   // T11-1: o mesmo modulo de design, quando o estilo e escrito por comando de shell
   estilo_por_shell: null,
   // D412/D415: portao proprio do prompt do handoff, com chave propria como o de decisao: fora da conta das travas
-  handoff_sem_prompt: null
+  handoff_sem_prompt: null,
+  // D503 (0.8.1): portao proprio da referencia de topo, com chave propria (portaoReferencia) como o do handoff
+  fecho_sem_referencia: null
 };
 const TRAVA_DO_COMANDO = { init: 1, revisar: 2 };
 
@@ -574,6 +576,20 @@ test('T11-5: o Passo 4b pergunta onde cada coisa se registra, depois do 4 e ante
   assert.strictEqual(projetoLib.CHAVES.indexOf('ondeRegistrar'), -1);
   const p4 = secaoDoInit('Passo 4 ');
   assert.ok(!/ondeRegistrar/.test(p4), 'o Passo 4 nao pode carregar a pergunta do 4b');
+});
+
+// D503 (plano d503, Tarefa 6, 1o subitem): a referencia de topo e perguntada no fim do 4b (o Passo 4 segue com seis
+// perguntas), grava `referencias`, e a opcao de nunca usar grava `{}`, que cala o aviso da abertura.
+test('D503 T6: o 4b pergunta a referencia de topo e grava referencias; o Passo 4 nao a carrega', () => {
+  const p = plano(secaoDoInit('Passo 4b'));
+  assert.ok(/refer[êe]ncia de topo/i.test(p), 'o 4b nao pergunta a referencia de topo');
+  assert.ok(/`referencias`/.test(p), 'o 4b nao diz que grava a chave referencias');
+  assert.ok(/`tela`/.test(p) && /`codigo`/.test(p) && /`texto`/.test(p), 'o 4b nao diz os tres tipos');
+  assert.ok(/`"referencias": \{\}`/.test(p), 'o 4b nao diz que "nunca" grava o objeto vazio');
+  assert.ok(/avisa uma vez/.test(p), 'o 4b nao diz que, sem a chave, a abertura avisa uma vez');
+  assert.ok(/seis perguntas/.test(p), 'o 4b nao diz por que a pergunta mora nele (as seis do Passo 4)');
+  assert.ok(!/referencias/.test(secaoDoInit('Passo 4 ')), 'o Passo 4 nao pode carregar a pergunta da referencia');
+  assert.ok(/`referencias`/.test(plano(secaoDoInit('Passo 7 '))), 'o Passo 7 nao diz quando gravar referencias');
 });
 
 test('T11-5: a linha decisoes do Passo 7c remete ao 4b e nao pergunta de novo', () => {

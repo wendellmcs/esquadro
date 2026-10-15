@@ -622,8 +622,63 @@ function linhasDeSessoes(ativo, feitas, faltam) {
     ' por tarefa feita = ' + sessoes(gastas) + ' / ' + feitas + (feitas === 1 ? ' feita)' : ' feitas)'));
 }
 
+const TITULO_NA_LINHA = 48;
+
+/** Pedido 30: o nome do plano sem a data, sem o nome da frente e sem o "-plano" ("...-pendencias-d503-plano.md" -> d503). */
+function nomeCurto(ativo) {
+  const base = path.basename(String(ativo.arquivo)).replace(/\.md$/i, '');
+  // O "-plano" sai antes da frente: com a frente "b", "b-plano" viraria "plano" (achado da mutacao, s53).
+  let nome = base.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/-plano$/i, '');
+  if (ativo.frente && nome.indexOf(ativo.frente + '-') === 0) nome = nome.slice(ativo.frente.length + 1);
+  return escopoLib.ascii(nome || base);
+}
+
+/**
+ * Pedido 30 (plano dos pedidos 30-32, Tarefa 2): o plano em UMA linha ASCII, para a faixa do mod - a sonda da s53
+ * provou que o status do VS Code desenha uma linha so. `ativo` e `tarefas` como no painelTexto. Sem plano, ou plano
+ * sem tarefa contavel, '' (a faixa nao mostra nada). A proxima e a mesma do painel: a 1a aberta ou em curso.
+ */
+function linhaDoPlano(ativo, tarefas) {
+  if (!ativo || !ativo.arquivo) return '';
+  const lista = Array.isArray(tarefas) ? tarefas : [];
+  if (!lista.length) return '';
+  const feitas = lista.filter(function (t) { return t.estado === 'feita'; }).length;
+  const p = lista.filter(function (t) { return t.estado === 'aberta' || t.estado === 'em curso'; })[0];
+  // D436, como no painel: so tarefa sem caixa sobrando nao e plano acabado.
+  const semCaixas = lista.filter(function (t) { return t.estado === 'sem marca'; }).length;
+  let proxima = semCaixas ? semCaixas + ' sem caixas, confira a mao' : 'nada aberto';
+  if (p) {
+    const titulo = escopoLib.ascii(p.titulo);
+    proxima = 'proxima: ' + escopoLib.ascii(p.tipo) + ' ' + escopoLib.ascii(p.id) + (titulo ? ' ' +
+      (titulo.length > TITULO_NA_LINHA ? titulo.slice(0, TITULO_NA_LINHA - 3) + '...' : titulo) : '');
+  }
+  return 'plano ' + nomeCurto(ativo) + ' | ' + feitas + ' de ' + lista.length + ' | ' + proxima;
+}
+
+/**
+ * Pedido 30: a linha do plano desta sessao, para o scripts/sessao.js (roda a cada medida). Acha o plano na ordem do
+ * `plano.js --texto` - plano-ativo.json legivel, senao o da frente vinculada (`frente`), o do escopo.md ou a frente
+ * unica com plano. O que no painel vira explicacao (varias frentes, ilegivel, sem plano, fora do projeto, erro) aqui
+ * e '': a faixa so mostra plano lido; o /esquadro-plano segue dizendo o porque.
+ */
+function linhaDoPlanoDaSessao(cwd, frente) {
+  try {
+    const ativo = lerAtivo(cwd);
+    let alvo = ativo && typeof ativo.arquivo === 'string' && ativo.arquivo ? ativo : null;
+    // D442/10, como no painel: plano-ativo.json presente que nao da plano nao cai na frente.
+    if (!alvo && fs.existsSync(path.join(cwd, ATIVO))) return '';
+    if (!alvo) {
+      const achado = acharPlanoDaFrente(cwd, frente || null);
+      if (!achado || !achado.arquivo || !dentroDoProjeto(cwd, achado.arquivo)) return '';
+      alvo = achado;
+    }
+    const texto = fs.readFileSync(path.join(cwd, alvo.arquivo), 'utf8');
+    return linhaDoPlano(alvo, deduzirPeloEscopo(parseItens(texto), alvo.objetivo));
+  } catch (e) { return ''; }
+}
+
 module.exports = {
-  ATIVO, RE_TAREFA, RE_CAIXA, parseTarefas, parseItens, lerAtivo, abrir, donoOutro,
+  ATIVO, RE_TAREFA, RE_CAIXA, parseTarefas, parseItens, lerAtivo, abrir, donoOutro, linhaDoPlano, linhaDoPlanoDaSessao,
   proximaDecisao, alegaEtapaConcluida, motivoSubitemAberto, painelTexto, painelIlegivel,
   planoDoObjetivo, planosDoObjetivo, planosCitados, frentesComPlano, acharPlanoDaFrente, painelVariasFrentes,
   painelFrenteSemPlano, sessoesDoPlano, estimativaDeSessoes, painelFrenteIlegivel, deduzirPeloEscopo,

@@ -128,11 +128,15 @@ function declaradoFora(caminho, esc) {
   return null;
 }
 
-/** R5/D36: nada que venha de fora chega cru ao texto do hook. Acento vira letra sem acento. */
+/**
+ * R5/D36: nada que venha de fora chega cru ao texto do hook. Acento vira letra sem acento; travessao e meia-risca
+ * viram hifen (s131 par.5: o painel mostrava "(0.8.0) ? depende" no titulo do plano).
+ */
 function ascii(valor) {
   return String(valor == null ? '' : valor)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u2012-\u2015]/g, '-')
     .replace(/[^\x20-\x7E]/g, '?');
 }
 

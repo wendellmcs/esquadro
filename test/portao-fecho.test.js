@@ -1031,3 +1031,108 @@ test('D468: o fecho le a chave modoContinuo do projeto e cala os gatilhos contav
     assert.strictEqual(r.json, null, 'com a chave o gatilho de turnos cala: ' + r.stdout);
   });
 });
+
+// ------------------------------- D503 (plano d503, Tarefa 5): entrega AAA sem revisao contra a referencia de topo
+
+const ENTREGA = 'Pronto, os testes passaram.\n```\n# pass 3\n# fail 0\n```';
+const COM_REF = { marchas: { aaa: ['src/**'] }, referencias: { codigo: ['ref/topo.js'] } };
+
+/** O contador que o apurar-ronda.js grava no turno quando fecha uma revisao com referencia. */
+function revisaoComReferenciaFechada(tmp, id) {
+  const arq = path.join(tmp, 'esquadro', id + '.json');
+  const s = JSON.parse(fs.readFileSync(arq, 'utf8'));
+  s.contadores = Object.assign({}, s.contadores, { revisao_referencia_fechada: 1 });
+  fs.writeFileSync(arq, JSON.stringify(s), 'utf8');
+}
+
+test('D503 T5: entrega alegada + arquivo AAA mudado + referencia do tipo + nenhuma revisao contra ela -> barra com o comando', () => {
+  comTmp((tmp) => {
+    const dir = projetoCom(tmp, 'ref', COM_REF);
+    gravar(tmp, 'ref', dir, 'Edit', path.join('src', 'a.js'));
+    const r = fecho(tmp, 'ref', dir, ENTREGA);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(r.json && r.json.decision === 'block', 'tinha de barrar: ' + r.stdout);
+    assert.match(r.json.reason, /\/esquadro:revisar/, 'a mensagem diz o comando');
+    assert.match(r.json.reason, /src\/a\.js/, 'a mensagem diz o arquivo');
+    assert.match(r.json.reason, /portaoReferencia/, 'a mensagem diz como desligar');
+    assert.ok(r.json.reason.indexOf('trava 3') === -1, 'com evidencia, o motivo da trava 3 nao entra: ' + r.json.reason);
+    assert.strictEqual(sessaoDe(tmp, 'ref').contadores.fecho_sem_referencia, 1);
+    assert.strictEqual(fecho(tmp, 'ref', dir, ENTREGA).json, null, 'uma vez por turno: a segunda passada libera');
+  });
+});
+
+test('D503 T5: o arquivo AAA mudado num turno anterior da sessao tambem cobra', () => {
+  comTmp((tmp) => {
+    const dir = projetoCom(tmp, 'ref-sessao', COM_REF);
+    gravar(tmp, 'ref-sessao', dir, 'Edit', path.join('src', 'a.js'));
+    assert.strictEqual(fecho(tmp, 'ref-sessao', dir, 'Anotado.').json, null, 'controle: sem alegacao, passa');
+    gravar(tmp, 'ref-sessao', dir, 'Edit', 'notas.txt');
+    const r = fecho(tmp, 'ref-sessao', dir, ENTREGA);
+    assert.ok(r.json && r.json.decision === 'block', 'arquivosTocados e da sessao: ' + r.stdout);
+  });
+});
+
+test('D503 T5: a revisao contra a referencia fechada na sessao libera; a revisao sem referencia nao', () => {
+  comTmp((tmp) => {
+    const dir = projetoCom(tmp, 'ref-ok', COM_REF);
+    gravar(tmp, 'ref-ok', dir, 'Edit', path.join('src', 'a.js'));
+    revisaoComReferenciaFechada(tmp, 'ref-ok');
+    assert.strictEqual(fecho(tmp, 'ref-ok', dir, ENTREGA).json, null, 'com a revisao fechada, passa');
+    // e a marca vale para a sessao, nao so para o turno em que o apurar rodou
+    gravar(tmp, 'ref-ok', dir, 'Edit', path.join('src', 'a.js'));
+    assert.strictEqual(fecho(tmp, 'ref-ok', dir, ENTREGA).json, null, 'turno seguinte da mesma sessao, passa');
+
+    const dir2 = projetoCom(tmp, 'ref-sem', COM_REF);
+    gravar(tmp, 'ref-sem', dir2, 'Edit', path.join('src', 'a.js'));
+    const arq = path.join(tmp, 'esquadro', 'ref-sem.json');
+    const s = JSON.parse(fs.readFileSync(arq, 'utf8'));
+    s.contadores = Object.assign({}, s.contadores, { revisao_fechada: 1 });
+    fs.writeFileSync(arq, JSON.stringify(s), 'utf8');
+    const r = fecho(tmp, 'ref-sem', dir2, ENTREGA);
+    assert.ok(r.json && r.json.decision === 'block', 'revisao sem referencia nao vale: ' + r.stdout);
+  });
+});
+
+test('D503 T5: controles - sem alegacao, arquivo fora da AAA, sem referencias, referencia de outro tipo, referencia torta', () => {
+  comTmp((tmp) => {
+    const casos = [
+      ['sem-alegacao', COM_REF, path.join('src', 'a.js'), 'Anotado; sigo na proxima tarefa.'],
+      ['fora-aaa', COM_REF, path.join('lib', 'a.js'), ENTREGA],
+      ['sem-chave', { marchas: { aaa: ['src/**'] } }, path.join('src', 'a.js'), ENTREGA],
+      ['outro-tipo', { marchas: { aaa: ['src/**'] }, referencias: { texto: ['ref/topo.md'] } }, path.join('src', 'a.js'), ENTREGA],
+      ['lista-vazia', { marchas: { aaa: ['src/**'] }, referencias: { codigo: [] } }, path.join('src', 'a.js'), ENTREGA],
+      ['torta', { marchas: { aaa: ['src/**'] }, referencias: { codigo: 'ref/topo.js' } }, path.join('src', 'a.js'), ENTREGA],
+      ['nao-texto', { marchas: { aaa: ['src/**'] }, referencias: { codigo: [5] } }, path.join('src', 'a.js'), ENTREGA],
+      ['em-branco', { marchas: { aaa: ['src/**'] }, referencias: { codigo: ['  '] } }, path.join('src', 'a.js'), ENTREGA],
+      ['lista-no-topo', { marchas: { aaa: ['src/**'] }, referencias: ['ref/topo.js'] }, path.join('src', 'a.js'), ENTREGA],
+      ['desligado', Object.assign({ portaoReferencia: false }, COM_REF), path.join('src', 'a.js'), ENTREGA]
+    ];
+    for (const [id, conteudo, arquivo, mensagem] of casos) {
+      const dir = projetoCom(tmp, id, conteudo);
+      gravar(tmp, id, dir, 'Edit', arquivo);
+      const r = fecho(tmp, id, dir, mensagem);
+      assert.strictEqual(r.status, 0, id + ': ' + r.stderr);
+      assert.strictEqual(r.json, null, id + ': nao devia barrar: ' + r.stdout);
+    }
+    // o tipo sai do arquivo: .md cobra a referencia de texto
+    const dir = projetoCom(tmp, 'texto', { marchas: { aaa: ['docs/**'] }, referencias: { texto: ['ref/topo.md'] } });
+    gravar(tmp, 'texto', dir, 'Edit', path.join('docs', 'guia.md'));
+    const r = fecho(tmp, 'texto', dir, ENTREGA);
+    assert.ok(r.json && r.json.decision === 'block', 'o .md casa a referencia de texto: ' + r.stdout);
+  });
+});
+
+test('D503 T5: o portao da referencia tem chave propria - travas.fecho false nao o desliga (como o do handoff, D415)', () => {
+  comTmp((tmp) => {
+    const dir = projetoCom(tmp, 'ref-trava', Object.assign({ travas: { fecho: false } }, COM_REF));
+    gravar(tmp, 'ref-trava', dir, 'Edit', path.join('src', 'a.js'));
+    const r = fecho(tmp, 'ref-trava', dir, 'Pronto.');
+    assert.ok(r.json && r.json.decision === 'block', 'tinha de barrar: ' + r.stdout);
+    assert.match(r.json.reason, /\/esquadro:revisar/, 'o motivo da referencia vai junto: ' + r.json.reason);
+    assert.ok(r.json.reason.indexOf('trava 3') === -1, 'a trava 3 esta desligada: ' + r.json.reason);
+  });
+});
+
+test('D503 T5: a chave liga/desliga nova esta na lista do projeto.js', () => {
+  assert.ok(require('../scripts/lib/projeto.js').CHAVES_LIGA_DESLIGA.indexOf('portaoReferencia') !== -1);
+});

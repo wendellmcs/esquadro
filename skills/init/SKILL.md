@@ -360,6 +360,23 @@ script recusa sobrescrever skill que já existe, item 6 do 7c):
   Passo 7e). **Avise que, até ele pôr o trecho, a resposta não fica gravada**;
 - **não existe:** faça este passo; a resposta segue para o 7c.
 
+**Por último, a referência de topo** → grava `referencias` no `projeto.json` (chave opcional). Não é lugar de
+registro: mora aqui para o Passo 4 continuar com seis perguntas. É a melhor peça que existe para cada tipo de
+entrega, `tela`, `codigo` e `texto`, no mercado ou no próprio projeto: o `/esquadro:revisar` a põe ao lado do
+trabalho, e o fim do turno barra a entrega da marcha AAA que não foi revisada contra ela. Uma pergunta só, por
+`AskUserQuestion`, com 3 opções. Na pergunta ao dono, sem jargão: "qual é o melhor exemplo que existe do que este
+projeto entrega? A revisão vai comparar o trabalho com ele" — "marcha" só se explica no Passo 5.
+
+1. **nomear agora**, por tipo, caminhos de arquivo ou print local (recomendada): o inspetor só lê arquivo. Um link
+   pode ser gravado, mas o inspetor não abre a página: diga ao dono que, para valer, salve a página ou um print num
+   arquivo do projeto e dê esse caminho. Ofereça só caminhos que apareceram na listagem do Passo 3b ou na varredura;
+   sem candidato, pergunte aberto;
+2. **deixar para depois**: não grava a chave; a revisão e o fim do turno seguem como antes, e a abertura da sessão
+   avisa uma vez que ela falta;
+3. **nunca neste projeto**: grava `"referencias": {}`, e o aviso da abertura não sai.
+
+No re-init, mostre a `referencias` atual e pergunte só se o dono quer mudar: o re-init funde por tipo.
+
 ## Passo 5 — o mapa de marchas
 
 Antes de propor, diga em uma linha o que a marcha faz — o usuário vai confirmar este mapa, e a
@@ -494,6 +511,11 @@ código é o que vale. Seis valores exigidos lá **não saem de pergunta nenhuma
 - `comandosBloqueados` e `comandosLiberados`: listas vazias — nenhuma pergunta deste roteiro as
   preenche. **No re-init, mantenha os valores do `projeto.json` atual** (Passo 0b);
 - `travas`: as quatro, `true` por padrão. No re-init, também mantenha as do `projeto.json` atual.
+
+Fora de `CHAVES`, a opcional `referencias` (lista `CHAVES_OPCIONAIS`) entra só pela resposta do fim do Passo 4b:
+os caminhos por tipo, ou `{}` para "nunca"; com "deixar para depois", não grave a chave. **No re-init, parta da
+`referencias` do `projeto.json` atual**: o tipo que o dono não mudou fica como está (a fusão por tipo do Passo 4b), e
+"deixar para depois" mantém a chave atual — o `Write` reescreve o arquivo inteiro e apagaria o que já estava gravado.
 
 **Onde gravar.** `<raiz absoluta>/.claude/esquadro/projeto.json` — a raiz do Passo 0, nunca a pasta
 atual. Esta linha é a mais importante deste passo; o parágrafo seguinte é sobre outra coisa.

@@ -125,6 +125,36 @@ function handoffSemPrompt(e, s, projeto) {
   return !saude.temBlocoDeCodigo(e.last_assistant_message);
 }
 
+// D503 (plano d503, Tarefa 5): no maximo tantos arquivos citados no motivo; o resto vira "+N".
+const MAX_CITADOS = 5;
+
+/** D503 (plano d503, Tarefa 5): o motivo quando a resposta alega entrega, um arquivo mudado na sessao resolve para
+ *  `aaa`, o tipo dele tem referencia de topo declarada (`marcha.aaaComReferencia`) e nenhuma revisao contra a
+ *  referencia fechou na sessao (o balde que o apurar-ronda.js grava). Sem isso, null. So `"portaoReferencia": false`
+ *  desliga: chave propria, como o portaoHandoff (D415), e `travas.fecho` nao a desliga. Custo zero: o estado e o
+ *  projeto ja estao lidos, nada vai ao disco. R5: ASCII, o texto chega ao Claude. */
+function semRevisaoDeReferencia(e, s, projeto, cwd) {
+  if (!projeto || projeto.portaoReferencia === false) return null;
+  if (!evidencia.analisar(e.last_assistant_message).alegaSucesso) return null;
+  if ((saude.acumular(s).revisao_referencia_fechada || 0) > 0) return null;
+  const arquivos = require('./lib/marcha.js').aaaComReferencia(s.arquivosTocados, projeto, cwd);
+  if (!arquivos.length) return null;
+  const citados = arquivos.slice(0, MAX_CITADOS).join(', ') +
+    (arquivos.length > MAX_CITADOS ? ' (+' + (arquivos.length - MAX_CITADOS) + ')' : '');
+  return [
+    'esquadro - portao da referencia de topo.',
+    '',
+    'Voce alegou entrega e mudou nesta sessao arquivo da marcha AAA com referencia de topo declarada',
+    '(referencias do projeto.json): ' + citados + '.',
+    'Nenhuma revisao contra a referencia fechou nesta sessao. Para cada arquivo, rode',
+    '',
+    '  /esquadro:revisar <arquivo>',
+    '',
+    'ate a revisao fechar (o apurar-ronda.js conta o fecho), ou diga ao usuario por que esta entrega nao passa por ela.',
+    'Desligar neste projeto: "portaoReferencia": false em .claude/esquadro/projeto.json.'
+  ].join('\n');
+}
+
 /** Um bloqueio por turno, com os motivos que o turno juntou - o do subitem aberto OU o da
  *  evidencia (o subitem sai antes de a evidencia ser olhada), mais o do handoff: o segundo Stop
  *  chega com stop_hook_active e libera, e um motivo deixado para depois nunca seria cobrado.
@@ -160,7 +190,14 @@ io.blindar(function () {
     const projeto = config.carregarProjeto(cwd);
     const travas = projetoLib.travasDe(projeto);
     const semPrompt = handoffSemPrompt(e, s, projeto);
-    if (travas.fecho === false) return semPrompt ? barrar(e, s, [], true) : encerrarTurno(e, s);
+    // D503: como o do handoff, calculado antes do retorno da trava 3 desligada; todo caminho abaixo com ele barra.
+    const semReferencia = semRevisaoDeReferencia(e, s, projeto, cwd);
+    const daReferencia = semReferencia ? [semReferencia] : [];
+    if (semReferencia) {
+      s.contadores = s.contadores || {};
+      s.contadores.fecho_sem_referencia = (s.contadores.fecho_sem_referencia || 0) + 1;
+    }
+    if (travas.fecho === false) return semPrompt || semReferencia ? barrar(e, s, daReferencia, semPrompt) : encerrarTurno(e, s);
 
     const planoLib = require('./lib/plano.js');
     const ativo = planoLib.lerAtivo(cwd);
@@ -177,15 +214,16 @@ io.blindar(function () {
       if (aberta) {
         s.contadores = s.contadores || {};
         s.contadores.subitem_pendente = (s.contadores.subitem_pendente || 0) + 1;
-        return barrar(e, s, [planoLib.motivoSubitemAberto(aberta)], semPrompt);
+        return barrar(e, s, [planoLib.motivoSubitemAberto(aberta)].concat(daReferencia), semPrompt);
       }
     }
 
     const semEvidencia = evidencia.deveBloquear(e.last_assistant_message);
-    if (!semEvidencia && !semPrompt) return encerrarTurno(e, s, planoIlegivel);
+    if (!semEvidencia && !semPrompt && !semReferencia) return encerrarTurno(e, s, planoIlegivel);
 
     const motivos = [];
     if (planoIlegivel) motivos.push(planoIlegivel);
+    if (semReferencia) motivos.push(semReferencia);
     if (semEvidencia) {
       s.contadores = s.contadores || {};
       s.contadores.fecho_sem_evidencia = (s.contadores.fecho_sem_evidencia || 0) + 1;

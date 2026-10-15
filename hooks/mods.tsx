@@ -4,9 +4,16 @@ import type { Register } from 'claude-code'
 // Cola fina: a conta e o texto moram em scripts/sessao.js e scripts/plano.js (fonte unica, testados
 // pela suite node --test). O mod junta o que o motor mede, chama o script e mostra a resposta.
 // D148: nada abre rede - $.session.usage() sem breakdown e local; o resto e node na maquina.
-// No chat da extensao do VS Code nada desenha: os dois comandos respondem em texto. No terminal e no
-// Desktop: linha de status a cada medida e faixa acima do prompt quando a troca de chat cruzou.
+// Terminal, Desktop e chat do VS Code (sonda da s53: o VS Code desenha a faixa e o status): linha de status a cada
+// medida (uma linha so - o "\n" vira espaco) e faixa acima do prompt com a linha do plano (pedido 30) e, embaixo
+// dela, um botao por vez: o de maior prioridade que o sessao.js devolve em `botoes` (pedido 32; o do handoff quando a
+// troca de chat cruzou). Os dois comandos respondem em texto em qualquer tela.
 // Desenho: .context/plans/2026-10-11-esquadro-bloco-m-desenho.md.
+
+// Pedido 32 (D519, D522): o acento do esquadro na faixa - a chave de tema no terminal e no Desktop, a cor crua do
+// banner no VS Code (la a chave nao pinta). Copia de scripts/lib/identidade.js, conferida por test/identidade.test.js.
+const ACENTO_CRU = '#F59E0B'
+const ACENTO_TEMA = 'warning'
 
 const MAX_AMOSTRAS = 20
 const PRAZO_MS = 10000
@@ -14,12 +21,23 @@ const PRAZO_MS = 10000
 // uso nao tem prazo). A seguinte nao espera mais por ela.
 const PRAZO_PRESA_MS = 3 * PRAZO_MS
 
-type Medida = { curta: string; longa: string; cruzou: boolean }
+// Pedido 32: so comando do esquadro vira botao (o texto vem do script; o mod nao poe outra coisa no prompt).
+const COMANDO_DO_ESQUADRO = /^\/esquadro:[a-z]+( [^\n]*)?$/
+// A ultima resposta vai ao script so pelo fim: o gatilho do paralelo e a oferta, que fecha a resposta.
+const MAX_RESPOSTA = 2000
+
+type Botao = { nome: string; texto: string; rotulo: string; comando: string }
+type Medida = { curta: string; longa: string; cruzou: boolean; plano?: string; botoes?: Botao[]; guardar?: { historico?: unknown; gastoReal?: unknown } }
 type Amostra = { tokens?: number; cincoH?: number }
 
-// Variaveis do modulo: a recarga do mod zera a previsao, que volta com 2 turnos.
+// Variaveis do modulo: a recarga do mod zera a previsao, que volta com 2 turnos, e os botoes usados e o padrao
+// carregado (limite conhecido: depois de recarregar, o botao do padrao pode voltar numa sessao que ja o carregou).
 const amostras: Amostra[] = []
-let cruzou = false
+let linhaDoPlano = ''
+let botoes: Botao[] = []
+const usados = new Set<string>()
+let ultimaResposta = ''
+let padraoCarregado = false
 let medindo = false
 let medindoDesde = 0
 let pendente = false
@@ -33,14 +51,36 @@ async function rodar($: any, script: string, extra: string[], stdin?: string) {
 async function medir($: any): Promise<Medida | null> {
   const uso = await $.session.usage()
   const sessao = await $.session.id()
-  const r = await rodar($, 'sessao.js', [], JSON.stringify({ uso: uso, amostras: amostras, sessao: sessao }))
+  // Pedido 31 (D520): o historico das janelas e o gasto real do mes vivem no $.store (conta inteira, entre sessoes);
+  // o sessao.js faz a conta e devolve em `guardar` o que gravar de volta. Store que falha: segue sem ele.
+  let historico: unknown = undefined
+  let gastoReal: unknown = undefined
+  try { historico = await $.store.get('historico') } catch (err) {}
+  try { gastoReal = await $.store.get('gastoReal') } catch (err) {}
+  const r = await rodar($, 'sessao.js', [], JSON.stringify({ uso: uso, amostras: amostras, sessao: sessao,
+    historico: historico, gastoReal: gastoReal, resposta: ultimaResposta, padrao: padraoCarregado }))
   if (!r || r.exitCode !== 0) return null
+  let m: Medida | null = null
   try {
-    const m = JSON.parse(r.stdout)
-    return m && typeof m.curta === 'string' ? m : null
+    const lido = JSON.parse(r.stdout)
+    m = lido && typeof lido.curta === 'string' ? lido : null
   } catch (e) {
     return null
   }
+  if (m && m.guardar) {
+    try { await $.store.set('historico', m.guardar.historico) } catch (err) {}
+    try { await $.store.set('gastoReal', m.guardar.gastoReal) } catch (err) {}
+  }
+  return m
+}
+
+/** Pedido 32: o botao a desenhar - o primeiro da lista (ordem de prioridade do script) ainda nao usado. */
+function botaoDaVez(): Botao | null {
+  for (const b of botoes) {
+    if (b && typeof b.nome === 'string' && !usados.has(b.nome) && typeof b.comando === 'string' &&
+      COMANDO_DO_ESQUADRO.test(b.comando)) return b
+  }
+  return null
 }
 
 async function agora($: any): Promise<number | null> {
@@ -75,14 +115,22 @@ async function atualizar($: any) {
       try { m = await medir($) } catch (err) {}
       if (minha !== geracao) return
       // Script que falhou (saida diferente de 0, JSON torto, ou a chamada lancou - prazo estourado): o status diz isso em vez de seguir com o numero velho. A faixa fica como
-      // estava - gatilho que cruzou nao descruza na mesma sessao; a proxima medida boa a acerta.
+      // estava; a proxima medida boa a acerta.
       if (!m) {
         await $.ui.status('esquadro | medidor sem resposta (confira se o node esta no PATH)')
         continue
       }
       await $.ui.status(m.curta)
-      if (m.cruzou !== cruzou) {
-        cruzou = m.cruzou
+      const plano = typeof m.plano === 'string' ? m.plano : ''
+      const novos = Array.isArray(m.botoes) ? m.botoes : []
+      // O usado volta a valer quando o sinal dele passa (o nome some da lista): se acender de novo, aparece.
+      const nomes = novos.map(b => b && b.nome)
+      for (const nome of Array.from(usados)) if (nomes.indexOf(nome) === -1) usados.delete(nome)
+      const antes = botaoDaVez()
+      botoes = novos
+      const depois = botaoDaVez()
+      if (plano !== linhaDoPlano || JSON.stringify(antes) !== JSON.stringify(depois)) {
+        linhaDoPlano = plano
         await $.ui.invalidate('ui.render')
       }
     } while (pendente)
@@ -110,8 +158,21 @@ export const register: Register = on => {
     return r
   })
 
+  // Pedido 32: o botao do padrao some quando a skill do manual (esquadro:padrao, ou a do projeto com "padrao" no
+  // nome) e carregada pelo agente principal. So olha; a chamada segue igual.
+  on('tool.call', async ($, e: any, next) => {
+    try {
+      if (!e.agentId && e.tool === 'Skill' && /padrao/i.test(String(e.skill))) padraoCarregado = true
+    } catch (err) {}
+    return next(e)
+  })
+
   on('turn.complete', async ($, e, next) => {
     const r = await next(e)
+    try {
+      // Pedido 32: a resposta do agente principal vai ao sessao.js (o gatilho do paralelo); a de subagente, nao.
+      if (!e.agentId) ultimaResposta = String(e.answer || '').slice(-MAX_RESPOSTA)
+    } catch (err) {}
     try {
       const uso = await $.session.usage()
       const cinco = (uso.rateLimits || []).find((j: any) => j && j.kind === 'five_hour')
@@ -142,17 +203,39 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (!cruzou || e.props.hasSurvey) return next(e)
+    const b = botaoDaVez()
+    if ((!b && !linhaDoPlano) || e.props.hasSurvey) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
+    // Pedido 32: um acento so - a borda e o nome "esquadro" na 1a linha; o resto com o desenho do motor.
+    const acento = e.surface === 'vscode' ? ACENTO_CRU : ACENTO_TEMA
+    const marca = <Text key="esquadro-marca" color={acento} bold>esquadro </Text>
     return (
-      <Box>
-        <Text>esquadro: troca de chat - gatilho contavel cruzou. </Text>
-        <Button
-          key="esquadro-handoff"
-          label="gerar handoff"
-          variant="primary"
-          onPress={() => $.prompt.fill({ text: '/esquadro:handoff', mode: 'replace' })}
-        />
+      <Box key="esquadro-faixa" flexDirection="column" borderStyle="round" borderColor={acento} paddingX={1}>
+        {linhaDoPlano ? (
+          <Box key="esquadro-linha-plano">
+            {marca}
+            <Text key="esquadro-plano">{linhaDoPlano}</Text>
+          </Box>
+        ) : null}
+        {b ? (
+          <Box key="esquadro-botao">
+            {linhaDoPlano ? null : marca}
+            <Text>{b.texto + ' '}</Text>
+            <Button
+              key={'esquadro-' + b.nome}
+              label={b.rotulo}
+              variant="primary"
+              onPress={async () => {
+                // So conta como usado depois de preencher: prompt que falha deixa o botao para outra tentativa.
+                try {
+                  await $.prompt.fill({ text: b.comando, mode: 'replace' })
+                  usados.add(b.nome)
+                } catch (err) { return }
+                try { await $.ui.invalidate('ui.render') } catch (err) {}
+              }}
+            />
+          </Box>
+        ) : null}
       </Box>
     )
   })

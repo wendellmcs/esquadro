@@ -196,3 +196,90 @@ test('plano.js --proxima-decisao: arquivo ausente avisa no stderr; pasta sai 1 (
     assert.match(pasta.stderr, /nao e um arquivo/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// Pedido 30 (plano dos pedidos 30-32, Tarefa 2): o plano em uma linha, para a faixa do mod (a sonda da s53 provou que
+// o status do VS Code desenha uma linha so). Nome curto do arquivo, feitas de total, a proxima.
+const D503 = { arquivo: '.context/plans/2026-10-13-esquadro-pendencias-d503-plano.md', frente: 'esquadro-pendencias' };
+
+test('pedido 30: linhaDoPlano - nome curto, feitas de total e a proxima, numa linha', () => {
+  assert.strictEqual(plano.linhaDoPlano(D503, plano.parseItens(PLANO)), 'plano d503 | 1 de 2 | proxima: Tarefa 2 marcha');
+  // Sem frente (plano-ativo.json), o nome sai so sem a data e sem o "-plano".
+  assert.strictEqual(plano.linhaDoPlano({ arquivo: 'p/2026-01-01-x-plano.md' }, plano.parseItens(PLANO)),
+    'plano x | 1 de 2 | proxima: Tarefa 2 marcha');
+});
+
+test('pedido 30: linhaDoPlano - sem plano, ou plano sem tarefa contavel, e vazia (a faixa nao mostra nada)', () => {
+  assert.strictEqual(plano.linhaDoPlano(null, plano.parseItens(PLANO)), '');
+  assert.strictEqual(plano.linhaDoPlano({}, plano.parseItens(PLANO)), '');
+  assert.strictEqual(plano.linhaDoPlano(D503, []), '');
+  assert.strictEqual(plano.linhaDoPlano(D503, null), '');
+});
+
+test('pedido 30: linhaDoPlano - tudo feito diz que nada esta aberto', () => {
+  const feito = '### Tarefa 1: a\n- [x] p\n### Tarefa 2: b\n- [x] p';
+  assert.strictEqual(plano.linhaDoPlano(D503, plano.parseItens(feito)), 'plano d503 | 2 de 2 | nada aberto');
+});
+
+test('pedido 30: linhaDoPlano - tarefa sem caixa sobrando nao e "nada aberto" (D436, como o painel)', () => {
+  const semCaixa = '### Tarefa 1: a\n- [x] p\n### Tarefa 2: b\ntexto sem caixa\n### Tarefa 3: c\noutro texto';
+  assert.strictEqual(plano.linhaDoPlano(D503, plano.parseItens(semCaixa)), 'plano d503 | 1 de 3 | 2 sem caixas, confira a mao');
+});
+
+test('pedido 30: linhaDoPlano - ASCII, travessao vira hifen (nao "?") e titulo longo e cortado', () => {
+  const longo = '### Tarefa 1: a\n- [x] p\n### Tarefa 2: pacote com referência (0.8.0) — depende da decisão ' +
+    'acima e de mais coisa ainda\n- [ ] p';
+  const l = plano.linhaDoPlano(D503, plano.parseItens(longo));
+  assert.ok(/^[\x20-\x7E]*$/.test(l), l);
+  assert.ok(l.indexOf('?') === -1, l);
+  assert.ok(l.indexOf('pacote com referencia (0.8.0) - depende') !== -1, l);
+  assert.ok(/\.\.\.$/.test(l), 'cortado com reticencias: ' + l);
+  assert.ok(l.length <= 100, l.length + ': ' + l);
+});
+
+test('s131 par.5: o painel do plano tambem troca o travessao por hifen, nao por "?"', () => {
+  const t = plano.parseItens('### Tarefa 1: a — b\n- [ ] p');
+  const painel = plano.painelTexto({ arquivo: 'p.md' }, t, 'plano.js');
+  assert.ok(painel.indexOf('Tarefa 1: a - b') !== -1, painel);
+});
+
+test('pedido 30: linhaDoPlanoDaSessao - pelo plano-ativo.json, pela frente, e vazia sem plano', () => {
+  const dir = tmp({
+    'p/2026-01-01-x-plano.md': PLANO,
+    '.claude/esquadro/plano-ativo.json': JSON.stringify({ arquivo: 'p/2026-01-01-x-plano.md', sessionId: 's' })
+  });
+  const frente = tmp({
+    'docs/2026-01-02-fr-y-plano.md': PLANO,
+    '.claude/esquadro/escopos/fr.md': '# Escopo\n**Objetivo:** algo. Plano: `docs/2026-01-02-fr-y-plano.md`\n## Dentro\n- x/**\n'
+  });
+  const vazio = tmp({});
+  try {
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, null), 'plano x | 1 de 2 | proxima: Tarefa 2 marcha');
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(frente, 'fr'), 'plano y | 1 de 2 | proxima: Tarefa 2 marcha');
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(vazio, null), '');
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(path.join(vazio, 'nao-existe'), 'fr'), '');
+  } finally {
+    for (const d of [dir, frente, vazio]) fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('pedido 30: linhaDoPlanoDaSessao - a frente vinculada escolhe entre varias; ilegivel e fora do projeto dao vazio', () => {
+  const frente = (nome, plano) => '# Escopo\n**Objetivo:** ' + nome + '. Plano: `' + plano + '`\n## Dentro\n- x/**\n';
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-linha-'));
+  const dir = path.join(base, 'proj');
+  const escrever = (rel, txt) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), txt); };
+  try {
+    escrever('docs/2026-01-02-a-plano.md', PLANO);
+    escrever('docs/2026-01-02-b-plano.md', '### Tarefa 1: so\n- [ ] p\n');
+    escrever('.claude/esquadro/escopos/a.md', frente('a', 'docs/2026-01-02-a-plano.md'));
+    escrever('.claude/esquadro/escopos/b.md', frente('b', 'docs/2026-01-02-b-plano.md'));
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, 'b'), 'plano b | 0 de 1 | proxima: Tarefa 1 so');
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, null), '', 'duas frentes sem vinculo: o painel pede para escolher');
+    // Plano fora do projeto: o painel diz que nao le; a linha fica vazia.
+    fs.writeFileSync(path.join(base, '2026-01-02-fora-plano.md'), PLANO);
+    escrever('.claude/esquadro/escopos/b.md', frente('b', '../2026-01-02-fora-plano.md'));
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, 'b'), '');
+    // plano-ativo.json que nao se le nao cai na frente (D442/10, como no painel).
+    escrever('.claude/esquadro/plano-ativo.json', '{ quebrado');
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, 'a'), '');
+  } finally { fs.rmSync(base, { recursive: true, force: true }); }
+});

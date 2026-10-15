@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.8.1 — a entrega AAA cobra a revisão contra a peça de topo; a faixa mostra o plano, o mês e um botão por comando
+
+**Novo**
+
+- **O `/esquadro:init` pergunta a referência de topo**, depois das seis perguntas: nomear agora (grava
+  `referencias`), deixar para depois (não grava) ou nunca neste projeto (`"referencias": {}`). Sem a chave, a abertura
+  da sessão avisa uma vez por projeto (marca em `.claude/esquadro/referencia-avisada.json`).
+- **A linha do plano na faixa acima do prompt** (`plano d503 | 5 de 6 | proxima: ...`), sempre visível com plano; a
+  linha de status começa pelo plano curto, logo depois de "esquadro". O travessão do título do plano vira "-", em vez
+  de "?".
+- **Gasto do mês** ao lado do da sessão (`mes US$ N | sessao US$ x.xx`): o custo real das sessões com o mod carregado,
+  guardado entre sessões, mais a estimativa das transcrições do mês de todos os projetos; valor equivalente de API,
+  não cobrança. A primeira leitura vai por cache e prazo, e sai "(contando)" até encher.
+- **Previsão em handoffs** nas janelas de 5h e da semana (`semana 92% (~4 handoffs)`), pela média das últimas 5
+  sessões medidas dentro da mesma janela.
+- **Um botão por comando na faixa**, na hora certa: handoff, revisar, aprender, init, auditar, calibrar, paralelo e
+  padrao, cada um pelo sinal que já existia (tabela no README, "Ver os números a qualquer hora"). Um por vez, na
+  ordem de prioridade; o botão põe o comando no prompt e some até o sinal passar. O do handoff também some depois de
+  usado.
+- **Identidade visual**: a faixa tem borda e o nome "esquadro" no âmbar dos banners (a cor `warning` do tema no
+  terminal e no Desktop; `#F59E0B` no chat do VS Code, onde a cor do tema não pinta). README, "Aparência".
+- **Portão da referência de topo.** No fim do turno, a resposta que alega entrega é barrada quando um arquivo mudado
+  na sessão é da marcha `aaa`, o tipo dele tem lista em `referencias` e nenhuma revisão contra a referência fechou
+  na sessão. A mensagem cita os arquivos e o comando, `/esquadro:revisar <arquivo>`. O `node scripts/apurar-ronda.js`
+  conta o fecho da revisão com referência num balde próprio, `revisao_referencia_fechada`, que é o que o portão lê;
+  ele não abre arquivo nenhum. Sem `referencias`, nada muda. Desliga com `"portaoReferencia": false` (chave nova);
+  `travas.fecho: false` não o desliga.
+- Sao **24 baldes** de contador: 18 que negam, 6 que so contam.
+
+**Corrigido**
+
+- O README dizia que no chat do VS Code os mods só respondiam em texto: lá também aparecem a linha de status e a faixa
+  (provado numa sonda durante a 0.8.1).
+
 ## 0.8.0 — a revisão compara com a peça de topo, nas duas ordens
 
 **Novo**

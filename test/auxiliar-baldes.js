@@ -34,6 +34,8 @@ const SO_CONTAM = new Set(['agentes_despachados', 'revisao_fechada', 'escopo_amp
   // O gatilho 3 avisa e deixa passar (decisao 15): conta, nunca bloqueia.
   'apelido_divergente',
   // D294: tabela do PowerShell que nao se le avisa e deixa passar: conta, nunca bloqueia.
-  'shell_tabela_quebrada']);
+  'shell_tabela_quebrada',
+  // D503 (0.8.1): o fecho de revisao contra a referencia de topo, que o portao de fecho le.
+  'revisao_referencia_fechada']);
 
 module.exports = { baldesNoCodigo, SO_CONTAM };

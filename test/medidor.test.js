@@ -212,3 +212,70 @@ test('entrada torta nao lanca: devolve curta com so a troca de chat', () => {
   const r = medidor.linhaDaSessao({ uso: null, amostras: 'x', medidas: null, avisouSaude: false });
   assert.ok(typeof r.curta === 'string' && r.curta.indexOf('esquadro') === 0, r.curta);
 });
+
+// Pedido 31 (plano dos pedidos 30-32, Tarefa 3; D520): gasto do mes ao lado do semanal, separado do da sessao.
+const GASTO = { usd: 3181.46, real: 12.5, estimado: 3168.96, pendentes: 0, desde: '01/10' };
+
+test('pedido 31: curta com "mes US$" depois das janelas e "sessao US$" depois dele; longa diz as duas fontes', () => {
+  const r = medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: [], gasto: GASTO });
+  assert.ok(/semana 92%[^|]*\| mes US\$ 3181 \| sessao US\$ 4\.10 \|/.test(r.curta), r.curta);
+  assert.ok(r.longa.indexOf('gasto do mes (desde 01/10): US$ 3181.46 = US$ 12.50 real das sessoes medidas + ' +
+    'US$ 3168.96 estimado das transcricoes') !== -1, r.longa);
+  assert.ok(/valor equivalente de API, nao cobranca/.test(r.longa), r.longa);
+  assert.ok(ASCII.test(r.curta) && ASCII.test(r.longa));
+});
+
+test('pedido 31: conta das transcricoes ainda em curso aparece como "contando"; sem gasto, nada de "mes"', () => {
+  const r = medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: [], gasto: Object.assign({}, GASTO, { pendentes: 7 }) });
+  assert.ok(r.curta.indexOf('mes US$ 3181+ (contando)') !== -1, r.curta);
+  assert.ok(r.longa.indexOf('contando: faltam 7 arquivos de transcricao; o total completa sozinho nas proximas medidas') !== -1, r.longa);
+  const sem = medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: [] });
+  assert.ok(sem.curta.indexOf('mes ') === -1 && sem.longa.indexOf('gasto do mes') === -1, sem.curta);
+  const torto = medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: [], gasto: { usd: 'x' } });
+  assert.ok(torto.curta.indexOf('mes ') === -1, torto.curta);
+});
+
+// Pedido 32 (Tarefa 4): a barra na ordem esquadro | plano | contexto | 5h | semana | mes | sessao | troca.
+test('pedido 32: a barra leva o plano curto logo depois de "esquadro", na ordem do plano', () => {
+  const r = medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: [], gasto: GASTO, planoCurto: 'plano d503 5 de 6' });
+  const partes = r.curta.split(' | ').map(function (p) { return p.split(' ')[0]; });
+  assert.deepStrictEqual(partes, ['esquadro', 'plano', 'contexto', '5h', 'semana', 'mes', 'sessao', 'troca:'], r.curta);
+  assert.ok(r.curta.indexOf('esquadro | plano d503 5 de 6 | contexto') === 0, r.curta);
+  const sem = medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: [], planoCurto: '' });
+  assert.ok(sem.curta.indexOf('esquadro | contexto') === 0, sem.curta);
+});
+
+// Pedido 31: "semana/5h acabam em ~N handoffs" pela media das sessoes anteriores (historico do $.store).
+function hist(n, kind, porSessao, reset, extra) {
+  const h = {};
+  for (let i = 0; i < n; i++) {
+    h['s' + i] = Object.assign({ t: 1000 + i, medidas: 5,
+      janelas: { [kind]: { resetIni: reset, ini: 10, resetFim: reset, fim: 10 + porSessao } } }, extra || {});
+  }
+  return h;
+}
+
+test('pedido 31: previsao em handoffs pela media das sessoes anteriores (a atual fora)', () => {
+  const h = hist(3, 'seven_day', 2, 'R7');
+  h.atual = { t: 9999, medidas: 9, janelas: { seven_day: { resetIni: 'R7', ini: 0, resetFim: 'R7', fim: 80 } } };
+  const r = medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: [], historico: h, sessao: 'atual' });
+  // semana 92% usada, 2% por sessao -> 4 handoffs
+  assert.ok(r.curta.indexOf('semana 92% (~4 handoffs)') !== -1, r.curta);
+  assert.ok(r.longa.indexOf('janela semana acaba em ~4 handoffs (media de 2% por sessao, nas ultimas 3 sessoes)') !== -1, r.longa);
+});
+
+test('pedido 31: previsao em handoffs - so as ultimas 5, sessao que cruza a renovacao fora, sem 2 medidas omite', () => {
+  const h = hist(6, 'five_hour', 1, 'R5');
+  h.s0.janelas.five_hour.fim = 60; // a mais antiga (t menor) fica fora das 5
+  h.cruzou = { t: 5000, medidas: 5, janelas: { five_hour: { resetIni: 'R5a', ini: 1, resetFim: 'R5', fim: 50 } } };
+  h.curta = { t: 5001, medidas: 1, janelas: { five_hour: { resetIni: 'R5', ini: 0, resetFim: 'R5', fim: 40 } } };
+  const r = medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: [], historico: h, sessao: 'x' });
+  // 5h 49% usada, 1% por sessao nas 5 ultimas validas -> 51 handoffs
+  assert.ok(/5h 49% \(renova [0-9:]+, ~51 handoffs\)/.test(r.curta), r.curta);
+  const uma = medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: [], historico: hist(1, 'five_hour', 3, 'R5') });
+  assert.ok(uma.curta.indexOf('handoffs') === -1, 'uma sessao so nao faz media: ' + uma.curta);
+  const zero = medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: [], historico: hist(3, 'five_hour', 0, 'R5') });
+  assert.ok(zero.curta.indexOf('handoffs') === -1, 'media zero nao divide: ' + zero.curta);
+  const torto = medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: [], historico: { a: null, b: { janelas: 3 } } });
+  assert.ok(!/undefined|NaN|Infinity/.test(torto.curta + torto.longa), torto.curta);
+});

@@ -406,16 +406,37 @@ ou mais novo. Se `/esquadro-sessao` não aparecer, há três causas: o Claude Co
 um dos dois (abra uma sessão nova, porque os dois comandos são registrados quando a sessão começa). O nome leva hífen,
 e não os dois-pontos dos outros comandos do esquadro, porque comando de mod não leva o prefixo do plugin: com
 dois-pontos no lugar do hífen, o Claude Code responde que o comando não existe. `/esquadro-sessao` responde o
-medidor da sessão — contexto usado, janelas de limite (5h e semana) com a hora em que renovam, custo,
-previsão em turnos (só depois de 2 turnos com consumo; antes disso diz que não tem dado) e cada
-gatilho da tabela acima com o valor e o limiar. `/esquadro-plano` responde o painel do plano:
+medidor da sessão — contexto usado, janelas de limite (5h e semana) com a hora em que renovam, custo da sessão e
+do mês, previsão em turnos (só depois de 2 turnos com consumo; antes disso diz que não tem dado) e cada
+gatilho da tabela acima com o valor e o limiar. O gasto do mês soma duas fontes: o custo real de cada sessão em que
+o mod estava carregado, guardado pelo próprio Claude Code entre sessões, e, para as outras, uma estimativa pelas
+transcrições do mês de todos os projetos, com a tabela de preço do `/esquadro:calibrar`. Em assinatura, os dois são
+valor equivalente de API, não cobrança. A primeira leitura do mês leva algumas medidas, e até lá o número sai com
+"(contando)". As janelas de 5h e da semana trazem a previsão "~N handoffs": quantas sessões ainda cabem, pela média
+das últimas 5 sessões medidas dentro da mesma janela; com menos de 2 sessões medidas, ela não aparece.
+`/esquadro-plano` responde o painel do plano:
 tarefas feitas e abertas, a próxima, o que falta, as sessões gastas e a estimativa das que faltam, com a base da
 conta (como o painel encontra o plano e faz a conta, logo abaixo). Sem plano nenhum (nenhum plano ativo, nenhuma frente
 ligada à sessão e nenhum plano anotado no escopo ou nas frentes), ele responde "nenhum plano ativo" e o comando
-`--abrir` com o caminho do script na sua máquina. No painel de chat da extensão do VS Code os dois respondem em
-texto; no terminal e no app Desktop o medidor também fica na linha de status, e quando um gatilho
-cruza aparece uma faixa acima do prompt com o botão "gerar handoff". Nada disso abre rede: os números
-vêm do próprio Claude Code e dos arquivos do esquadro na sua máquina.
+`--abrir` com o caminho do script na sua máquina. No terminal, no app Desktop e no chat da extensão do VS Code, o
+medidor também fica na linha de status (uma linha só, começando por "esquadro" e o plano curto, `plano d503 5 de 6`),
+e uma faixa acima do prompt mostra a linha do plano (`plano d503 | 5 de 6 | proxima: Tarefa 6 ...`) e, embaixo dela,
+um botão por vez, o do comando do esquadro que está na hora:
+
+| Botão | Aparece quando |
+|---|---|
+| `/esquadro:handoff` | um gatilho contável da troca de chat cruzou |
+| `/esquadro:revisar <arquivo>` | um arquivo mudado na sessão é da marcha AAA com `referencias` declarada e nenhuma revisão contra ela fechou (a mesma condição do portão da referência de topo) |
+| `/esquadro:aprender` | o seu último prompt pareceu uma correção (a mesma conta da sugestão, no máximo 1 a cada 5 prompts) |
+| `/esquadro:init` | o projeto não tem `.claude/esquadro/projeto.json` |
+| `/esquadro:auditar` | a auditoria automática da abertura avisou nesta sessão |
+| `/esquadro:calibrar` | o limiar de contexto nunca foi calibrado e já há 30 conversas do projeto (contadas uma vez por dia) |
+| `/esquadro:paralelo` | a última resposta do agente ofereceu o `/esquadro:paralelo` |
+| `/esquadro:padrao` | um arquivo da marcha AAA mudou e o agente não carregou o manual (skill com "padrao" no nome) |
+
+Com mais de um aceso, vale a ordem da tabela. O botão põe o comando no prompt, sem enviar, e some; volta se o sinal
+dele passar e acender de novo. Depois de recarregar os mods, o do padrão pode voltar numa sessão que já carregou o
+manual. Nada disso abre rede: os números vêm do próprio Claude Code e dos arquivos na sua máquina.
 
 **Como o painel do plano acha o plano e conta.**
 
@@ -464,6 +485,14 @@ imprime a linha e **não conta**. O plugin não adivinha pelo texto do comando, 
 com um `echo "git commit"`, e os outros sete gatilhos seguem valendo. O gatilho de decisões depende de
 o gancho receber a resposta das perguntas de escolha; esse formato foi provado no painel do VS Code
 (a pergunta respondida contou).
+
+### Aparência
+
+O esquadro tem um acento só, o âmbar dos banners: `#F59E0B` no tema escuro e `#B45309` no claro, sobre os
+neutros do tema. Na faixa acima do prompt, o acento pinta a borda e o nome "esquadro"; o resto do texto, os botões e
+a linha de status ficam com o desenho do Claude Code (botão e linha de status não aceitam cor). No terminal e no app
+Desktop a faixa usa a cor `warning` do tema do Claude Code, que acompanha o tema claro ou escuro sozinha. No chat do
+VS Code essa cor não pinta, e a faixa usa `#F59E0B` direto; com o VS Code em tema claro, esse âmbar fica fraco de ler.
 
 ---
 
@@ -653,6 +682,7 @@ um módulo opcional, ou têm a própria chave. Cada um abaixo diz o que faz e co
 | Apelido (`scripts/portao-apelido.js`, antes de `Task` e `Agent`) | confere o `model:` de cada agente do projeto contra o apelido gravado em `agentes.degraus`; se divergir, **avisa e deixa passar**, uma vez por sessão, a você e ao Claude, com o conserto em três opções (corrigir o arquivo do agente, corrigir o mapa do `projeto.json`, ou não mexer agora) | não há chave: sem a pasta `.claude/agents` ou sem `agentes.degraus` gravados ele não tem com o que comparar e fica calado |
 | Estilo (`scripts/portao-estilo.js`, antes de `Bash` e `PowerShell`) | com `.claude/esquadro/design.json` declarado, nega o arquivo de estilo escrito por comando de shell e manda usar `Write` ou `Edit`, que o portão de escopo confere | não ter o `design.json` (módulo opcional, sem trava) |
 | Prompt do handoff (`scripts/portao-fecho.js`, no fim do turno) | barra o turno que gravou um arquivo de handoff e não colou o prompt em bloco de código na resposta final | `"portaoHandoff": false` (ver "Como desligar uma trava") |
+| Referência de topo (`scripts/portao-fecho.js`, no fim do turno) | barra a resposta que alega entrega quando um arquivo mudado na sessão é da marcha AAA, o tipo dele tem `referencias` declarada e nenhuma revisão contra ela fechou na sessão; a mensagem diz o comando, `/esquadro:revisar <arquivo>` | `"portaoReferencia": false` (ver "Como desligar uma trava") |
 | Qualidade de resposta (a abertura) | injeta as seis regras de clareza das respostas no chat; não barra nada | `"qualidadeDeResposta": false` (ver "Qualidade de resposta") |
 | Vigia (a abertura) | mostra uma vez a "novidade da semana" do plugin; só para quem mantém o plugin | **desligado por padrão**; `"vigia": true` liga |
 
@@ -682,7 +712,7 @@ esquadro: ATENCAO - valor de tipo errado em .claude/esquadro/projeto.json: porta
 
 E a conferência final do `/esquadro:init` (`scripts/validar.js`) reprova o arquivo com a mesma frase, `<chave> tem
 de ser true ou false`. O `vigia` e o `modoContinuo` são o contrário (só `true` liga), e `"true"` entre aspas também
-não liga. A lista das oito chaves, com o padrão de cada uma, está em "O `projeto.json` chave por chave".
+não liga. A lista das nove chaves, com o padrão de cada uma, está em "O `projeto.json` chave por chave".
 
 ---
 
@@ -966,6 +996,12 @@ perguntou de novo fica como está: os `limiares`, as chaves postas à mão (as d
 de `agentes` não são zeradas, e o escopo é declarado antes de gravar a configuração. Num agente gerado, valor com
 `: ` no cabeçalho sai entre aspas, e quebra de linha ali é recusada. Ao fim, o `scripts/validar.js` confere o
 arquivo gravado.
+
+Depois das seis, uma pergunta opcional: a **referência de topo**, a melhor peça que existe para cada tipo de entrega
+(`tela`, `codigo`, `texto`), que o `/esquadro:revisar` põe ao lado do trabalho. Três respostas: nomear agora, por
+tipo (grava `referencias`); deixar para depois (não grava a chave); ou nunca neste projeto (grava `"referencias": {}`).
+Sem a chave, a abertura da sessão avisa uma vez por projeto que ela falta e como declarar; a marca do aviso fica em
+`.claude/esquadro/referencia-avisada.json`. Com a chave, até vazia, o aviso não sai.
 
 ### `/esquadro:revisar` — quem escreveu não julga
 
@@ -1402,6 +1438,14 @@ prompt. No turno que gravou o handoff e já tem um bloco na resposta final, o av
 não manda colar o prompt de novo. Com o portão desligado e a resposta sem bloco, nada barra, e o
 aviso de troca de chat, se disparar, continua mandando colar.
 
+**O portão da referência de topo** também não lê a chave `travas`. Ele barra o fim do turno cuja resposta alega
+entrega (as mesmas palavras da trava 3: "pronto", "passou", "corrigido"...) quando três coisas valem juntas: um
+arquivo mudado na sessão resolve para a marcha `aaa`; o tipo dele (`texto` para `.md`/`.txt`, `tela` para estilo,
+`codigo` o resto) tem lista em `referencias`; e nenhuma revisão contra a referência fechou na sessão (o
+`apurar-ronda.js` conta esse fecho). A mensagem cita os arquivos e o comando, `/esquadro:revisar <arquivo>`. Sem
+`referencias`, nada muda. Desliga com `"portaoReferencia": false` no `projeto.json`; `travas.fecho: false` não o
+desliga.
+
 ---
 
 ## O `projeto.json` chave por chave
@@ -1440,6 +1484,7 @@ propósito, para não invalidar o `projeto.json` de quem já tem um.
 | `qualidadeDeResposta` | o bloco de seis regras de clareza das respostas | ligado; `false` desliga |
 | `portaoDecisao` | o portão da pergunta ao dono (3 opções, a recomendada em primeiro) | ligado; `false` desliga |
 | `portaoHandoff` | o portão do prompt do handoff no chat | ligado; `false` desliga |
+| `portaoReferencia` | o portão da referência de topo: barra a entrega AAA sem revisão contra a `referencias` na sessão | ligado; `false` desliga |
 | `paralelismo` | as regras de trabalho em paralelo que a abertura injeta | ligado; `false` desliga |
 | `vigia` | a novidade da semana na abertura (só para quem mantém o plugin) | desligado; só `true` liga |
 | `modoContinuo` | o modo contínuo: troca de chat só por tamanho, decisão técnica sem parar | desligado; só `true` liga |
@@ -1454,7 +1499,7 @@ propósito, para não invalidar o `projeto.json` de quem já tem um.
 
 | Chave | O que `false` faz | Padrão |
 |---|---|---|
-| `travas.fecho` | desliga a cobrança de evidência no fim do turno (trava 3); o portão do prompt do handoff não desliga com ela | `true` |
+| `travas.fecho` | desliga a cobrança de evidência no fim do turno (trava 3); o portão do prompt do handoff e o da referência de topo não desligam com ela | `true` |
 | `travas.destrutivo` | desliga o bloqueio de comando destrutivo e o do `cd` solto, juntos (trava 5) | `true` |
 | `travas.outraFrente` | desliga o bloqueio de escrita em arquivo que outra frente já mexeu (trava 5) | `true` |
 | `travas.escopo` | nada: a chave é exigida pelo schema, mas nenhum portão a lê (ver "Como desligar uma trava") | `true` |

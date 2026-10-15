@@ -847,6 +847,9 @@ test('fiacao: qualidadeDeResposta false some com o bloco, e ligado e desligado +
     // Com plano de OUTRA sessao, a abertura tem texto depois das regras: o "resto" a comparar.
     escrever(dir, path.join('.claude', 'esquadro', 'plano-ativo.json'),
       JSON.stringify({ arquivo: 'docs/plano-v9.md', sessionId: 'sessao-do-outro', tarefa: null }));
+    // D503 (Tarefa 6): o aviso da referencia sai uma vez por projeto, so na 1a abertura; a marca ja dada o tira da
+    // comparacao, que e do bloco de qualidade.
+    escrever(dir, path.join('.claude', 'esquadro', 'referencia-avisada.json'), '{}');
     for (const origem of ORIGENS_Q) {
       projetoComRegras(dir, { [qualidade.CHAVE]: false });
       const desligado = rodar('abertura.js', dir, { session_id: 'q3d-' + origem, cwd: dir, source: origem });
@@ -1368,6 +1371,19 @@ test('A2: a abertura avisa o peso estourado quando a auditoria esta vencida, e a
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// Pedido 32 (plano dos pedidos 30-32, Tarefa 4 subitem 3): quando a auditoria automatica avisa, a abertura marca a
+// sessao (`auditoriaAvisou`), e o sessao.js acende o botao do /esquadro:auditar. Calada, sem marca.
+test('A2 + pedido 32: a abertura que avisou da auditoria marca a sessao; a calada nao', () => {
+  const dir = temp('a2-botao');
+  try {
+    projetoComPesoEstourado(dir);
+    assert.ok(/auditoria automatica/.test(abrirA2(dir, 'a2b-1').stdout));
+    assert.strictEqual((lerSessao(dir, 'a2b-1') || {}).auditoriaAvisou, true);
+    assert.strictEqual(abrirA2(dir, 'a2b-2').stdout.indexOf('auditoria automatica'), -1, 'controle: dentro do prazo, calada');
+    assert.strictEqual((lerSessao(dir, 'a2b-2') || {}).auditoriaAvisou, undefined);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('A2: abertura com tudo dentro do teto fica calada e mesmo assim grava a marca', () => {
   const dir = temp('a2-ok');
   try {
@@ -1564,5 +1580,48 @@ test('V: sem a chave (ou com vigia: false) a abertura nao fala do vigia e nao cr
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
     fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+// D503 (plano d503, Tarefa 6, 1o subitem): sem a chave `referencias`, a abertura avisa UMA vez por projeto (marca em
+// .claude/esquadro/referencia-avisada.json) e diz como declarar e como calar; com a chave, ate `{}`, calada.
+const MARCA_REF = path.join('.claude', 'esquadro', 'referencia-avisada.json');
+const RE_AVISO_REF = /referencia de topo/;
+
+test('D503 T6: abertura avisa uma vez que falta a referencia de topo, em ASCII, com o caminho de declarar e de calar', () => {
+  const dir = temp('ref-falta');
+  try {
+    escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'), JSON.stringify({ versaoConfig: 1 }));
+    const r = rodar('abertura.js', dir, { session_id: 'rf1', cwd: dir, source: 'startup' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, RE_AVISO_REF, r.stdout);
+    const aviso = r.stdout.split('\n').filter((l) => RE_AVISO_REF.test(l))[0];
+    assert.match(aviso, /referencias/, 'nomeia a chave');
+    assert.match(aviso, /\/esquadro:init/, 'diz como declarar');
+    assert.match(aviso, /"referencias": \{\}/, 'diz como calar de vez');
+    assert.match(aviso, /uma vez/, 'diz que sai uma vez');
+    assert.ok(/^[\x20-\x7E]*$/.test(aviso), 'aviso fora de ASCII: ' + aviso);
+    assert.ok(fs.existsSync(path.join(dir, MARCA_REF)), 'a marca do aviso dado');
+    const de_novo = rodar('abertura.js', dir, { session_id: 'rf2', cwd: dir, source: 'startup' });
+    assert.doesNotMatch(de_novo.stdout, RE_AVISO_REF, 'segunda abertura, calada: ' + de_novo.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D503 T6: controles - com a chave (ate vazia), sem projeto.json ou com projeto.json ilegivel, nada de aviso nem marca', () => {
+  const casos = [
+    ['ref-vazia', JSON.stringify({ versaoConfig: 1, referencias: {} })],
+    ['ref-cheia', JSON.stringify({ versaoConfig: 1, referencias: { codigo: ['ref/topo.js'] } })],
+    ['ref-ilegivel', '{ versaoConfig: 1,'],
+    ['ref-sem-projeto', null]
+  ];
+  for (const [nome, conteudo] of casos) {
+    const dir = temp(nome);
+    try {
+      if (conteudo !== null) escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'), conteudo);
+      const r = rodar('abertura.js', dir, { session_id: nome, cwd: dir, source: 'startup' });
+      assert.strictEqual(r.status, 0, nome + ': ' + r.stderr);
+      assert.doesNotMatch(r.stdout, RE_AVISO_REF, nome + ': ' + r.stdout);
+      assert.ok(!fs.existsSync(path.join(dir, MARCA_REF)), nome + ': marca sem aviso');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 });
