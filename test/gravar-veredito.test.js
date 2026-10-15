@@ -738,3 +738,70 @@ test('fiacao: o inspetor devolve a pasta vereditos e o briefing da skill a passa
   assert.ok(!/Grave cada resposta no caminho/.test(skill), 'a instrucao de gravar cada resposta a mao continua');
   assert.ok(/um\s+arquivo por lente/.test(passo2), 'o Passo 2 nao manda conferir um arquivo por lente');
 });
+
+test('D503: fiacao da referencia - o inspetor devolve vsReferencia e lacunas; a skill passa R.txt e a 2a passada e diz o custo', () => {
+  const inspetor = fs.readFileSync(path.join(RAIZ, 'agents', 'inspetor.md'), 'utf8');
+  assert.match(inspetor, /"vsReferencia":/, 'o JSON do inspetor nao tem vsReferencia');
+  assert.match(inspetor, /"lacunas":/, 'o JSON do inspetor nao tem lacunas');
+  assert.match(inspetor, /R\.txt/, 'o inspetor nao sabe do R.txt');
+  const skill = fs.readFileSync(path.join(RAIZ, 'skills', 'revisar', 'SKILL.md'), 'utf8');
+  const passo2 = skill.slice(skill.indexOf('## Passo 2'), skill.indexOf('## Passo 3'));
+  assert.match(passo2, /R\.txt/, 'o Passo 2 nao passa o R.txt');
+  assert.match(passo2, /`invertida\.vereditos`/, 'o briefing da 2a passada nao troca a pasta de vereditos');
+  assert.match(passo2, /`invertida\.a` e `invertida\.b`/, 'o briefing da 2a passada nao troca os dois arquivos');
+  assert.match(passo2, /dobr/i, 'o Passo 2 nao diz que o custo dobra');
+  const passo3 = skill.slice(skill.indexOf('## Passo 3'), skill.indexOf('## Passo 4'));
+  assert.match(passo3, /`referencia`/, 'o Passo 3 nao fala do campo referencia da saida');
+  assert.match(passo3, /"passada": 2/, 'o Passo 3 nao diz como refutar achado da 2a passada');
+  const passo5 = skill.slice(skill.indexOf('## Passo 5'), skill.indexOf('## Passo 6'));
+  assert.match(passo5, /só aprovam quando toda lente empata ou vence a referência nas duas ordens/,
+    'o Passo 5 nao diz a parada com referencia');
+  assert.match(passo5, /\| teto de 3 rondas com P0\/P1 aberto ou a referência não alcançada \|/, 'o teto nao cita a referencia');
+});
+
+// D503/D508 (plano d503, E9): o pacote com referencia tem R.txt e a 2a passada em <ronda>/invertida/vereditos.
+function projetoComReferencia() {
+  const p = projeto();
+  const inv = path.join(p.ronda, 'invertida');
+  fs.mkdirSync(path.join(inv, 'vereditos'), { recursive: true });
+  fs.writeFileSync(path.join(inv, 'A.txt'), 'b\n', 'utf8');
+  fs.writeFileSync(path.join(inv, 'B.txt'), 'a\n', 'utf8');
+  fs.writeFileSync(path.join(p.ronda, 'R.txt'), '=== referencia 1 de 1: ref/topo.js ===\ntopo\n', 'utf8');
+  return Object.assign(p, { invertida: path.join(inv, 'vereditos') });
+}
+
+test('D503 E9: o veredito da 2a passada (invertida/vereditos) e gravado la', () => {
+  const p = projetoComReferencia();
+  const vd = veredito(p, { vereditos: p.invertida, vsReferencia: { A: 'perde', B: 'vence' }, lacunas: [] });
+  calado(rodar(p, stop(p, JSON.stringify(vd))));
+  assert.ok(fs.existsSync(path.join(p.invertida, 'correcao.json')), 'a 2a passada nao foi gravada');
+  assert.ok(!fs.existsSync(path.join(p.vereditos, 'correcao.json')), 'gravou na pasta da 1a passada');
+});
+
+test('D503 E9: no pacote com referencia, veredito sem vsReferencia nao e gravado e o aviso diz o campo', () => {
+  const p = projetoComReferencia();
+  for (const pasta of [p.vereditos, p.invertida]) {
+    const r = rodar(p, stop(p, JSON.stringify(veredito(p, { vereditos: pasta }))));
+    avisou(r);
+    assert.match(r.json.systemMessage, /vsReferencia/);
+    assert.ok(!fs.existsSync(path.join(pasta, 'correcao.json')));
+  }
+  // sem R.txt, o mesmo veredito grava como hoje
+  const sem = projeto();
+  calado(rodar(sem, stop(sem, JSON.stringify(veredito(sem)))));
+  assert.ok(fs.existsSync(path.join(sem.vereditos, 'correcao.json')));
+});
+
+test('D503 E9: invertida/vereditos fora de uma ronda com referencia (sem R.txt acima) nao e aceita', () => {
+  const p = projetoComReferencia();
+  // revisao/<id>/outra/invertida/vereditos casa o formato do caminho e tem A.txt e B.txt ao lado; "outra" nao e ronda
+  const inv = path.join(p.dir, '.claude', 'esquadro', 'revisao', 'src__a.js', 'outra', 'invertida');
+  fs.mkdirSync(path.join(inv, 'vereditos'), { recursive: true });
+  fs.writeFileSync(path.join(inv, 'A.txt'), 'b\n', 'utf8');
+  fs.writeFileSync(path.join(inv, 'B.txt'), 'a\n', 'utf8');
+  const vd = veredito(p, { vereditos: path.join(inv, 'vereditos'), vsReferencia: { A: 'vence', B: 'vence' }, lacunas: [] });
+  const r = rodar(p, stop(p, JSON.stringify(vd)));
+  avisou(r);
+  assert.match(r.json.systemMessage, /ronda com referencia/);
+  assert.ok(!fs.existsSync(path.join(inv, 'vereditos', 'correcao.json')));
+});

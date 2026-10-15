@@ -1302,3 +1302,135 @@ test('RV-01: CONTROLE - mapa antigo, sem o campo, segue contando o rotulo HEAD c
     assert.strictEqual(r.json.achadosDoLadoAntigo.length, 1, r.stdout);
   });
 });
+
+// D503/D508 (plano d503, Tarefa 3, E6-E8): ronda com referencia = mapa.json com `invertida`; a 2a passada mora em
+// <ronda>/invertida/vereditos e os textos dela em invertida/A.txt e invertida/B.txt (os lados trocados).
+function gravarRondaRef(cwd, n, mapa, pass1, pass2, textos) {
+  const dir = path.join(cwd, '.claude', 'esquadro', 'revisao', String(n));
+  fs.mkdirSync(path.join(dir, 'invertida', 'vereditos'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'mapa.json'), JSON.stringify({ arquivo: 'src/a.js', mapa: mapa,
+    referencia: { tipo: 'codigo', entradas: ['ref/topo.js'] }, invertida: { A: mapa.B, B: mapa.A } }), 'utf8');
+  gravarRonda(cwd, n, pass1);
+  for (const v of pass2) {
+    fs.writeFileSync(path.join(dir, 'invertida', 'vereditos', v.lente + '.json'), JSON.stringify(v), 'utf8');
+  }
+  const t = textos || { A: 'um\n', B: 'um\n' };
+  fs.writeFileSync(path.join(dir, 'A.txt'), t.A, 'utf8');
+  fs.writeFileSync(path.join(dir, 'B.txt'), t.B, 'utf8');
+  fs.writeFileSync(path.join(dir, 'invertida', 'A.txt'), t.B, 'utf8');
+  fs.writeFileSync(path.join(dir, 'invertida', 'B.txt'), t.A, 'utf8');
+  fs.writeFileSync(path.join(dir, 'R.txt'), '=== referencia 1 de 1: ref/topo.js ===\ntopo\n', 'utf8');
+}
+function vdRef(lente, vsA, vsB, achados, lacunas) {
+  return { lente: lente, melhor: 'A', porQue: 'A.txt:1', achados: achados || [], vsReferencia: { A: vsA, B: vsB },
+    lacunas: lacunas || [] };
+}
+
+test('D503: pelo CLI, empata ou vence a referencia nas duas ordens, com duas secas, aprova; a saida traz referencia', () => {
+  comTmp((tmp) => comTmp((cwd) => {
+    const m = { A: 'trabalho', B: 'HEAD' };
+    gravarRondaRef(cwd, 1, m, [vdRef('correcao', 'vence', 'perde')], [vdRef('correcao', 'perde', 'empata')]);
+    gravarRondaRef(cwd, 2, m, [vdRef('correcao', 'vence', 'perde')], [vdRef('correcao', 'perde', 'vence')]);
+    const r = rodar(['--sessao', 'ref1'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.strictEqual(r.json.motivo, 'duas rondas secas seguidas: aprovado', r.stdout);
+    assert.strictEqual(r.json.referencia.pronta, true, r.stdout);
+    assert.deepStrictEqual(r.json.referencia.lentes.map((l) => [l.lente, l.resultado]), [['correcao', 'vence']]);
+  }));
+});
+
+test('D503: pelo CLI, perder a referencia numa ordem segura a revisao aberta', () => {
+  comTmp((tmp) => comTmp((cwd) => {
+    const m = { A: 'trabalho', B: 'HEAD' };
+    gravarRondaRef(cwd, 1, m, [vdRef('correcao', 'empata', 'perde')], [vdRef('correcao', 'perde', 'perde')]);
+    gravarRondaRef(cwd, 2, m, [vdRef('correcao', 'empata', 'perde')], [vdRef('correcao', 'perde', 'perde')]);
+    const r = rodar(['--sessao', 'ref2'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.strictEqual(r.json.encerrar, false, r.stdout);
+    assert.match(r.json.motivo, /referencia/);
+    assert.deepStrictEqual(r.json.referencia.lentesAtras, ['correcao']);
+  }));
+});
+
+test('D503: sem referencia no mapa.json, a saida traz referencia null', () => {
+  comTmp((tmp) => comTmp((cwd) => {
+    gravarMapa(cwd, 1, { A: 'trabalho', B: 'HEAD' });
+    gravarRonda(cwd, 1, [{ lente: 'correcao', melhor: 'A', achados: [] }]);
+    const r = rodar(['--sessao', 'ref3'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.strictEqual(r.json.referencia, null, r.stdout);
+  }));
+});
+
+test('D503: pelo CLI, ronda com referencia sem a 2a passada para com o caminho da pasta', () => {
+  comTmp((tmp) => comTmp((cwd) => {
+    gravarRondaRef(cwd, 1, { A: 'trabalho', B: 'HEAD' }, [vdRef('correcao', 'vence', 'perde')], []);
+    const r = rodar(['--sessao', 'ref4'], cwd, tmp);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /invertida\/vereditos/);
+    assert.match(r.stdout, /2a passada/);
+  }));
+});
+
+test('D503 (revisao s49): mapa.json com `invertida` que nao e objeto esta corrompido, nao vira ronda sem referencia', () => {
+  for (const torta of [[], 'x', null, 5]) {
+    comTmp((tmp) => comTmp((cwd) => {
+      gravarRondaRef(cwd, 1, { A: 'trabalho', B: 'HEAD' }, [vdRef('correcao', 'vence', 'perde')],
+        [vdRef('correcao', 'perde', 'vence')]);
+      const arq = path.join(cwd, '.claude', 'esquadro', 'revisao', '1', 'mapa.json');
+      const mj = JSON.parse(fs.readFileSync(arq, 'utf8'));
+      mj.invertida = torta;
+      fs.writeFileSync(arq, JSON.stringify(mj), 'utf8');
+      const r = rodar(['--sessao', 'ref4b'], cwd, tmp);
+      assert.strictEqual(r.status, 1, JSON.stringify(torta) + ': ' + r.stdout);
+      assert.ok(r.stdout.includes('1/mapa.json esta corrompido ("invertida" nao e um objeto)'), r.stdout);
+    }));
+  }
+});
+
+test('D503: pelo CLI, veredito sem vsReferencia na ronda com referencia e veredito invalido, nas duas passadas', () => {
+  comTmp((tmp) => comTmp((cwd) => {
+    gravarRondaRef(cwd, 1, { A: 'trabalho', B: 'HEAD' }, [{ lente: 'correcao', melhor: 'A', achados: [] }],
+      [vdRef('borda', 'vence', 'perde'), { lente: 'correcao', melhor: 'A', achados: [] }]);
+    const r = rodar(['--sessao', 'ref5'], cwd, tmp);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /veredito invalido em \.claude\/esquadro\/revisao\/1\/vereditos\/correcao\.json: .*vsReferencia/);
+    assert.match(r.stdout, /veredito invalido em \.claude\/esquadro\/revisao\/1\/invertida\/vereditos\/correcao\.json: .*vsReferencia/);
+  }));
+});
+
+test('D503 E7: pelo CLI, o texto da linha da 2a passada vem de invertida/ (o mesmo defeito nao dobra)', () => {
+  comTmp((tmp) => comTmp((cwd) => {
+    // trabalho = A na 1a passada e B na 2a; a linha 2 do trabalho e "novo"; a do HEAD e "velho"
+    const p1 = [vdRef('correcao', 'empata', 'empata', [{ severidade: 'P1', arquivo: 'A.txt', linha: 2, descricao: 'quebra' }])];
+    const p2 = [vdRef('correcao', 'empata', 'empata', [{ severidade: 'P1', arquivo: 'B.txt', linha: 2, descricao: 'quebra' }])];
+    gravarRondaRef(cwd, 1, { A: 'trabalho', B: 'HEAD' }, p1, p2, { A: 'um\nnovo\n', B: 'um\nvelho\n' });
+    const r = rodar(['--sessao', 'ref6'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.strictEqual(r.json.achadosNovosP0P1.length, 1, r.stdout);
+  }));
+});
+
+test('D503: pelo CLI, arquivo identico ao HEAD conta os dois lados como trabalho tambem na 2a passada', () => {
+  comTmp((tmp) => comTmp((cwd) => {
+    // a invertida gravada diz { A: HEAD, B: trabalho }; com identico, os dois sao trabalho e vale o pior (o A perde)
+    gravarRondaRef(cwd, 1, { A: 'trabalho', B: 'HEAD' }, [vdRef('correcao', 'vence', 'vence')], [vdRef('correcao', 'perde', 'vence')]);
+    const arq = path.join(cwd, '.claude', 'esquadro', 'revisao', '1', 'mapa.json');
+    const mj = JSON.parse(fs.readFileSync(arq, 'utf8'));
+    mj.identico = true;
+    fs.writeFileSync(arq, JSON.stringify(mj), 'utf8');
+    const r = rodar(['--sessao', 'ref8'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.strictEqual(r.json.referencia.lentes[0].ordem2, 'perde', r.stdout);
+  }));
+});
+
+test('D503 E5: pelo CLI, lacuna sem arquivo:linha sai em vereditosDescartados', () => {
+  comTmp((tmp) => comTmp((cwd) => {
+    const p1 = [vdRef('correcao', 'empata', 'empata', [], [{ severidade: 'P1', arquivo: 'R.txt', linha: 1, descricao: 'R tem' }])];
+    gravarRondaRef(cwd, 1, { A: 'trabalho', B: 'HEAD' }, p1, [vdRef('correcao', 'empata', 'empata')]);
+    const r = rodar(['--sessao', 'ref7'], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.ok(r.json.vereditosDescartados.some((e) => /lacuna sem arquivo:linha/.test(e)), r.stdout);
+  }));
+});

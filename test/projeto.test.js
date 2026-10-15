@@ -537,3 +537,43 @@ test('D442/5: re-init aceita as chaves de liga/desliga em vez de ignorar', () =>
     assert.ok(r.mudou.includes(chave), chave);
   }
 });
+
+// D503 (plano d503, Tarefa 1): `referencias` e a peca de topo contra a qual a revisao compara. Opcional: sem ela,
+// nada muda. Por tipo (tela, codigo, texto), cada um uma lista de caminho ou URL - por isso fora de conferirCaminhos.
+test('D503: referencias e opcional e aceita listas de caminho ou URL por tipo', () => {
+  assert.deepStrictEqual(projeto.CHAVES_OPCIONAIS, ['referencias']);
+  assert.deepStrictEqual(projeto.TIPOS_REFERENCIA, ['tela', 'codigo', 'texto']);
+  assert.strictEqual(projeto.CHAVES.indexOf('referencias'), -1, 'opcional nao entra nas obrigatorias');
+  const com = copia({ referencias: { tela: ['docs/ref.png', 'https://exemplo.com/painel'], codigo: [], texto: ['README.md'] } });
+  const v = projeto.validar(com);
+  assert.strictEqual(v.ok, true, v.erros.join(' | '));
+  assert.strictEqual(projeto.validar(copia({ referencias: {} })).ok, true, 'objeto vazio e config valida');
+});
+
+test('D503: referencias de tipo errado e recusada com erro nomeado, nunca estoura', () => {
+  const casos = [
+    [[], 'referencias tem de ser objeto'],
+    ['docs/ref.png', 'referencias tem de ser objeto'],
+    [null, 'referencias tem de ser objeto'],
+    [{ telas: ['a'] }, 'referencias.telas nao e tipo conhecido (tela, codigo, texto)'],
+    [{ tela: 'a' }, 'referencias.tela tem de ser lista de texto'],
+    [{ codigo: [1] }, 'referencias.codigo tem de ser lista de texto'],
+    [{ texto: ['  '] }, 'referencias.texto tem de ser lista de texto']
+  ];
+  for (const [valor, erro] of casos) {
+    const v = projeto.validar(copia({ referencias: valor }));
+    assert.strictEqual(v.ok, false, JSON.stringify(valor));
+    assert.deepStrictEqual(v.erros, [erro], JSON.stringify(valor));
+  }
+});
+
+test('D503: re-init aceita referencias, funde por tipo e nao a ignora', () => {
+  const nova = projeto.atualizar(copia({}), { referencias: { tela: ['ref.png'] } }, '2026-10-14');
+  assert.deepStrictEqual(nova.ignoradas, []);
+  assert.deepStrictEqual(nova.config.referencias, { tela: ['ref.png'] });
+  assert.ok(nova.mudou.includes('referencias'), JSON.stringify(nova.mudou));
+  const fundida = projeto.atualizar(copia({ referencias: { tela: ['a.png'] } }), { referencias: { codigo: ['b.js'] } }, '2026-10-14');
+  assert.deepStrictEqual(fundida.config.referencias, { tela: ['a.png'], codigo: ['b.js'] }, 'o tipo nao perguntado se preserva');
+  const v = projeto.validar(fundida.config);
+  assert.strictEqual(v.ok, true, v.erros.join(' | '));
+});

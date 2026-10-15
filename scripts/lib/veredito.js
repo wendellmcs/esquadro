@@ -122,15 +122,28 @@ function chaveAchado(a, lente) {
   return [a.severidade, a.arquivo, a.linha, lente].join('|');
 }
 
+// D503/D508 (plano d503, E5): com referencia (R.txt no pacote), cada lado e julgado contra ela. O inspetor segue cego
+// a qual lado e o novo; o apurar le o do trabalho pelo mapa.
+const RESULTADOS_REFERENCIA = ['vence', 'empata', 'perde'];
+
 // D223 e D228 (ronda 2 do 8c.10): o que invalida o veredito inteiro, e nao so um achado. O
 // apurar-ronda.js para nestes, como no ilegivel, e o apurar os recusa; o validarVeredito os
 // devolve junto dos erros de achado, que so descartam o achado.
-function errosDoVeredito(vd) {
+function errosDoVeredito(vd, opcoes) {
   if (!vd || typeof vd !== 'object') return ['veredito nao e objeto'];
   const erros = [];
   if (!vd.lente) erros.push('veredito sem lente');
   if (['A', 'B', 'empate'].indexOf(vd.melhor) === -1) erros.push('melhor tem de ser A, B ou empate');
   if (!Array.isArray(vd.achados)) erros.push('achados tem de ser lista, vazia quando nao ha achado');
+  if (opcoes && opcoes.comReferencia) {
+    const vs = vd.vsReferencia;
+    if (!vs || typeof vs !== 'object' || Array.isArray(vs) || RESULTADOS_REFERENCIA.indexOf(vs.A) === -1 ||
+        RESULTADOS_REFERENCIA.indexOf(vs.B) === -1) {
+      erros.push('vsReferencia tem de ser { "A": ..., "B": ... }, cada um vence, empata ou perde contra a referencia ' +
+        '(o pacote tem R.txt)');
+    }
+    if (!Array.isArray(vd.lacunas)) erros.push('lacunas tem de ser lista, vazia quando nada separa os lados da referencia');
+  }
   return erros;
 }
 
@@ -147,10 +160,11 @@ function linhaDoAchado(linha) {
   return Number.isSafeInteger(n) && n >= 1 ? n : null;
 }
 
-function validarVeredito(vd) {
-  const erros = errosDoVeredito(vd);
+function validarVeredito(vd, opcoes) {
+  const erros = errosDoVeredito(vd, opcoes);
   const validos = [];
-  if (!vd || typeof vd !== 'object') return { ok: false, erros: erros, achadosValidos: [] };
+  const lacunas = [];
+  if (!vd || typeof vd !== 'object') return { ok: false, erros: erros, achadosValidos: [], lacunasValidas: [] };
 
   for (const a of (vd.achados || [])) {
     if (SEVERIDADES.indexOf(a && a.severidade) === -1) {
@@ -171,7 +185,27 @@ function validarVeredito(vd) {
     }
     validos.push(linha === a.linha ? a : Object.assign({}, a, { linha: linha }));
   }
-  return { ok: erros.length === 0, erros: erros, achadosValidos: validos };
+  // D503 (E5): a lacuna para a referencia segue o anti-teatro do achado, e cita o lado que fica atras (A ou B).
+  if (opcoes && opcoes.comReferencia && Array.isArray(vd.lacunas)) {
+    for (const l of vd.lacunas) {
+      if (SEVERIDADES.indexOf(l && l.severidade) === -1) {
+        erros.push('lacuna com severidade invalida: ' + (l && l.severidade));
+        continue;
+      }
+      const linha = linhaDoAchado(l.linha);
+      if (rotuloDoArquivo(l.arquivo) === null || linha === null) {
+        erros.push('lacuna sem arquivo:linha valido (o arquivo e A.txt ou B.txt, o lado que fica atras da referencia), ' +
+          'descartada: ' + String(l.descricao).slice(0, 60));
+        continue;
+      }
+      if (!l.descricao || String(l.descricao).trim() === '') {
+        erros.push('lacuna sem descricao, descartada');
+        continue;
+      }
+      lacunas.push(linha === l.linha ? l : Object.assign({}, l, { linha: linha }));
+    }
+  }
+  return { ok: erros.length === 0, erros: erros, achadosValidos: validos, lacunasValidas: lacunas };
 }
 
 const TETO = 3;
@@ -227,15 +261,41 @@ function conferirRefutados(refutados) {
     if (SEVERIDADES.indexOf(r.severidade) === -1) {
       throw new Error('refutacao sem severidade' + onde + '"severidade" tem de ser P0, P1 ou P2, a do achado que ela refuta');
     }
+    // D503 (E7): o A.txt da 2a passada (invertida/) e outro arquivo que o da 1a; a refutacao diz de qual passada e.
+    if (r.passada !== undefined && r.passada !== 1 && r.passada !== 2) {
+      throw new Error('refutacao com passada invalida' + onde + '"passada" e 2 para achado da 2a passada (invertida/), ' +
+        'ou fica fora do objeto');
+    }
   }
   return lista;
 }
 
-function refutado(lista, ronda, lente, a) {
+function refutado(lista, ronda, lente, a, passada) {
   return lista.some(function (r) {
     return r.ronda === ronda && mesmaLente(r.lente, lente) && r.linha === a.linha && r.severidade === a.severidade &&
-      rotuloDoArquivo(r.arquivo) === rotuloDoArquivo(a.arquivo);
+      rotuloDoArquivo(r.arquivo) === rotuloDoArquivo(a.arquivo) && (r.passada || 1) === passada;
   });
+}
+
+const PESO_REFERENCIA = { vence: 0, empata: 1, perde: 2 };
+/**
+ * D503 (E6): o resultado do lado trabalho contra a referencia numa passada: o pior dos lados que o mapa diz trabalho
+ * (os dois, quando o arquivo e identico ao HEAD). null quando nenhum lado e trabalho.
+ */
+function vsDoTrabalho(vs, mapa) {
+  let pior = null;
+  ['A', 'B'].forEach(function (rot) {
+    if (!mapa || mapa[rot] !== 'trabalho') return;
+    if (pior === null || PESO_REFERENCIA[vs[rot]] > PESO_REFERENCIA[pior]) pior = vs[rot];
+  });
+  return pior;
+}
+
+/** D503 (E6): as duas ordens viram um resultado: perde em alguma = perde; vence nas duas = vence; o resto, empata. */
+function resultadoDasDuasOrdens(o1, o2) {
+  if (o1 === null || o2 === null) return 'incompleta';
+  if (o1 === 'perde' || o2 === 'perde') return 'perde';
+  return o1 === 'vence' && o2 === 'vence' ? 'vence' : 'empata';
 }
 
 // D387 (#11c): dois achados do mesmo arquivo a ate 10 linhas um do outro viram "par candidato" para o
@@ -318,8 +378,12 @@ function chavePeloTexto(kBase, bruto, variantesDaChave, ronda) {
  *                primaria nao molha. Sem `prova` ou sem `severidade`, lanca erro.
  *   mesmos     = [{ novo, outro, resposta }] (D387, #11c): so ALIMENTA provaveisMesmos; nao entra em
  *                secas, encerrar, motivo, novos, abertos nem no teto. A palavra do juiz e aviso, nao prova.
- *   textoDaLinha(indiceDaRonda, rotulo, linha) -> texto ou null (D475): com ele, a mesma chave sobre um texto
- *                diferente do ja visto vira achado novo (chave + "|r<ronda>"); texto igual segue repeticao.
+ *   textoDaLinha(indiceDaRonda, rotulo, linha, passada) -> texto ou null (D475): com ele, a mesma chave sobre um
+ *                texto diferente do ja visto vira achado novo (chave + "|r<ronda>"); texto igual segue repeticao.
+ *   invertidas[i] = { mapa, vereditos } (D503, E6-E8): a 2a passada (A/B trocados) da ronda i com referencia. Os
+ *                vereditos das duas passadas exigem vsReferencia e lacunas; os achados da 2a contam pelo mapa dela e
+ *                saem com passada 2. Sai `referencia` (null sem ela): { pronta, lentes, lacunas, lentesAtras };
+ *                com a ultima ronda fora da referencia, duas secas nao aprovam.
  * paresCandidatos sai sempre: achado P0/P1 novo da ultima ronda x outro achado do lado novo, mesmo
  * arquivo (o lado, com mapa; o rotulo, sem), a ate DISTANCIA_PAR linhas, chave diferente.
  */
@@ -340,55 +404,112 @@ function apurar(rondas, opcoes) {
   const metas = new Map();
   const doLadoNovo = [];
   const placar = { A: 0, B: 0, empate: 0 };
+  // D503 (E6/E8): invertidas[i] = { mapa, vereditos } da 2a passada (ordem A/B trocada) da ronda com referencia.
+  const invertidas = Array.isArray(op.invertidas) ? op.invertidas : [];
+  // lente -> o resultado contra a referencia na ultima ronda que a chamou
+  const refLentes = new Map();
+  let ultimaComReferencia = false;
 
   rondas.forEach(function (ronda, indice) {
     const novos = [];
     const novosChaves = [];
     const antigos = [];
     const mapa = mapas[indice] && typeof mapas[indice] === 'object' ? mapas[indice] : null;
+    const inv = invertidas[indice] && typeof invertidas[indice] === 'object' ? invertidas[indice] : null;
+    const comReferencia = inv !== null;
     // 0.3.3, item 1: ronda sem nenhum veredito nao e ronda seca - e voto que falta. Sem isto,
     // `apurar([[], []])` fechava aprovado. Diz qual ronda; o apurar-ronda.js confere a pasta antes.
     if (!Array.isArray(ronda) || ronda.length === 0) {
       throw new Error('ronda ' + (indice + 1) + ' sem nenhum veredito: ronda sem voto nao e ronda seca, e nao se apura; ' +
         'grave os vereditos da ronda ' + (indice + 1) + ' na pasta vereditos dela e rode de novo');
     }
-    for (const vd of ronda) {
-      // D230: o que nao e veredito nao e voto sem achado - seria ronda seca por falta de voto. O
-      // apurar-ronda.js para antes de chegar aqui; quem chamar direto recebe o erro, com o motivo.
-      const invalido = errosDoVeredito(vd);
-      if (invalido.length) throw new Error('veredito que nao e veredito na ronda ' + (indice + 1) + ': ' + invalido.join('; '));
-      const r = validarVeredito(vd);
-      if (indice === rondas.length - 1 && placar[vd.melhor] !== undefined) placar[vd.melhor] += 1;
-      for (const a of r.achadosValidos) {
-        const rotulo = rotuloDoArquivo(a.arquivo);
-        const lado = mapa && rotulo ? mapa[rotulo] : null;
+    if (comReferencia && (!Array.isArray(inv.vereditos) || inv.vereditos.length === 0)) {
+      throw new Error('ronda ' + (indice + 1) + ' com referencia sem nenhum veredito da 2a passada (invertida/vereditos): ' +
+        'a ordem trocada e metade do voto; grave os vereditos da 2a passada e rode de novo');
+    }
+    const mapaInv = comReferencia && inv.mapa && typeof inv.mapa === 'object' ? inv.mapa : null;
+    const daRonda = new Map();
+    const passadas = comReferencia ? [[ronda, mapa, 1], [inv.vereditos, mapaInv, 2]] : [[ronda, mapa, 1]];
+    for (const [lista, mapaP, passada] of passadas) {
+      for (const vd of lista) {
+        // D230: o que nao e veredito nao e voto sem achado - seria ronda seca por falta de voto. O
+        // apurar-ronda.js para antes de chegar aqui; quem chamar direto recebe o erro, com o motivo.
+        const invalido = errosDoVeredito(vd, { comReferencia: comReferencia });
+        if (invalido.length) {
+          throw new Error('veredito que nao e veredito na ronda ' + (indice + 1) + (passada === 2 ? ' (2a passada)' : '') +
+            ': ' + invalido.join('; '));
+        }
+        const r = validarVeredito(vd, { comReferencia: comReferencia });
+        if (passada === 1 && indice === rondas.length - 1 && placar[vd.melhor] !== undefined) placar[vd.melhor] += 1;
         // RV-02 (D422): a chave leva a lente CANONICA; "Correcao e regressao" e "correcao" sao a mesma lente.
         const lenteChave = lenteCanonica(vd.lente);
-        const kBase = lado ? [a.severidade, lado, a.linha, lenteChave].join('|') : chaveAchado(a, lenteChave);
-        // D475 (s99): a mesma chave sobre uma linha REESCRITA entre rondas e evidencia nova, nao repeticao.
-        const bruto = typeof op.textoDaLinha === 'function' && rotulo ? op.textoDaLinha(indice, rotulo, a.linha) : null;
-        const k = chavePeloTexto(kBase, bruto, variantesDaChave, indice + 1);
-        if (vistos.has(k)) continue;
-        vistos.add(k);
-        // L2-ver-3 (S7, D426): o que o juiz le leva a lente canonica, a mesma da chave, e nao a grafia do inspetor.
-        const meta = { chave: k, ronda: indice + 1, lente: lenteChave, severidade: a.severidade, linha: a.linha,
-          descricao: a.descricao };
-        metas.set(k, meta);
-        // Achado do lado HEAD tem linha do arquivo antigo: nao faz par. Sem lado e sem rotulo, nao ha como
-        // dizer que dois achados sao do mesmo arquivo: tambem nao faz par.
-        const grupo = lado || rotulo;
-        if (lado !== 'HEAD' && grupo) doLadoNovo.push({ meta: meta, grupo: grupo });
-        if (a.severidade !== 'P0' && a.severidade !== 'P1') continue;
-        if (lado === 'HEAD') { antigos.push(a); continue; }
-        if (refutado(refutados, indice + 1, vd.lente, a)) continue;
-        abertos.add(k);
-        novos.push(a);
-        novosChaves.push(k);
+        if (comReferencia) {
+          if (!daRonda.has(lenteChave)) daRonda.set(lenteChave, { ordem1: null, ordem2: null, lacunas: [] });
+          const e = daRonda.get(lenteChave);
+          const campo = passada === 1 ? 'ordem1' : 'ordem2';
+          const x = vsDoTrabalho(vd.vsReferencia, mapaP);
+          if (x !== null && (e[campo] === null || PESO_REFERENCIA[x] > PESO_REFERENCIA[e[campo]])) e[campo] = x;
+          for (const l of r.lacunasValidas) {
+            if (!mapaP || mapaP[rotuloDoArquivo(l.arquivo)] !== 'trabalho') continue;
+            e.lacunas.push({ lente: lenteChave, ronda: indice + 1, passada: passada, severidade: l.severidade,
+              arquivo: l.arquivo, linha: l.linha, descricao: l.descricao });
+          }
+        }
+        for (const a of r.achadosValidos) {
+          const rotulo = rotuloDoArquivo(a.arquivo);
+          const lado = mapaP && rotulo ? mapaP[rotulo] : null;
+          const kBase = lado ? [a.severidade, lado, a.linha, lenteChave].join('|') : chaveAchado(a, lenteChave);
+          // D475 (s99): a mesma chave sobre uma linha REESCRITA entre rondas e evidencia nova, nao repeticao.
+          const bruto = typeof op.textoDaLinha === 'function' && rotulo ? op.textoDaLinha(indice, rotulo, a.linha, passada) : null;
+          const k = chavePeloTexto(kBase, bruto, variantesDaChave, indice + 1);
+          if (vistos.has(k)) continue;
+          vistos.add(k);
+          // L2-ver-3 (S7, D426): o que o juiz le leva a lente canonica, a mesma da chave, e nao a grafia do inspetor.
+          const meta = { chave: k, ronda: indice + 1, lente: lenteChave, severidade: a.severidade, linha: a.linha,
+            descricao: a.descricao };
+          metas.set(k, meta);
+          // Achado do lado HEAD tem linha do arquivo antigo: nao faz par. Sem lado e sem rotulo, nao ha como
+          // dizer que dois achados sao do mesmo arquivo: tambem nao faz par.
+          const grupo = lado || rotulo;
+          if (lado !== 'HEAD' && grupo) doLadoNovo.push({ meta: meta, grupo: grupo });
+          if (a.severidade !== 'P0' && a.severidade !== 'P1') continue;
+          // D503 (E7): o achado da 2a passada sai marcado; o A.txt dela e outro arquivo que o da 1a.
+          const marcado = passada === 2 ? Object.assign({}, a, { passada: 2 }) : a;
+          if (lado === 'HEAD') { antigos.push(marcado); continue; }
+          if (refutado(refutados, indice + 1, vd.lente, a, passada)) continue;
+          abertos.add(k);
+          novos.push(marcado);
+          novosChaves.push(k);
+        }
       }
     }
+    daRonda.forEach(function (e, lente) {
+      refLentes.set(lente, { lente: lente, ronda: indice + 1, ordem1: e.ordem1, ordem2: e.ordem2,
+        resultado: resultadoDasDuasOrdens(e.ordem1, e.ordem2), lacunas: e.lacunas });
+    });
     if (novos.length === 0) secas += 1; else secas = 0;
-    if (indice === rondas.length - 1) { novosDaUltima = novos; novosChavesDaUltima = novosChaves; antigosDaUltima = antigos; }
+    if (indice === rondas.length - 1) {
+      novosDaUltima = novos; novosChavesDaUltima = novosChaves; antigosDaUltima = antigos;
+      ultimaComReferencia = comReferencia;
+    }
   });
+
+  // D503 (E6): pronto contra a referencia = toda lente empata ou vence nas duas ordens, sem lacuna P0/P1 do trabalho.
+  // Vale quando a ultima ronda tem referencia; sem ela, null e a regra de hoje.
+  let referencia = null;
+  if (ultimaComReferencia) {
+    const lentes = [];
+    const lacunas = [];
+    refLentes.forEach(function (e) {
+      lentes.push({ lente: e.lente, ronda: e.ronda, ordem1: e.ordem1, ordem2: e.ordem2, resultado: e.resultado });
+      e.lacunas.forEach(function (l) { lacunas.push(l); });
+    });
+    const faltam = new Set();
+    lentes.forEach(function (l) { if (l.resultado !== 'vence' && l.resultado !== 'empata') faltam.add(l.lente); });
+    lacunas.forEach(function (l) { if (l.severidade === 'P0' || l.severidade === 'P1') faltam.add(l.lente); });
+    referencia = { pronta: lentes.length > 0 && faltam.size === 0, lentes: lentes, lacunas: lacunas,
+      lentesAtras: Array.from(faltam) };
+  }
 
   // D387 (#11c): pares para o juiz. Nada aqui entra na contagem acima.
   // D396 n. 23: cada grupo em ordem de linha, e so os vizinhos a ate DISTANCIA_PAR linhas se comparam (antes,
@@ -443,22 +564,27 @@ function apurar(rondas, opcoes) {
 
   const ronda = rondas.length;
   const extra = { achadosDoLadoAntigo: antigosDaUltima, refutados: refutados, paresCandidatos: paresCandidatos,
-    provaveisMesmos: provaveisMesmos };
+    provaveisMesmos: provaveisMesmos, referencia: referencia };
+  const atras = referencia && !referencia.pronta;
+  const quaisAtras = atras ? ' (' + (referencia.lentesAtras.join(', ') || 'nenhuma lente julgada') + ')' : '';
 
-  if (secas >= 2) {
+  if (secas >= 2 && !atras) {
     return Object.assign({ ronda: ronda, secas: secas, encerrar: true,
       motivo: 'duas rondas secas seguidas: aprovado', novos: novosDaUltima, placar: placar }, extra);
   }
   if (ronda >= TETO) {
     return Object.assign({ ronda: ronda, secas: secas, encerrar: true,
-      motivo: 'teto de ' + TETO + ' rondas com ' + abertos.size + ' achado(s) P0/P1: para aqui e leva ao dono com 3 opcoes; o que sobrar vira registro',
+      motivo: 'teto de ' + TETO + ' rondas com ' + abertos.size + ' achado(s) P0/P1' +
+        (atras ? ' e a referencia nao alcancada' + quaisAtras : '') +
+        ': para aqui e leva ao dono com 3 opcoes; o que sobrar vira registro',
       novos: novosDaUltima, placar: placar }, extra);
   }
   return Object.assign({ ronda: ronda, secas: secas, encerrar: false,
-    motivo: 'ronda ' + (ronda + 1) + ' chama so as lentes que acharam P0/P1',
+    motivo: 'ronda ' + (ronda + 1) + ' chama so as lentes que acharam P0/P1' +
+      (atras ? ' e as que nao empatam com a referencia ou tem lacuna P0/P1' + quaisAtras : ''),
     novos: novosDaUltima, placar: placar }, extra);
 }
 
 module.exports = { LENTES, LENTES_UI, FAMILIAS, SAEM_SO_LOGICA, familiasPara, FAIXA_UMA_ATE, FAIXA_DUAS_ATE,
-  faixaDaMudanca, lentesDaFaixa, SEVERIDADES, TETO, chaveAchado, chaveDaLente, errosDoVeredito,
+  faixaDaMudanca, lentesDaFaixa, SEVERIDADES, RESULTADOS_REFERENCIA, TETO, chaveAchado, chaveDaLente, errosDoVeredito,
   validarVeredito, apurar, conferirMesmos, DISTANCIA_PAR };

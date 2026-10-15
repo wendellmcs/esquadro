@@ -193,10 +193,44 @@ const raizProjeto = config.raizDoProjeto(cwd);
 const relNaRaiz = path.relative(raizProjeto, path.join(cwd, rel)).replace(/\\/g, '/');
 const diff = novo || identico ? null : diffContraHead(cwd, rel);
 const linhasMudadas = identico ? 0 : (diff ? Math.max(diff.removidas, diff.acrescentadas) : null);
+const projetoCfg = config.carregarProjeto(raizProjeto);
+const ehEstilo = design.ehArquivoDeEstilo(relNaRaiz, projetoCfg);
 const faixa = veredito.faixaDaMudanca({
   novo: novo, identico: identico, linhasMudadas: linhasMudadas,
-  estilo: design.ehArquivoDeEstilo(relNaRaiz, config.carregarProjeto(raizProjeto)),
+  estilo: ehEstilo,
   texto: /\.(md|markdown|txt)$/i.test(rel)
+});
+
+// D503/D508 (escolhas E1-E4 do plano d503): a referencia de topo do tipo deste arquivo, do projeto.json. Sem ela, o
+// pacote e o de hoje. Torta (nao objeto, ou o tipo nao e lista de texto) nao estoura: fica sem referencia, e o aviso
+// manda rodar o validar, que e quem reprova.
+const tipoRef = cegar.tipoDaReferencia(rel, ehEstilo);
+let entradasRef = [];
+let refTorta = false;
+if (projetoCfg && 'referencias' in projetoCfg) {
+  const refs = projetoCfg.referencias;
+  const lista = refs && typeof refs === 'object' && !Array.isArray(refs) ? refs[tipoRef] : null;
+  if (lista === undefined) {
+    entradasRef = [];
+  } else if (Array.isArray(lista) && lista.every(function (e) { return typeof e === 'string' && e.trim() !== ''; })) {
+    entradasRef = lista;
+  } else {
+    refTorta = true;
+  }
+}
+// O caminho da referencia e relativo a raiz do projeto, como os do projeto.json. Imagem ou binario (byte 0) vai pelo
+// caminho, para o inspetor abrir com Read; o que nao se le como arquivo e "falta", e a causa fica para o aviso.
+const causaDaFalta = {};
+const referencia = entradasRef.length === 0 ? null : cegar.montarReferencia(entradasRef, function (e) {
+  const abs = path.resolve(raizProjeto, e);
+  try {
+    const buf = fs.readFileSync(abs);
+    if (buf.includes(0) || /\.(png|jpe?g|gif|webp|bmp|ico|pdf)$/i.test(e)) return { tipo: 'binario', caminho: abs };
+    return { tipo: 'texto', conteudo: buf.toString('utf8') };
+  } catch (err) {
+    causaDaFalta[e] = textoLib.causaDoErro(err);
+    return { tipo: 'falta' };
+  }
 });
 
 // D257 secao 11, item 11: uma base por arquivo (revisao/<id>/<n>/). Revisao em andamento no formato
@@ -341,6 +375,16 @@ try {
   if (novo) mapaJson.novo = true;
   // RV-01 (D422): revisar depois de commitar deixa os dois lados iguais; o apurar le este campo.
   if (identico) mapaJson.identico = true;
+  // D503/D508: a referencia e o terceiro arquivo, nomeado (R nao e cego: e a peca de topo). A 2a passada troca A e B
+  // dentro do mesmo pacote (E3): outra pasta numerada seria contada como ronda e gastaria o teto.
+  if (referencia) {
+    mapaJson.referencia = { tipo: tipoRef, entradas: entradasRef };
+    mapaJson.invertida = { A: r.mapa.B, B: r.mapa.A };
+    fs.writeFileSync(path.join(dir, 'R.txt'), referencia.texto, 'utf8');
+    fs.mkdirSync(path.join(dir, 'invertida', 'vereditos'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'invertida', 'A.txt'), r.B.conteudo, 'utf8');
+    fs.writeFileSync(path.join(dir, 'invertida', 'B.txt'), r.A.conteudo, 'utf8');
+  }
   fs.writeFileSync(path.join(dir, 'mapa.json'), JSON.stringify(mapaJson, null, 2), 'utf8');
   fs.mkdirSync(path.join(dir, 'vereditos'), { recursive: true });
   // 0.3.3, item 11: a regua e parte do pacote, gravada aqui dentro: falha = "ficou pela metade".
@@ -379,6 +423,23 @@ if (recorte) {
 if (novo) {
   aviso += ' E arquivo novo: um dos lados e vazio, a cegueira nao existe; julgue o lado cheio pelo que ele e, ' +
     'e diga isso no fecho.';
+}
+if (referencia) {
+  // D503/D508: o texto do aviso nomeia R.txt e invertida/; o brief do inspetor (Tarefa 3) diz o que fazer com eles.
+  aviso += ' Ha referencia de topo (' + tipoRef + '): R.txt, nomeado, vai a cada inspetor junto de A e B. A 2a passada ' +
+    'de cada lente julga invertida/A.txt e invertida/B.txt (os lados trocados) e grava em invertida/vereditos/.';
+  // Revisao s49/s50: o `ler` acima devolve "falta" para qualquer erro de leitura; o aviso diz a causa de cada uma.
+  if (referencia.faltam.length) {
+    aviso += ' Referencia que nao consegui ler: ' + referencia.faltam.map(function (e) {
+      return e + ' (causa: ' + causaDaFalta[e] + ')';
+    }).join(', ') + '. Corrija a entrada em referencias do projeto.json ou libere a leitura do arquivo; ate la, o ' +
+      'R.txt diz que ela falta.';
+  }
+  if (referencia.urls.length) aviso += ' Referencia que e URL, que o inspetor nao abre: ' + referencia.urls.join(', ') + '.';
+}
+if (refTorta) {
+  aviso += ' A chave referencias do projeto.json esta torta para o tipo ' + tipoRef + ' (tem de ser objeto com listas ' +
+    'de texto): o pacote saiu sem referencia. Rode scripts/validar.js para ver o erro.';
 }
 if (identico) {
   // L2-pre-2 (S7, D426): o identico sai da normalizacao; A.txt e B.txt seguem como estao no disco e no HEAD. Se
@@ -427,6 +488,13 @@ const saida = {
   aviso: aviso
 };
 if (recorte) saida.trecho = { margem: cegar.TRECHO_MARGEM };
+if (referencia) {
+  saida.referencia = path.join(dir, 'R.txt');
+  saida.invertida = {
+    a: path.join(dir, 'invertida', 'A.txt'), b: path.join(dir, 'invertida', 'B.txt'),
+    vereditos: path.join(dir, 'invertida', 'vereditos')
+  };
+}
 if (arquivada) saida.arquivada = arquivada;
 if (!regua) saida.semRegua = 'nenhuma regua declarada no regras.md do projeto (secao "## Regua ...")';
 process.stdout.write(JSON.stringify(saida, null, 2) + '\n');

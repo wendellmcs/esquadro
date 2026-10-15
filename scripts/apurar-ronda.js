@@ -65,6 +65,10 @@ function lerMapaJson(base, ronda, naListagem) {
   try { mj = JSON.parse(textoLib.semBom(texto)); } catch (err) { corrompido(err.message); }
   if (!mj || typeof mj !== 'object' || Array.isArray(mj)) corrompido('nao e um objeto');
   if (!mj.mapa || typeof mj.mapa !== 'object' || Array.isArray(mj.mapa)) corrompido('"mapa" nao e um objeto');
+  // D503 (revisao s49): `invertida` torta viraria ronda sem referencia, calada, e a 2a passada sumiria do voto.
+  if ('invertida' in mj && (!mj.invertida || typeof mj.invertida !== 'object' || Array.isArray(mj.invertida))) {
+    corrompido('"invertida" nao e um objeto');
+  }
   return mj;
 }
 
@@ -222,45 +226,65 @@ const semMapa = [];
 const semVeredito = [];
 const ilegiveis = [];
 const invalidos = [];
+// D503 (E8): a 2a passada (ordem A/B trocada) de cada ronda com referencia; null na ronda sem ela.
+const invertidas = [];
+
+/**
+ * Os vereditos de uma pasta da ronda: `partes` e o caminho dela a partir da base (['1', 'vereditos'] ou
+ * ['1', 'invertida', 'vereditos']). O que falta, nao se le ou nao e veredito vai para as listas de erro.
+ */
+function lerVereditos(nomeRonda, partes, comReferencia) {
+  const dir = path.join.apply(path, [base].concat(partes));
+  // 0.3.3, item 1: ronda sem nenhum veredito (pasta ausente, ou sem .json) nao e ronda seca, e voto
+  // que falta - e o readdir nao zera mais em qualquer erro: a causa vai na mensagem.
+  const dirRel = [baseRel].concat(partes).join('/') + '/';
+  let arquivos = null;
+  try { arquivos = fs.readdirSync(dir).filter(function (f) { return f.endsWith('.json'); }); } catch (err) {
+    if (err && err.code === 'ENOENT') arquivos = [];
+    else semVeredito.push('ERRO: nao consegui ler ' + dirRel + ' (' + textoLib.causaDoErro(err) + '). Confira essa pasta e ' +
+      'rode este comando de novo.');
+  }
+  if (arquivos === null) return [];
+  if (arquivos.length === 0) {
+    semVeredito.push(partes.length > 2
+      ? 'ERRO: a 2a passada da ronda ' + Number(nomeRonda) + ' nao tem nenhum veredito: ' + dirRel + ' nao existe ou nao ' +
+        'tem nenhum .json. A ronda tem referencia (R.txt), e a ordem A/B trocada e metade do voto: grave os vereditos ' +
+        'da 2a passada (Passo 2 do /esquadro:revisar) e rode este comando de novo.'
+      : 'ERRO: a ronda ' + Number(nomeRonda) + ' nao tem nenhum veredito: ' + dirRel + ' nao existe ou ' +
+        'nao tem nenhum .json. Grave os vereditos dela (Passo 2 do /esquadro:revisar) ou, se a ronda foi preparada ' +
+        'por engano, apague a pasta ' + [baseRel, nomeRonda].join('/') + '/, e rode este comando de novo.');
+    return [];
+  }
+  return arquivos.map(function (f) {
+    const nome = [baseRel].concat(partes, [f]).join('/');
+    let vd;
+    try { vd = JSON.parse(textoLib.semBom(fs.readFileSync(path.join(dir, f), 'utf8'))); } catch (err) {
+      ilegiveis.push(nome + ': ' + err.message);
+      return null;
+    }
+    const erros = veredito.errosDoVeredito(vd, { comReferencia: comReferencia });
+    if (erros.length) { invalidos.push(nome + ': ' + erros.join('; ')); return null; }
+    return vd;
+  });
+}
+
 const rondas = pastas
   .map(function (e) {
     // D244/defeito 3: o mapa diz qual rotulo e o lado novo. Sem ele (pacote antigo), a ronda
     // e contada como antes, pelos dois lados, e a saida diz que foi assim.
     const mj = lerMapaJson(base, e.name);
     let mapa = (mj && mj.mapa) || null;
+    // D503 (E8): o pacote com referencia grava `invertida` (o mapa da ordem trocada) no mapa.json.
+    let mapaInv = mj && mj.invertida && typeof mj.invertida === 'object' && !Array.isArray(mj.invertida) ? mj.invertida : null;
     // RV-01 (D422): arquivo igual ao HEAD (mapa.json com identico:true) nao tem lado antigo: o inspetor cita A
     // ou B ao acaso, e os dois rotulos sao o trabalho. Mapa sem o campo conta como sempre.
     if (mapa && mj.identico === true) mapa = { A: 'trabalho', B: 'trabalho' };
+    if (mapaInv && mj.identico === true) mapaInv = { A: 'trabalho', B: 'trabalho' };
     if (!mapa) semMapa.push(Number(e.name));
     mapas.push(mapa);
-    const dir = path.join(base, e.name, 'vereditos');
-    // 0.3.3, item 1: ronda sem nenhum veredito (pasta ausente, ou sem .json) nao e ronda seca, e voto
-    // que falta - e o readdir nao zera mais em qualquer erro: a causa vai na mensagem.
-    const dirRel = [baseRel, e.name, 'vereditos'].join('/') + '/';
-    let arquivos = null;
-    try { arquivos = fs.readdirSync(dir).filter(function (f) { return f.endsWith('.json'); }); } catch (err) {
-      if (err && err.code === 'ENOENT') arquivos = [];
-      else semVeredito.push('ERRO: nao consegui ler ' + dirRel + ' (' + textoLib.causaDoErro(err) + '). Confira essa pasta e ' +
-        'rode este comando de novo.');
-    }
-    if (arquivos === null) return [];
-    if (arquivos.length === 0) {
-      semVeredito.push('ERRO: a ronda ' + Number(e.name) + ' nao tem nenhum veredito: ' + dirRel + ' nao existe ou ' +
-        'nao tem nenhum .json. Grave os vereditos dela (Passo 2 do /esquadro:revisar) ou, se a ronda foi preparada ' +
-        'por engano, apague a pasta ' + [baseRel, e.name].join('/') + '/, e rode este comando de novo.');
-      return [];
-    }
-    return arquivos.map(function (f) {
-      const nome = [baseRel, e.name, 'vereditos', f].join('/');
-      let vd;
-      try { vd = JSON.parse(textoLib.semBom(fs.readFileSync(path.join(dir, f), 'utf8'))); } catch (err) {
-        ilegiveis.push(nome + ': ' + err.message);
-        return null;
-      }
-      const erros = veredito.errosDoVeredito(vd);
-      if (erros.length) { invalidos.push(nome + ': ' + erros.join('; ')); return null; }
-      return vd;
-    });
+    const pass1 = lerVereditos(e.name, [e.name, 'vereditos'], mapaInv !== null);
+    invertidas.push(mapaInv ? { mapa: mapaInv, vereditos: lerVereditos(e.name, [e.name, 'invertida', 'vereditos'], true) } : null);
+    return pass1;
   });
 
 // D218 (ronda 1 do 8c.5): o veredito que nao se lia virava empate sem achados e contava a
@@ -320,13 +344,15 @@ if (fs.existsSync(arqMesmos)) {
 // chave e evidencia nova. Arquivo que falta ou linha fora dele = null, e a conta fica a de antes. Arquivo que existe e
 // nao se le (permissao, pasta no lugar) para com a causa, como o resto deste script (s104).
 const linhasDe = new Map();
-function textoDaLinha(indice, rotulo, linha) {
-  const arq = path.join(base, pastas[indice].name, rotulo + '.txt');
+function textoDaLinha(indice, rotulo, linha, passada) {
+  // D503 (E7): o achado da 2a passada cita o A.txt/B.txt de invertida/, que sao os lados trocados.
+  const partes = [pastas[indice].name].concat(passada === 2 ? ['invertida'] : [], [rotulo + '.txt']);
+  const arq = path.join.apply(path, [base].concat(partes));
   if (!linhasDe.has(arq)) {
     let linhas = null;
     try { linhas = textoLib.semBom(fs.readFileSync(arq, 'utf8')).split(/\r?\n/); } catch (err) {
       if (!err || err.code !== 'ENOENT') {
-        process.stdout.write('ERRO: nao consegui ler ' + [baseRel, pastas[indice].name, rotulo + '.txt'].join('/') + ' (' +
+        process.stdout.write('ERRO: nao consegui ler ' + [baseRel].concat(partes).join('/') + ' (' +
           textoLib.causaDoErro(err) + '). Confira esse arquivo e rode este comando de novo.\n');
         process.exit(1);
       }
@@ -340,7 +366,8 @@ function textoDaLinha(indice, rotulo, linha) {
 
 let r;
 try {
-  r = veredito.apurar(rondas, { mapas: mapas, refutados: refutados, mesmos: mesmos, textoDaLinha: textoDaLinha });
+  r = veredito.apurar(rondas, { mapas: mapas, refutados: refutados, mesmos: mesmos, textoDaLinha: textoDaLinha,
+    invertidas: invertidas });
 } catch (err) {
   // 0.3.3, item 7: o erro diz o defeito; a linha seguinte diz onde corrigir e o que fazer depois.
   const doMesmos = err.message.indexOf('mesmos.json') !== -1;
@@ -350,9 +377,13 @@ try {
   process.exit(1);
 }
 const descartados = [];
-for (const ronda of rondas) for (const vd of ronda) {
-  for (const e of veredito.validarVeredito(vd).erros) descartados.push(e);
-}
+rondas.forEach(function (ronda, i) {
+  const comReferencia = invertidas[i] !== null;
+  const todos = comReferencia ? ronda.concat(invertidas[i].vereditos) : ronda;
+  for (const vd of todos) {
+    for (const e of veredito.validarVeredito(vd, { comReferencia: comReferencia }).erros) descartados.push(e);
+  }
+});
 
 /**
  * D21/D120: "2+ revisoes independentes fechadas" e gatilho contavel de troca de chat, e ate aqui
@@ -419,6 +450,7 @@ process.stdout.write(JSON.stringify({
   refutados: r.refutados,
   paresCandidatos: r.paresCandidatos,
   provaveisMesmos: r.provaveisMesmos,
+  referencia: r.referencia,
   rondasSemMapa: semMapa,
   vereditosDescartados: descartados,
   revisaoFechadaContada: contada,

@@ -760,3 +760,17 @@ test('D498: a Marcha AAA pede comparacao de print antes x depois e entrega o rot
   assert.ok(/compara[çc][ãa]o (autom[áa]tica )?de print antes × depois/.test(m), 'D498 n. 1: o portao visual nao cita a comparacao de print');
   assert.ok(/5 usu[áa]rios/.test(m) && /n[ãa]o bloqueia/.test(m), 'D498 n. 3: a Marcha AAA nao entrega o roteiro de 5 usuarios sem bloquear');
 });
+
+// D503 (plano d503, Tarefa 4): a regra 1 do prompt - a referencia de topo e nomeada antes de fazer e se abre -
+// mora na 4.1 do padrao, junto do artefatoDeReferencia, e aponta a chave e a revisao que a usam.
+test('D503: a 4.1 do padrao manda nomear antes a referencia de topo que se abre e aponta referencias e o revisar', () => {
+  const s = secao(ler('skills/padrao/SKILL.md'), '### 4.1', '### 4.2');
+  assert.ok(s.includes('{{texto:artefatoDeReferencia}}'), 'a 4.1 perdeu o artefatoDeReferencia');
+  assert.match(s, /antes de (come[çc]ar|fazer)/i, 'a 4.1 nao diz que a referencia se nomeia antes de fazer');
+  assert.match(s, /se abre/, 'a 4.1 nao exige referencia que se abre');
+  assert.match(s, /nunca uma lembran[çc]a/, 'a 4.1 aceita referencia de memoria');
+  assert.match(s, /`referencias`/, 'a 4.1 nao aponta a chave referencias do projeto.json');
+  assert.match(s, /\/esquadro:revisar/, 'a 4.1 nao aponta a revisao que usa a referencia');
+  assert.match(s, /nas duas ordens/, 'a 4.1 nao diz a regra de pronto contra a referencia');
+  assert.match(s, /sem refer[êe]ncia/, 'a 4.1 nao diz o que fazer sem referencia');
+});

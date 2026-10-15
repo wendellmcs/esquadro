@@ -11,10 +11,15 @@ const CHAVES = [
   'comandosBloqueados', 'comandosLiberados', 'travas', 'limiares', 'agentes'
 ];
 
+// D503: chave que pode faltar sem erro, mas que validar() confere quando vem. `referencias` e a peca de topo contra a
+// qual a revisao compara, por tipo, cada um uma lista de caminho ou URL (por isso fora de conferirCaminhos).
+const CHAVES_OPCIONAIS = ['referencias'];
+const TIPOS_REFERENCIA = ['tela', 'codigo', 'texto'];
+
 const TRAVAS = ['fecho', 'escopo', 'destrutivo', 'outraFrente'];
 
-// Os tres objetos que o re-init funde por chave em vez de substituir (F1-C01).
-const FUNDE_POR_CHAVE = ['travas', 'marchas', 'limiares'];
+// Os objetos que o re-init funde por chave em vez de substituir (F1-C01; D503: referencias, por tipo).
+const FUNDE_POR_CHAVE = ['travas', 'marchas', 'limiares', 'referencias'];
 
 function ehObjeto(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
 
@@ -207,6 +212,21 @@ function validar(obj) {
     erros.push('limiares tem de ser objeto');
   }
 
+  // D503: tipo desconhecido e erro, nao silencio - `telas` com typo ficaria inerte, como o intocavel da D104.
+  if ('referencias' in obj) {
+    if (!ehObjeto(obj.referencias)) {
+      erros.push('referencias tem de ser objeto');
+    } else {
+      for (const tipo of Object.keys(obj.referencias)) {
+        if (TIPOS_REFERENCIA.indexOf(tipo) === -1) {
+          erros.push('referencias.' + tipo + ' nao e tipo conhecido (' + TIPOS_REFERENCIA.join(', ') + ')');
+        } else if (!ehListaDeTexto(obj.referencias[tipo])) {
+          erros.push('referencias.' + tipo + ' tem de ser lista de texto');
+        }
+      }
+    }
+  }
+
   if ('agentes' in obj) {
     const esc = obj.agentes && obj.agentes.escada;
     if (esc !== undefined && !ehListaDeTexto(esc)) erros.push('agentes.escada tem de ser lista de texto');
@@ -306,7 +326,9 @@ function atualizar(antigo, respostas, hoje) {
   const ignoradas = [];
   for (const chave of Object.keys(novas)) {
     // D442/5 (S-35): as chaves de liga/desliga sao do projeto.json, mesmo fora de CHAVES (que sao as obrigatorias).
-    if (CHAVES.indexOf(chave) === -1 && CHAVES_LIGA_DESLIGA.indexOf(chave) === -1) { ignoradas.push(chave); continue; }
+    // D503: as opcionais tambem.
+    if (CHAVES.indexOf(chave) === -1 && CHAVES_LIGA_DESLIGA.indexOf(chave) === -1 &&
+        CHAVES_OPCIONAIS.indexOf(chave) === -1) { ignoradas.push(chave); continue; }
     if (chave === 'versaoConfig' || chave === 'geradoEm') continue;
     if (novas[chave] === undefined) continue;
     // F1-C01: resposta parcial de objeto se funde por chave; trocar o objeto inteiro
@@ -377,6 +399,6 @@ function motivoInerte(inertes) {
 }
 
 module.exports = {
-  MARCHAS, AMEACAS, CHAVES, TRAVAS, LISTAS_LIDAS, CHAVES_LIGA_DESLIGA,
+  MARCHAS, AMEACAS, CHAVES, TRAVAS, LISTAS_LIDAS, CHAVES_LIGA_DESLIGA, CHAVES_OPCIONAIS, TIPOS_REFERENCIA,
   travasDe, avisosDeTipo, intocaveisInertes, motivoInerte, validar, montar, atualizar
 };

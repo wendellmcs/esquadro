@@ -786,3 +786,183 @@ test('L2-ver-4: "Microcopy" (titulo da tela) nao vira a lente de codigo `microco
     { refutados: [{ ronda: 1, lente: 'Microcopy', arquivo: 'B.txt', linha: 10, severidade: 'P1', prova: 'src/a.js:10' }] });
   assert.strictEqual(ref.novos.length, 1, 'refutou so a de tela');
 });
+
+// D503/D508 (plano d503, Tarefa 3, escolhas E5-E8): veredito contra a referencia de topo, nas duas ordens.
+function comRef(lente, vsA, vsB, achados, lacunas) {
+  return { lente: lente, melhor: 'A', porQue: 'A.txt:1', achados: achados || [],
+    vsReferencia: { A: vsA, B: vsB }, lacunas: lacunas || [] };
+}
+function lacuna(sev, arq, linha) {
+  return { severidade: sev, arquivo: arq, linha: linha, descricao: 'R faz melhor' };
+}
+// Pacote com referencia: o trabalho e A na 1a passada; invertida troca, entao e B na 2a.
+const MAPA_REF = { A: 'trabalho', B: 'HEAD' };
+const INV_REF = { A: 'HEAD', B: 'trabalho' };
+function rondaRef(pass1, pass2) { return { vereditos: pass1, invertida: { mapa: INV_REF, vereditos: pass2 } }; }
+function apurarRef(rondas, extra) {
+  return v.apurar(rondas.map((r) => r.vereditos), Object.assign({ mapas: rondas.map(() => MAPA_REF),
+    invertidas: rondas.map((r) => r.invertida) }, extra || {}));
+}
+
+test('D503 E5: sem referencia, vsReferencia e lacunas nao sao exigidos (a regra de hoje)', () => {
+  assert.deepStrictEqual(v.errosDoVeredito(veredito('correcao', [])), []);
+  assert.deepStrictEqual(v.errosDoVeredito(veredito('correcao', []), { comReferencia: false }), []);
+});
+
+test('D503 E5: com referencia, vsReferencia {A,B} em vence/empata/perde e lacunas em lista sao exigidos', () => {
+  const op = { comReferencia: true };
+  assert.deepStrictEqual(v.errosDoVeredito(comRef('correcao', 'vence', 'perde'), op), []);
+  assert.ok(v.errosDoVeredito(veredito('correcao', []), op).some((e) => /vsReferencia/.test(e)));
+  assert.ok(v.errosDoVeredito(comRef('correcao', 'vence', 'ganha'), op).some((e) => /vsReferencia/.test(e)));
+  assert.ok(v.errosDoVeredito(comRef('correcao', 'vence', undefined), op).some((e) => /vsReferencia/.test(e)));
+  const semLista = comRef('correcao', 'vence', 'empata');
+  semLista.lacunas = 'nenhuma';
+  assert.ok(v.errosDoVeredito(semLista, op).some((e) => /lacunas/.test(e)));
+  const semCampo = comRef('correcao', 'vence', 'empata');
+  delete semCampo.lacunas;
+  assert.ok(v.errosDoVeredito(semCampo, op).some((e) => /lacunas/.test(e)));
+});
+
+test('D503 E5: lacuna sem arquivo:linha de A ou B, sem severidade ou sem descricao e descartada', () => {
+  const vd = comRef('correcao', 'vence', 'empata', [], [lacuna('P1', 'A.txt', 4), lacuna('P1', 'A.txt', 0),
+    lacuna('P1', 'R.txt', 3), lacuna('P3', 'B.txt', 2), { severidade: 'P2', arquivo: 'B.txt', linha: 2, descricao: ' ' },
+    lacuna('P2', 'B.txt', '7-9')]);
+  const r = v.validarVeredito(vd, { comReferencia: true });
+  assert.deepStrictEqual(r.lacunasValidas.map((l) => [l.severidade, l.arquivo, l.linha]), [['P1', 'A.txt', 4], ['P2', 'B.txt', 7]]);
+  assert.strictEqual(r.erros.filter((e) => /lacuna/.test(e)).length, 4, r.erros.join(' | '));
+  // sem referencia, lacunas nao se olham
+  assert.deepStrictEqual(v.validarVeredito(vd).erros, []);
+});
+
+test('D503: sem invertidas, apurar devolve referencia null e a conta de hoje', () => {
+  const r = v.apurar([[veredito('correcao', [])], [veredito('correcao', [])]]);
+  assert.strictEqual(r.referencia, null);
+  assert.strictEqual(r.motivo, 'duas rondas secas seguidas: aprovado');
+});
+
+test('D503 E6: empata ou vence nas duas ordens, sem lacuna P0/P1, com duas secas = aprovado', () => {
+  // 1a passada: trabalho = A; 2a: trabalho = B (invertida)
+  const r1 = rondaRef([comRef('correcao', 'vence', 'perde'), comRef('borda', 'empata', 'perde')],
+    [comRef('correcao', 'perde', 'vence'), comRef('borda', 'perde', 'vence')]);
+  const ap = apurarRef([r1, r1]);
+  assert.strictEqual(ap.encerrar, true, ap.motivo);
+  assert.strictEqual(ap.motivo, 'duas rondas secas seguidas: aprovado');
+  assert.strictEqual(ap.referencia.pronta, true);
+  const porLente = Object.fromEntries(ap.referencia.lentes.map((l) => [l.lente, l.resultado]));
+  // correcao vence nas duas; borda: empata na 1a e vence na 2a = desacordo, vale empata
+  assert.deepStrictEqual(porLente, { correcao: 'vence', borda: 'empata' });
+});
+
+test('D503 E6: perde a referencia em uma das ordens = nao aprovado, mesmo com duas secas', () => {
+  const r1 = rondaRef([comRef('correcao', 'vence', 'empata')], [comRef('correcao', 'empata', 'perde')]);
+  const ap = apurarRef([r1, r1]);
+  assert.strictEqual(ap.encerrar, false, ap.motivo);
+  assert.strictEqual(ap.referencia.pronta, false);
+  assert.strictEqual(ap.referencia.lentes[0].resultado, 'perde');
+  assert.deepStrictEqual([ap.referencia.lentes[0].ordem1, ap.referencia.lentes[0].ordem2], ['vence', 'perde']);
+  assert.match(ap.motivo, /referencia/);
+});
+
+test('D503 E6: lacuna P0/P1 do lado trabalho barra; do lado HEAD e P2 nao barram', () => {
+  const limpa = rondaRef([comRef('correcao', 'empata', 'empata', [], [lacuna('P1', 'B.txt', 3), lacuna('P2', 'A.txt', 5)])],
+    [comRef('correcao', 'empata', 'empata', [], [lacuna('P1', 'A.txt', 3)])]);
+  const ok = apurarRef([limpa, limpa]);
+  assert.strictEqual(ok.referencia.pronta, true, JSON.stringify(ok.referencia));
+  assert.strictEqual(ok.encerrar, true);
+  assert.deepStrictEqual(ok.referencia.lacunas.map((l) => [l.severidade, l.passada, l.linha]), [['P2', 1, 5]]);
+  const suja = rondaRef([comRef('correcao', 'empata', 'empata')],
+    [comRef('correcao', 'empata', 'empata', [], [lacuna('P1', 'B.txt', 8)])]);
+  const nao = apurarRef([suja, suja]);
+  assert.strictEqual(nao.referencia.pronta, false);
+  assert.strictEqual(nao.encerrar, false);
+  assert.deepStrictEqual(nao.referencia.lacunas.map((l) => [l.lente, l.severidade, l.passada, l.linha]),
+    [['correcao', 'P1', 2, 8]]);
+});
+
+test('D503 E6: lente sem a 2a passada fica incompleta e nao aprova', () => {
+  const r1 = rondaRef([comRef('correcao', 'vence', 'perde'), comRef('borda', 'vence', 'perde')],
+    [comRef('correcao', 'perde', 'vence')]);
+  const ap = apurarRef([r1, r1]);
+  assert.strictEqual(ap.referencia.pronta, false);
+  const borda = ap.referencia.lentes.find((l) => l.lente === 'borda');
+  assert.strictEqual(borda.resultado, 'incompleta');
+  assert.strictEqual(borda.ordem2, null);
+});
+
+test('D503 E6: cada lente vale pela ultima ronda que a chamou', () => {
+  const r1 = rondaRef([comRef('correcao', 'vence', 'perde'), comRef('borda', 'perde', 'perde')],
+    [comRef('correcao', 'perde', 'vence'), comRef('borda', 'perde', 'perde')]);
+  // ronda 2 chama so a borda, que agora empata
+  const r2 = rondaRef([comRef('borda', 'empata', 'perde')], [comRef('borda', 'perde', 'empata')]);
+  const ap = apurarRef([r1, r2]);
+  assert.strictEqual(ap.referencia.pronta, true, JSON.stringify(ap.referencia));
+  assert.strictEqual(ap.encerrar, true);
+  const porLente = Object.fromEntries(ap.referencia.lentes.map((l) => [l.lente, [l.resultado, l.ronda]]));
+  assert.deepStrictEqual(porLente, { correcao: ['vence', 1], borda: ['empata', 2] });
+});
+
+test('D503 E6: arquivo identico ao HEAD (os dois lados sao trabalho) vale pelo pior lado', () => {
+  const r1 = rondaRef([comRef('correcao', 'vence', 'empata')], [comRef('correcao', 'vence', 'vence')]);
+  const ap = v.apurar([r1.vereditos, r1.vereditos], { mapas: [{ A: 'trabalho', B: 'trabalho' }, { A: 'trabalho', B: 'trabalho' }],
+    invertidas: [{ mapa: { A: 'trabalho', B: 'trabalho' }, vereditos: r1.invertida.vereditos },
+      { mapa: { A: 'trabalho', B: 'trabalho' }, vereditos: r1.invertida.vereditos }] });
+  assert.strictEqual(ap.referencia.lentes[0].ordem1, 'empata');
+  assert.strictEqual(ap.referencia.lentes[0].resultado, 'empata');
+});
+
+test('D503 E6: a mesma lente com dois vereditos na mesma passada vale pelo pior deles', () => {
+  // "Correcao e regressao" e "correcao" sao a mesma lente (chave canonica); a 1a passada tem as duas grafias
+  const r1 = rondaRef([comRef('correcao', 'perde', 'empata'), comRef('Correcao e regressao', 'vence', 'empata')],
+    [comRef('correcao', 'empata', 'vence')]);
+  const ap = apurarRef([r1, r1]);
+  assert.strictEqual(ap.referencia.lentes.length, 1);
+  assert.strictEqual(ap.referencia.lentes[0].ordem1, 'perde');
+  assert.strictEqual(ap.referencia.pronta, false);
+});
+
+test('D503 E6: no teto com a referencia nao alcancada, o motivo diz a referencia', () => {
+  const r1 = rondaRef([comRef('correcao', 'perde', 'perde')], [comRef('correcao', 'perde', 'perde')]);
+  const ap = apurarRef([r1, r1, r1]);
+  assert.strictEqual(ap.encerrar, true);
+  assert.match(ap.motivo, /^teto de 3 rondas/);
+  assert.match(ap.motivo, /referencia/);
+});
+
+test('D503 E7: achado da 2a passada conta pelo lado da invertida, sai com passada 2 e se refuta com passada 2', () => {
+  // 2a passada: B.txt e o trabalho (invertida); P1 nele molha
+  const r1 = rondaRef([comRef('correcao', 'empata', 'empata')],
+    [comRef('correcao', 'empata', 'empata', [achado('P1', 'B.txt', 12)])]);
+  const ap = apurarRef([r1]);
+  assert.strictEqual(ap.novos.length, 1);
+  assert.strictEqual(ap.novos[0].passada, 2);
+  assert.strictEqual(ap.secas, 0);
+  // P1 no A.txt da 2a passada e o lado HEAD
+  const velho = rondaRef([comRef('correcao', 'empata', 'empata')],
+    [comRef('correcao', 'empata', 'empata', [achado('P1', 'A.txt', 12)])]);
+  const apV = apurarRef([velho]);
+  assert.strictEqual(apV.novos.length, 0);
+  assert.strictEqual(apV.achadosDoLadoAntigo.length, 1);
+  // refutacao: so a que diz passada 2 derruba o achado da 2a passada
+  const prova = { ronda: 1, lente: 'correcao', arquivo: 'B.txt', linha: 12, severidade: 'P1', prova: 'src/a.js:12' };
+  assert.strictEqual(apurarRef([r1], { refutados: [prova] }).novos.length, 1);
+  assert.strictEqual(apurarRef([r1], { refutados: [Object.assign({ passada: 2 }, prova)] }).novos.length, 0);
+  assert.throws(() => apurarRef([r1], { refutados: [Object.assign({}, prova, { passada: 3 })] }), /passada/);
+});
+
+test('D503 E7: o mesmo defeito nas duas passadas nao dobra; placar A/B segue so da 1a passada', () => {
+  // 1a: P1 em A.txt:12 (trabalho); 2a: o mesmo defeito em B.txt:12 (trabalho na invertida)
+  const r1 = rondaRef([comRef('correcao', 'empata', 'empata', [achado('P1', 'A.txt', 12)])],
+    [Object.assign(comRef('correcao', 'empata', 'empata', [achado('P1', 'B.txt', 12)]), { melhor: 'B' })]);
+  const ap = apurarRef([r1]);
+  assert.strictEqual(ap.novos.length, 1);
+  assert.deepStrictEqual(ap.placar, { A: 1, B: 0, empate: 0 });
+});
+
+test('D503 E5/E8: na ronda com referencia, veredito sem vsReferencia (qualquer passada) derruba a apuracao', () => {
+  const sem = rondaRef([veredito('correcao', [])], [comRef('correcao', 'empata', 'empata')]);
+  assert.throws(() => apurarRef([sem]), /vsReferencia/);
+  const sem2 = rondaRef([comRef('correcao', 'empata', 'empata')], [veredito('correcao', [])]);
+  assert.throws(() => apurarRef([sem2]), /vsReferencia/);
+  const vazia = rondaRef([comRef('correcao', 'empata', 'empata')], []);
+  assert.throws(() => apurarRef([vazia]), /2a passada/);
+});

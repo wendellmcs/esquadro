@@ -115,5 +115,41 @@ function recortarTrecho(texto, blocos, margem) {
   return linhas.join('\n');
 }
 
+/**
+ * D503 (escolha E1 do plano d503): o tipo da referencia que vale para o arquivo revisado. `texto` pela mesma extensao
+ * que a faixa usa (preparar-revisao.js), `tela` pela regra de estilo do portao (design.ehArquivoDeEstilo, que chega
+ * pronta em `ehEstilo`), `codigo` o resto. Texto vence estilo, como na faixa.
+ */
+function tipoDaReferencia(rel, ehEstilo) {
+  if (/\.(md|markdown|txt)$/i.test(String(rel))) return 'texto';
+  return ehEstilo ? 'tela' : 'codigo';
+}
+
+// Esquema de URL (https://, file://): nao vai ao disco, o inspetor so le arquivo.
+const RE_URL = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
+
+/**
+ * D503 (escolha E2): o texto do R.txt. Um bloco por entrada, com cabecalho "=== referencia i de n: <entrada> ===".
+ * `ler(entrada)` devolve { tipo: 'texto', conteudo } | { tipo: 'binario', caminho } | { tipo: 'falta' } e fica com
+ * quem chama, para isto ser puro. URL nao chama `ler`. Devolve tambem as entradas que faltam e as URLs, para o aviso.
+ */
+function montarReferencia(entradas, ler) {
+  const faltam = [];
+  const urls = [];
+  const blocos = entradas.map(function (e, i) {
+    const cab = '=== referencia ' + (i + 1) + ' de ' + entradas.length + ': ' + e + ' ===\n';
+    if (RE_URL.test(e)) {
+      urls.push(e);
+      return cab + '(URL: o inspetor so le arquivo e nao abre a pagina; julgue sem ela e diga isso)\n';
+    }
+    const lido = ler(e);
+    if (lido && lido.tipo === 'texto') return cab + lido.conteudo + (lido.conteudo.endsWith('\n') ? '' : '\n');
+    if (lido && lido.tipo === 'binario') return cab + '(imagem ou binario: abra com Read em ' + lido.caminho + ')\n';
+    faltam.push(e);
+    return cab + '(NAO ACHADA no disco: confira o caminho no projeto.json)\n';
+  });
+  return { texto: blocos.join('\n'), faltam: faltam, urls: urls };
+}
+
 module.exports = { semente, rotular, proximaRonda, idDoArquivo, REGRA_DO_ID, baseDoArquivo, temPastaNumeradaSolta,
-  TRECHO_MARGEM, recortarTrecho };
+  TRECHO_MARGEM, recortarTrecho, tipoDaReferencia, montarReferencia };

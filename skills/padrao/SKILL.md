@@ -161,6 +161,14 @@ Nenhum inspetor julga por "acho bonito". Julga contra esses dois, citando o valo
 **Se o projeto não declarou nenhum dos dois, dizer isso** — e a lente 1 passa a responder só o que dá
 para responder sem régua: consistência interna. Não inventar uma régua.
 
+**A referência de topo, nomeada antes de começar.** Na marcha AAA, antes de fazer, nomeie a melhor peça
+que existe para este tipo de entrega, no mercado ou no próprio projeto. Ela tem de ser algo que se abre
+(arquivo, print, repositório), nunca uma lembrança. O projeto a declara em `referencias`, no
+`projeto.json`, por tipo (`tela`, `codigo`, `texto`), e o `/esquadro:revisar` a põe no pacote cego como
+`R.txt`, com uma 2ª passada de ordem A/B trocada. Pronto, contra ela, é empatar ou vencer em cada lente,
+nas duas ordens, sem lacuna P0/P1. Sem referência que se abra, diga "sem referência" e use o artefato
+irmão acima.
+
 ### 4.2 Lentes distintas, não inspetores repetidos
 
 O fan-out usa **lentes diferentes**, uma por inspetor. Cópias do mesmo revisor encontram o mesmo

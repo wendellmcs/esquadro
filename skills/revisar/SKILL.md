@@ -21,6 +21,10 @@ ganha um `_` na frente (regra da função `idDoArquivo`, em `scripts/lib/cegar.j
 caminho exato vem na saída (`a`, `b`, `vereditos` e `base`); use o que a saída diz, não reconstrua.
 **Você não abre `mapa.json`, e nenhum inspetor recebe o caminho dele.**
 
+Quando o `projeto.json` declara `referencias` para o tipo do arquivo (texto, tela ou código), a saída traz
+também `referencia` (o caminho do `R.txt`, a referência de topo) e `invertida` (`a`, `b` e `vereditos`): o
+pacote tem uma 2ª passada, com A e B trocados (Passo 2).
+
 **Vários arquivos = uma base cada.** Prepare, inspecione e apure um arquivo por vez; cada um tem as
 suas rondas e o seu teto de 3. Se a saída avisar "formato antigo", há uma revisão da 0.3.0 em
 andamento em pastas numeradas soltas: ela segue na base única até acabar.
@@ -87,10 +91,21 @@ A linha da régua só entra quando a saída do Passo 1 traz `regua` com um camin
 `semRegua`, diga ao usuário que a revisão rodou **sem régua do projeto** — o inspetor julgou pelo
 bom senso, não pelo sistema declarado.
 
+**Com referência** (a saída do Passo 1 traz `referencia`), acrescente ao briefing, depois da linha da régua:
+
+> Leia também `<caminho de R.txt>`: é a referência de topo, nomeada (não é A nem B). Julgue cada lado contra ela e devolva `vsReferencia` e `lacunas`, como diz o seu formato.
+
+E despache a **2ª passada**: as mesmas lentes de novo, um subagente por lente, com o mesmo briefing trocando
+os dois arquivos por `invertida.a` e `invertida.b` e a pasta de vereditos por `invertida.vereditos`
+(`<ronda>/invertida/vereditos`). É a ordem A/B trocada: contra a referência, só vale o que se repete nas duas
+ordens (decisão do dono, 2026-10-13). As duas passadas podem ir no mesmo disparo. **O custo dobra**: cada lente roda
+duas vezes; diga isso ao usuário junto do número de agentes.
+
 **Quem grava é o hook** (`scripts/gravar-veredito.js`, no `SubagentStop` do inspetor e no handback do subagente): ele
 tira o JSON da resposta e o grava em `<lente>.json` na pasta `vereditos` que o inspetor devolveu, conferindo que é
 a de uma ronda. Ele nunca barra e nunca sobrescreve arquivo que já existe. Antes do Passo 3, **confira que há um
-arquivo por lente despachada** em `vereditos/` (lista a pasta e conta). O que o hook avisou que não gravou, ou que
+arquivo por lente despachada** em `vereditos/` (lista a pasta e conta), e, com referência, também em
+`invertida/vereditos/`. O que o hook avisou que não gravou, ou que
 não está lá, grave à mão, como `<lente>.json` (a chave da lente), com o JSON que o inspetor devolveu, no caminho
 `vereditos` da saída do Passo 1. **Em projeto configurado, o `Write` em `.claude/esquadro/revisao/**.json` pode ser
 negado pelo portão de escopo** (a "trava 4": ela só deixa gravar o que o escopo declarado da tarefa cobre). O
@@ -123,6 +138,10 @@ Quem decide se a ronda foi seca é o script, não você. Cole a saída dele na r
   `[{ "ronda": 2, "lente": "design", "arquivo": "B.txt", "linha": 471, "severidade": "P1", "prova": "<arquivo:linha ou comando>" }]`.
   A `severidade` é a do achado: refutar o P1 de uma linha não derruba o P0 da mesma linha. Sem `prova`
   ou sem `severidade`, o script para com erro. A saída lista os refutados para o dono conferir.
+- **Com referência**, a saída traz `referencia` (sem ela, `null`): `lentes`, cada uma com `ordem1`, `ordem2` e
+  `resultado` (`vence`, `empata`, `perde` ou `incompleta`, pela última ronda que a chamou); `lacunas` do lado
+  novo; `lentesAtras` (as que perdem, estão incompletas ou têm lacuna P0/P1); e `pronta`. Achado da 2ª passada
+  sai com `passada: 2`: o `A.txt` dela é outro arquivo, então a refutação dele leva `"passada": 2`.
 - **Achados vizinhos podem ser o mesmo defeito.** Se a saída traz `paresCandidatos` não vazio, despache **um**
   subagente `esquadro:juiz-mesmo` com a lista inteira (com mais de 50 pares, lotes de até 50, um subagente por
   lote, no mesmo disparo). Grave o que ele devolver em `mesmos.json`, na mesma pasta do `refutados.json`, pelo
@@ -146,6 +165,7 @@ fechou começa **revisão nova**: o `preparar-revisao.js` move a base inteira pa
 - **Ronda 1 descobre; as seguintes verificam.**
 - A ronda 2 chama **só as lentes que acharam P0 ou P1**, com o briefing reformulado em pergunta
   específica sobre o próprio achado. Ordem de grandeza, na faixa `completa`: **9 → 4 → 2**.
+- Com referência, ela chama também as lentes de `referencia.lentesAtras`, nas duas passadas.
 - Se nenhuma lente achou P0 ou P1, a ronda seguinte chama **ao menos uma** (a de correção): ronda sem
   nenhum veredito não é ronda seca, e o `apurar-ronda.js` para com erro.
 - Antes de cada nova ronda, corrija o que a anterior achou e rode `preparar-revisao.js` de novo.
@@ -156,9 +176,13 @@ O `apurar-ronda.js` diz quando parar. Três saídas possíveis:
 
 | `motivo` | O que você faz |
 |---|---|
-| duas rondas secas | Aprovado. Feche dizendo quantos agentes rodaram, em quantas rondas |
-| teto de 3 rondas com P0/P1 aberto | **Para.** Leva ao dono com exatamente 3 opções, a recomendada marcada. O que sobrar vira registro |
-| ainda não encerrou | Corrige e roda a próxima ronda |
+| duas rondas secas (com referência: e `referencia.pronta`) | Aprovado. Feche dizendo quantos agentes rodaram, em quantas rondas |
+| teto de 3 rondas com P0/P1 aberto ou a referência não alcançada | **Para.** Leva ao dono com exatamente 3 opções, a recomendada marcada. O que sobrar vira registro |
+| ainda não encerrou (inclui a referência não alcançada antes da ronda 3) | Corrige e roda a próxima ronda, com as lentes que o `motivo` lista |
+
+Com referência, duas rondas secas só aprovam quando toda lente empata ou vence a referência nas duas ordens,
+sem lacuna P0/P1 do lado novo (`referencia.pronta`). Sem isso, antes da ronda 3 a revisão não encerrou: o `motivo`
+lista as lentes que ficaram atrás, e a próxima ronda as chama. Na ronda 3, é o teto.
 
 ## Passo 6 — o que não foi inspecionado
 

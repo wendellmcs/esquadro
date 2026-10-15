@@ -292,8 +292,11 @@ test('D499: o README cita cada script de scripts/', () => {
 
 test('D499: o README cita cada chave do projeto.json e cada trava', () => {
   const projeto = require(path.join(RAIZ, 'scripts', 'lib', 'projeto.js'));
-  const chaves = projeto.CHAVES.concat(projeto.CHAVES_LIGA_DESLIGA);
-  assert.ok(chaves.length >= 23 && projeto.TRAVAS.length >= 4, 'projeto.js exporta menos chaves que o censo da s37 (15 + 8 e 4 travas)');
+  // D503: as opcionais (`referencias`) tambem. A lista tem de existir: concat de undefined poria "undefined" na
+  // conta, e o README o cita (README:451) - o teste passaria sem a chave.
+  assert.ok(Array.isArray(projeto.CHAVES_OPCIONAIS), 'projeto.js nao exporta CHAVES_OPCIONAIS');
+  const chaves = projeto.CHAVES.concat(projeto.CHAVES_LIGA_DESLIGA, projeto.CHAVES_OPCIONAIS);
+  assert.ok(chaves.length >= 24 && projeto.TRAVAS.length >= 4, 'projeto.js exporta menos chaves que o censo da s47 (15 + 8 + 1 e 4 travas)');
   // A chave entre crases inteira (`vigia` nao casa `vigia-puxar.js`); a trava pelo caminho (`travas.escopo`, nao `escopo.md`).
   const faltam = chaves.filter((c) => README.indexOf('`' + c + '`') === -1 && README.indexOf('"' + c + '"') === -1)
     .concat(projeto.TRAVAS.filter((t) => README.indexOf('travas.' + t) === -1).map((t) => 'travas.' + t));

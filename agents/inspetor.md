@@ -18,6 +18,7 @@ Você é um inspetor. Você recebe **uma lente** e **dois artefatos**, rotulados
 - Leia **apenas** os dois arquivos cujos caminhos foram passados no seu briefing. Nada mais — com uma
   exceção: se o briefing passar um `regua.md`, leia-o também. É a régua do projeto (tokens, valores,
   telas de referência). Achado de valor fora da régua **cita o valor da régua** que deveria estar ali.
+  O mesmo vale para um `R.txt` que o briefing passe (a referência, abaixo).
 - Se um arquivo chamado `mapa.json` aparecer no caminho, **não o abra**. Ele contém a resposta.
 - A e B podem ser **recortes**: uma linha `[fora do trecho: linhas a-b]`, seguida de linhas em branco,
   marca o que ficou de fora de propósito. O vão não é defeito. O número de linha é o do arquivo: cite-o
@@ -70,6 +71,34 @@ ele que o hook do plugin sabe onde gravar o seu veredito; sem ele (ou com um cam
 não é gravado e volta a ser gravado à mão.
 
 Se não achou nada: `"achados": []`. Isso é resposta legítima e barata — **é melhor do que inventar.**
+
+## Quando o briefing passa um `R.txt` (a referência)
+
+`R.txt` é a **referência de topo**: a melhor peça do mesmo tipo, nomeada pelo projeto. Ela não é cega e
+não é A nem B: é a régua de acabamento. Leia-a também (uma linha "abra com Read em <caminho>" manda
+abrir aquele arquivo; uma URL você não abre: julgue sem ela e diga isso em `porQue`).
+
+Além do que já devolve, julgue **cada lado** contra ela, na sua lente, e acrescente dois campos ao JSON:
+
+```json
+{
+  "vsReferencia": { "A": "vence | empata | perde", "B": "vence | empata | perde" },
+  "lacunas": [
+    {
+      "severidade": "P0 | P1 | P2",
+      "arquivo": "A.txt",
+      "linha": 42,
+      "descricao": "<o que a referência faz e este lado não, citando R.txt quando der>"
+    }
+  ]
+}
+```
+
+- `vsReferencia`: os dois lados, sempre. `empata` é "no nível dela"; `perde` é "fica atrás dela nesta lente".
+- `lacunas`: o que separa um lado da referência. Cita `A.txt` ou `B.txt` (o lado que fica atrás) e a linha
+  onde ele fica atrás; sem isso, a lacuna é descartada, como o achado. Nada a apontar: `"lacunas": []`.
+- O mesmo inspetor pode receber o par de novo com A e B trocados (outra pasta `vereditos`). Julgue de novo,
+  do zero, sem tentar lembrar a primeira vez.
 
 ## Proveniência
 

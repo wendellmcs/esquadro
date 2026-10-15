@@ -19,8 +19,9 @@ const veredito = require('./lib/veredito.js');
 // continuar). NUNCA cala: o que nao foi gravado vira `systemMessage` com a causa. NUNCA sobrescreve.
 
 const AGENTE = 'esquadro:inspetor';
-// revisao/<id>/<n>/vereditos (formato novo) ou revisao/<n>/vereditos (formato da 0.3.0).
-const PASTA_DE_RONDA = /(?:^|\/)\.claude\/esquadro\/revisao\/[^/]+(?:\/[^/]+)?\/vereditos$/i;
+// revisao/<id>/<n>/vereditos (formato novo) ou revisao/<n>/vereditos (formato da 0.3.0); D503 (E9): ou a 2a passada
+// do pacote com referencia, <ronda>/invertida/vereditos.
+const PASTA_DE_RONDA = /(?:^|\/)\.claude\/esquadro\/revisao\/[^/]+(?:\/[^/]+)?(?:\/invertida)?\/vereditos$/i;
 
 /** O nome do arquivo: a chave da lente. O titulo so vale quando as duas familias nao o dividem. */
 // RV-02 (D422): a regra mora no veredito.js, que o apurar tambem usa para a chave de repeticao.
@@ -69,7 +70,16 @@ function pastaDaRonda(campo, raiz) {
     return { erro: 'a pasta da ronda de "' + campo.trim() + '" nao tem A.txt e B.txt ao lado, entao nao parece uma ronda' };
   }
   if (!ehPasta(abs)) return { erro: 'a pasta vereditos da ronda "' + campo.trim() + '" nao existe' };
-  return { pasta: abs };
+  // D503 (E9): a invertida/ so existe dentro de uma ronda com referencia; o R.txt diz que o pacote tem referencia, e
+  // ai o veredito das duas passadas traz vsReferencia e lacunas.
+  const naInvertida = path.basename(ronda).toLowerCase() === 'invertida';
+  const daRonda = naInvertida ? path.dirname(ronda) : ronda;
+  const comReferencia = ehArquivo(path.join(daRonda, 'R.txt'));
+  if (naInvertida && (!comReferencia || !ehArquivo(path.join(daRonda, 'A.txt')) || !ehArquivo(path.join(daRonda, 'B.txt')))) {
+    return { erro: 'a pasta invertida de "' + campo.trim() + '" nao fica numa ronda com referencia (A.txt, B.txt e R.txt ' +
+      'ao lado), entao nao parece a 2a passada de uma ronda' };
+  }
+  return { pasta: abs, comReferencia: comReferencia };
 }
 
 /** O que fazer quando o hook nao gravou: o arquivo (ou o molde dele), como manda a skill revisar, Passo 2. */
@@ -110,6 +120,10 @@ function avisoDaGravacao(mensagem, raiz, gravado) {
   if (!lente) return aviso('lente desconhecida: "' + String(vd.lente).slice(0, 60) + '"');
   const onde = pastaDaRonda(vd.vereditos, raiz);
   if (onde.erro) return aviso(onde.erro, lente);
+  if (onde.comReferencia) {
+    const daReferencia = veredito.errosDoVeredito(vd, { comReferencia: true });
+    if (daReferencia.length) return aviso('veredito invalido (' + daReferencia.join('; ') + ')', lente, onde.pasta);
+  }
 
   const arquivo = path.join(onde.pasta, lente + '.json');
   try {

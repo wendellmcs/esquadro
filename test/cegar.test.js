@@ -1389,3 +1389,141 @@ test('D485: git diff que falha nao inventa faixa pequena - completa, linhasMudad
     assert.strictEqual(s.linhasMudadas, null);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// D503/D508 (plano d503, Tarefa 2): A/B como hoje + R.txt nomeado "referencia", e a ordem A/B trocada numa 2a
+// passada (invertida/). Escolhas E1-E4 no plano. Sem referencia para o tipo do arquivo, o pacote e o de hoje.
+test('D503: tipoDaReferencia - texto pela extensao da faixa, tela pela regra de estilo, codigo o resto', () => {
+  assert.strictEqual(cegar.tipoDaReferencia('docs/guia.md', false), 'texto');
+  assert.strictEqual(cegar.tipoDaReferencia('LEIA.TXT', false), 'texto');
+  assert.strictEqual(cegar.tipoDaReferencia('notas.markdown', false), 'texto');
+  assert.strictEqual(cegar.tipoDaReferencia('ui/tema.css', true), 'tela');
+  assert.strictEqual(cegar.tipoDaReferencia('ui/painel.js', true), 'tela', 'caminhosDeEstilo do projeto manda');
+  assert.strictEqual(cegar.tipoDaReferencia('scripts/a.js', false), 'codigo');
+  assert.strictEqual(cegar.tipoDaReferencia('docs/guia.md', true), 'texto', 'texto vence estilo, como na faixa');
+});
+
+test('D503: montarReferencia - um bloco por entrada; texto inteiro, binario pelo caminho, URL e falta escritos', () => {
+  const lidos = [];
+  const ler = function (e) {
+    lidos.push(e);
+    if (e === 'ref/modelo.js') return { tipo: 'texto', conteudo: 'const bom = 1;\n' };
+    if (e === 'ref/tela.png') return { tipo: 'binario', caminho: '/abs/ref/tela.png' };
+    return { tipo: 'falta' };
+  };
+  const r = cegar.montarReferencia(['ref/modelo.js', 'https://exemplo.com/x', 'ref/tela.png', 'ref/sumiu.js'], ler);
+  assert.deepStrictEqual(lidos, ['ref/modelo.js', 'ref/tela.png', 'ref/sumiu.js'], 'URL nao vai ao disco');
+  assert.deepStrictEqual(r.faltam, ['ref/sumiu.js']);
+  assert.deepStrictEqual(r.urls, ['https://exemplo.com/x']);
+  assert.strictEqual(r.texto, [
+    '=== referencia 1 de 4: ref/modelo.js ===', 'const bom = 1;', '',
+    '=== referencia 2 de 4: https://exemplo.com/x ===',
+    '(URL: o inspetor so le arquivo e nao abre a pagina; julgue sem ela e diga isso)', '',
+    '=== referencia 3 de 4: ref/tela.png ===', '(imagem ou binario: abra com Read em /abs/ref/tela.png)', '',
+    '=== referencia 4 de 4: ref/sumiu.js ===', '(NAO ACHADA no disco: confira o caminho no projeto.json)', ''
+  ].join('\n'));
+  // texto sem quebra no fim ganha uma, para o cabecalho seguinte nao colar na ultima linha
+  const sem = cegar.montarReferencia(['a.txt'], function () { return { tipo: 'texto', conteudo: 'x' }; });
+  assert.strictEqual(sem.texto, '=== referencia 1 de 1: a.txt ===\nx\n');
+});
+
+function comProjeto(dir, extra) {
+  fs.mkdirSync(path.join(dir, '.claude', 'esquadro'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'projeto.json'),
+    JSON.stringify(Object.assign({ versaoConfig: 1 }, extra)), 'utf8');
+}
+
+test('D503: com referencia do tipo, o pacote leva R.txt e a passada invertida, e o mapa diz as duas', () => {
+  const dir = repoDeEnsaio();
+  try {
+    fs.mkdirSync(path.join(dir, 'ref'));
+    fs.writeFileSync(path.join(dir, 'ref', 'modelo.txt'), 'texto de topo\n', 'utf8');
+    comProjeto(dir, { referencias: { texto: ['ref/modelo.txt'], codigo: ['ref/outro.js'] } });
+    const r = rodarCli(path.join(dir, 'sub'), 'aninhado.txt');
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const s = JSON.parse(r.stdout);
+    const pasta = path.dirname(s.a);
+    assert.strictEqual(s.referencia, path.join(pasta, 'R.txt'));
+    assert.strictEqual(fs.readFileSync(s.referencia, 'utf8'), '=== referencia 1 de 1: ref/modelo.txt ===\ntexto de topo\n');
+    assert.deepStrictEqual(s.invertida, {
+      a: path.join(pasta, 'invertida', 'A.txt'), b: path.join(pasta, 'invertida', 'B.txt'),
+      vereditos: path.join(pasta, 'invertida', 'vereditos')
+    });
+    assert.strictEqual(fs.readFileSync(s.invertida.a, 'utf8'), fs.readFileSync(s.b, 'utf8'), 'o A invertido e o B');
+    assert.strictEqual(fs.readFileSync(s.invertida.b, 'utf8'), fs.readFileSync(s.a, 'utf8'), 'o B invertido e o A');
+    assert.ok(fs.statSync(s.invertida.vereditos).isDirectory());
+    const mapa = JSON.parse(fs.readFileSync(path.join(pasta, 'mapa.json'), 'utf8'));
+    assert.deepStrictEqual(mapa.referencia, { tipo: 'texto', entradas: ['ref/modelo.txt'] });
+    assert.deepStrictEqual(mapa.invertida, { A: mapa.mapa.B, B: mapa.mapa.A });
+    assert.match(s.aviso, /R\.txt/);
+    assert.match(s.aviso, /invertida/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D503: sem referencia para o tipo do arquivo, o pacote e o de hoje (regressao)', () => {
+  const casos = [
+    ['sem projeto.json', null],
+    ['sem a chave', {}],
+    ['so de outro tipo', { referencias: { codigo: ['ref/a.js'] } }],
+    ['lista vazia', { referencias: { texto: [] } }]
+  ];
+  for (const [nome, extra] of casos) {
+    const dir = repoDeEnsaio();
+    try {
+      if (extra) comProjeto(dir, extra);
+      const r = rodarCli(dir, 'raiz.txt');
+      assert.strictEqual(r.status, 0, nome + ': ' + r.stdout + r.stderr);
+      const s = JSON.parse(r.stdout);
+      const pasta = path.dirname(s.a);
+      assert.deepStrictEqual(fs.readdirSync(pasta).sort(), ['A.txt', 'B.txt', 'mapa.json', 'vereditos'], nome);
+      assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(pasta, 'mapa.json'), 'utf8'))),
+        ['arquivo', 'mapa'], nome);
+      assert.deepStrictEqual(Object.keys(s), ['ronda', 'arquivo', 'base', 'a', 'b', 'regua', 'vereditos', 'faixa',
+        'lentes', 'linhasMudadas', 'aviso', 'trecho', 'semRegua'], nome);
+      assert.doesNotMatch(s.aviso, /R\.txt|invertida|referencia/, nome);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+test('D503: referencia que nao existe vai escrita no R.txt e o aviso diz qual', () => {
+  const dir = repoDeEnsaio();
+  try {
+    comProjeto(dir, { referencias: { texto: ['ref/sumiu.md'] } });
+    const r = rodarCli(dir, 'raiz.txt');
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const s = JSON.parse(r.stdout);
+    assert.match(fs.readFileSync(s.referencia, 'utf8'), /NAO ACHADA/);
+    assert.match(s.aviso, /ref\/sumiu\.md/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D503 (revisao s49): referencia que existe mas nao se le (pasta) nao sai como "nao achei"; o aviso diz o que fazer', () => {
+  const dir = repoDeEnsaio();
+  try {
+    fs.mkdirSync(path.join(dir, 'ref', 'pasta.md'), { recursive: true });
+    comProjeto(dir, { referencias: { texto: ['ref/pasta.md'] } });
+    const r = rodarCli(dir, 'raiz.txt');
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const s = JSON.parse(r.stdout);
+    assert.doesNotMatch(s.aviso, /nao achei/, s.aviso);
+    assert.match(s.aviso, /nao consegui ler: ref\/pasta\.md/, s.aviso);
+    // Revisao s50 (ronda 2): o aviso diz a causa desta entrada, nao as tres possiveis juntas.
+    assert.match(s.aviso, /ref\/pasta\.md \(causa: [^)]*EISDIR/, s.aviso);
+    assert.doesNotMatch(s.aviso, /nao existe, e pasta ou esta sem permissao/, s.aviso);
+    assert.match(s.aviso, /Corrija a entrada em referencias do projeto\.json ou libere a leitura do arquivo/, s.aviso);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D503: referencias torta nao estoura - pacote de hoje e aviso para rodar o validar', () => {
+  for (const torta of ['ref/a.md', ['ref/a.md'], { texto: 'ref/a.md' }, { texto: [3] }]) {
+    const dir = repoDeEnsaio();
+    try {
+      comProjeto(dir, { referencias: torta });
+      const r = rodarCli(dir, 'raiz.txt');
+      assert.strictEqual(r.status, 0, JSON.stringify(torta) + ': ' + r.stdout + r.stderr);
+      const s = JSON.parse(r.stdout);
+      assert.strictEqual('referencia' in s, false, JSON.stringify(torta));
+      assert.strictEqual(fs.existsSync(path.join(path.dirname(s.a), 'R.txt')), false, JSON.stringify(torta));
+      assert.match(s.aviso, /validar\.js/, JSON.stringify(torta));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});

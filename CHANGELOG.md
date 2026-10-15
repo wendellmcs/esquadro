@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.8.0 — a revisão compara com a peça de topo, nas duas ordens
+
+**Novo**
+
+- **Chave `referencias` no `projeto.json`.** Opcional, por tipo de entrega (`tela`, `codigo`, `texto`), cada tipo
+  uma lista de caminhos ou URLs da melhor peça que existe para ele, no mercado ou no próprio projeto.
+  `node scripts/validar.js` reprova tipo desconhecido e lista que não é de texto; o `/esquadro:init` rodado de novo
+  funde por tipo. Sem a chave, nada muda.
+- **A referência entra no pacote da revisão.** Quando o arquivo revisado tem referência do seu tipo (texto pela
+  extensão `.md`, `.markdown` ou `.txt`; tela pela regra de estilo; código o resto), o
+  `node scripts/preparar-revisao.js` grava o `R.txt` (cada referência com um cabeçalho; texto inteiro, imagem pelo
+  caminho para o inspetor abrir) e uma 2ª passada com A e B trocados em `invertida/`. O campo `aviso` da saída desse comando
+  lista as URLs (aceitas, mas o inspetor não abre a página: para ela contar, troque por um arquivo ou print local) e
+  cada referência que não se leu, com a causa (corrija a entrada em `referencias` de `.claude/esquadro/projeto.json`
+  ou dê ao seu usuário permissão de leitura no arquivo). Sem referência, o pacote sai byte a byte como antes. Se a chave estiver em formato errado, o
+  pacote sai sem referência, sem parar, e o mesmo `aviso` manda rodar `node scripts/validar.js`, que diz o que
+  corrigir.
+- **O inspetor julga cada lado contra a referência.** Com `R.txt`, o veredito traz `vsReferencia` (`vence`, `empata`
+  ou `perde`, para A e para B) e `lacunas` (o que separa um lado da referência, com severidade e `arquivo:linha`,
+  como o achado). O gancho grava também os vereditos da 2ª passada, em `invertida/vereditos/`.
+- **A apuração exige as duas ordens.** O `node scripts/apurar-ronda.js` lê as duas passadas e traz `referencia` na saída: por
+  lente, o resultado em cada ordem e o final (perder em uma ordem é perder; vencer nas duas é vencer; o resto,
+  empatar), as lacunas do lado novo e as lentes que ficaram atrás. Duas rondas secas só aprovam com toda lente
+  empatando ou vencendo, sem lacuna P0/P1; o teto de 3 rondas segue. Achado da 2ª passada sai com `passada: 2`, e a
+  refutação dele leva o mesmo campo. Sem referência, a apuração é a de antes.
+- **O manual pede a referência antes de fazer.** A seção 4.1 do `padrao` manda nomear, na marcha AAA, a referência
+  de topo que se abre (arquivo, print, repositório), nunca uma lembrança; sem ela, "sem referência" e o artefato
+  irmão já aprovado.
+
+**Custo:** com referência, cada lente roda duas vezes (o dobro de agentes); a revisão diz isso junto do número de
+agentes. Sem a chave `referencias`, a revisão custa o mesmo de antes.
+
 ## 0.7.8 — o painel do plano acha o plano certo, conta as sessoes dele e le etapas em tabela
 
 **Corrigido**
