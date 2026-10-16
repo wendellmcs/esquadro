@@ -150,3 +150,13 @@ test('marcha: D8 - sobe sim, desce nao', () => {
   assert.ok(!marcha.podeSubir('aaa', 'padrao'));
   assert.ok(!marcha.podeSubir('padrao', 'rapida'));
 });
+
+// Plano 082, Tarefa 6 (p8-25): no Windows Src/A.js e src/a.js sao o mesmo arquivo e contavam duas vezes.
+test('082 T6 (p8-25): aaaComReferencia junta a mesma grafia em caixa diferente onde o disco nao distingue caixa', () => {
+  const raiz = path.join(os.tmpdir(), 'esquadro-marcha-caixa');
+  const projeto = { marchas: { aaa: ['**'] }, referencias: { codigo: ['ref/topo.js'] } };
+  const r = marcha.aaaComReferencia([path.join(raiz, 'src', 'a.js'), path.join(raiz, 'Src', 'A.js'),
+    path.join(raiz, 'src', 'b.js')], projeto, raiz);
+  const caixaIgual = process.platform === 'win32';
+  assert.deepStrictEqual(r, caixaIgual ? ['src/a.js', 'src/b.js'] : ['src/a.js', 'Src/A.js', 'src/b.js']);
+});

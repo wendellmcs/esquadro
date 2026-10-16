@@ -128,28 +128,54 @@ function tipoDaReferencia(rel, ehEstilo) {
 // Esquema de URL (https://, file://): nao vai ao disco, o inspetor so le arquivo.
 const RE_URL = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
 
+// Plano 082 (p3-15): o R.txt vai inteiro a cada inspetor, nas duas passadas. Referencia de texto maior que isto (em
+// bytes UTF-8) nao entra: vai pelo caminho, como a imagem, e o inspetor a abre com Read. Escolha tecnica da s64.
+const TETO_DA_REFERENCIA = 100 * 1024;
+
+// Plano 082 (p3-23): so o cabecalho escrito aqui comeca uma linha com "===". Linha do conteudo que comeca assim ganha
+// "\" na frente, para o conteudo nao forjar o comeco de outra referencia; a entrada vai numa linha so.
+function semCabecalho(texto) { return String(texto).replace(/^(?====)/gm, '\\'); }
+function numaLinha(texto) { return String(texto).replace(/[\r\n]+/g, ' '); }
+
 /**
  * D503 (escolha E2): o texto do R.txt. Um bloco por entrada, com cabecalho "=== referencia i de n: <entrada> ===".
- * `ler(entrada)` devolve { tipo: 'texto', conteudo } | { tipo: 'binario', caminho } | { tipo: 'falta' } e fica com
- * quem chama, para isto ser puro. URL nao chama `ler`. Devolve tambem as entradas que faltam e as URLs, para o aviso.
+ * `ler(entrada)` devolve { tipo: 'texto', conteudo, caminho? } | { tipo: 'binario', caminho } |
+ * { tipo: 'grande', caminho, tamanho } | { tipo: 'falta' } e fica com quem chama, para isto ser puro. URL nao chama
+ * `ler`. Devolve tambem as entradas que faltam, as URLs e as maiores que o teto, para o aviso.
  */
 function montarReferencia(entradas, ler) {
   const faltam = [];
   const urls = [];
+  const grandes = [];
+  const pelaLeitura = function (caminho) {
+    return caminho ? 'abra com Read em "' + caminho + '"' : 'abra com Read o arquivo do cabecalho acima';
+  };
   const blocos = entradas.map(function (e, i) {
-    const cab = '=== referencia ' + (i + 1) + ' de ' + entradas.length + ': ' + e + ' ===\n';
+    const cab = '=== referencia ' + (i + 1) + ' de ' + entradas.length + ': ' + numaLinha(e) + ' ===\n';
     if (RE_URL.test(e)) {
       urls.push(e);
       return cab + '(URL: o inspetor so le arquivo e nao abre a pagina; julgue sem ela e diga isso)\n';
     }
-    const lido = ler(e);
-    if (lido && lido.tipo === 'texto') return cab + lido.conteudo + (lido.conteudo.endsWith('\n') ? '' : '\n');
-    if (lido && lido.tipo === 'binario') return cab + '(imagem ou binario: abra com Read em ' + lido.caminho + ')\n';
+    let lido = ler(e);
+    if (lido && lido.tipo === 'texto' && Buffer.byteLength(lido.conteudo, 'utf8') > TETO_DA_REFERENCIA) {
+      lido = { tipo: 'grande', caminho: lido.caminho, tamanho: Buffer.byteLength(lido.conteudo, 'utf8') };
+    }
+    if (lido && lido.tipo === 'texto') {
+      const conteudo = semCabecalho(lido.conteudo);
+      return cab + conteudo + (conteudo.endsWith('\n') ? '' : '\n');
+    }
+    if (lido && lido.tipo === 'grande') {
+      grandes.push(e);
+      return cab + '(maior que o teto do R.txt, ' + TETO_DA_REFERENCIA + ' bytes: tem ' + lido.tamanho + '; ' +
+        pelaLeitura(lido.caminho) + ')\n';
+    }
+    // Plano 082 (p3-22): o caminho entre aspas - com espaco, sem elas, nao se sabe onde ele acaba.
+    if (lido && lido.tipo === 'binario') return cab + '(imagem ou binario: ' + pelaLeitura(lido.caminho) + ')\n';
     faltam.push(e);
     return cab + '(NAO ACHADA no disco: confira o caminho no projeto.json)\n';
   });
-  return { texto: blocos.join('\n'), faltam: faltam, urls: urls };
+  return { texto: blocos.join('\n'), faltam: faltam, urls: urls, grandes: grandes };
 }
 
 module.exports = { semente, rotular, proximaRonda, idDoArquivo, REGRA_DO_ID, baseDoArquivo, temPastaNumeradaSolta,
-  TRECHO_MARGEM, recortarTrecho, tipoDaReferencia, montarReferencia };
+  TRECHO_MARGEM, recortarTrecho, tipoDaReferencia, TETO_DA_REFERENCIA, montarReferencia };

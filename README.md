@@ -330,6 +330,11 @@ Se surgiu a duvida "ja e hora?", ja era.
 
 ### O aviso de troca de chat: o que dispara, o que não, e como conferir
 
+**Troca de chat** é encerrar a conversa e seguir num chat novo, que continua de onde ela parou: o
+`/esquadro:handoff` grava o texto de continuação (o *handoff*) e cola na resposta um prompt pronto para você abrir
+o chat novo. O medidor usa a mesma unidade na previsão das janelas de limite: "~19 trocas de chat" quer dizer que
+cabem cerca de 19 conversas, no ritmo de gasto das suas últimas, antes de a janela acabar.
+
 O aviso sai **uma vez por sessão** (mais o alarme de tamanho, abaixo), no fim do turno, e vai para dois lugares: para você (a mensagem
 acima) e para o Claude, que recebe a ordem de rodar `/esquadro:handoff`, dizer com todas as letras
 que é hora de abrir chat novo, citando o gatilho, e colar o prompt pronto em bloco de código, sem
@@ -406,37 +411,47 @@ ou mais novo. Se `/esquadro-sessao` não aparecer, há três causas: o Claude Co
 um dos dois (abra uma sessão nova, porque os dois comandos são registrados quando a sessão começa). O nome leva hífen,
 e não os dois-pontos dos outros comandos do esquadro, porque comando de mod não leva o prefixo do plugin: com
 dois-pontos no lugar do hífen, o Claude Code responde que o comando não existe. `/esquadro-sessao` responde o
-medidor da sessão — contexto usado, janelas de limite (5h e semana) com a hora em que renovam, custo da sessão e
-do mês, previsão em turnos (só depois de 2 turnos com consumo; antes disso diz que não tem dado) e cada
-gatilho da tabela acima com o valor e o limiar. O gasto do mês soma duas fontes: o custo real de cada sessão em que
+medidor da sessão em cinco blocos com título: **Contexto e limites** (o contexto usado e as janelas de 5 horas e da
+semana, com a hora em que renovam), **Gasto** (desta sessão e do mês), **Previsão** (em quantas respostas o
+contexto enche e em quantas trocas de chat cada janela acaba), **Troca de chat** (os sinais da tabela acima que
+valem, com o valor e o limiar, o mais perto do limite primeiro, e numa linha só os que o modo contínuo desliga) e
+**O que fazer**. A previsão em respostas só sai depois de 2 respostas com consumo; antes disso, o bloco diz quando
+ela aparece. O gasto do mês soma duas fontes: o custo real de cada sessão em que
 o mod estava carregado, guardado pelo próprio Claude Code entre sessões, e, para as outras, uma estimativa pelas
 transcrições do mês de todos os projetos, com a tabela de preço do `/esquadro:calibrar`. Em assinatura, os dois são
 valor equivalente de API, não cobrança. A primeira leitura do mês leva algumas medidas, e até lá o número sai com
-"(contando)". As janelas de 5h e da semana trazem a previsão "~N handoffs": quantas sessões ainda cabem, pela média
-das últimas 5 sessões medidas dentro da mesma janela; com menos de 2 sessões medidas, ela não aparece.
+"+ (somando)". A previsão das janelas em trocas de chat (o que é uma troca de chat está no começo desta seção) vem
+da média das últimas 5 sessões medidas dentro da mesma janela; com menos de 2 sessões medidas, ela não aparece.
 `/esquadro-plano` responde o painel do plano:
 tarefas feitas e abertas, a próxima, o que falta, as sessões gastas e a estimativa das que faltam, com a base da
 conta (como o painel encontra o plano e faz a conta, logo abaixo). Sem plano nenhum (nenhum plano ativo, nenhuma frente
-ligada à sessão e nenhum plano anotado no escopo ou nas frentes), ele responde "nenhum plano ativo" e o comando
+ligada à sessão e nenhum plano anotado no escopo ou nas frentes), ele responde "Nenhum plano ativo" e o comando
 `--abrir` com o caminho do script na sua máquina. No terminal, no app Desktop e no chat da extensão do VS Code, o
-medidor também fica na linha de status (uma linha só, começando por "esquadro" e o plano curto, `plano d503 5 de 6`),
-e uma faixa acima do prompt mostra a linha do plano (`plano d503 | 5 de 6 | proxima: Tarefa 6 ...`) e, embaixo dela,
-um botão por vez, o do comando do esquadro que está na hora:
+medidor também fica na linha de status, em uma linha só
+(`contexto 24% · 5h 4% até 13:50 · semana 18% · mês US$ 3.311 · sessão US$ 7,52 · troca 0 de 2`), e uma faixa
+acima do prompt mostra o plano (`plano 082 · 2 de 7 tarefas · próxima: Tarefa 3 — barra do medidor...`, ou
+`concluído (6 de 6 tarefas)` quando nada falta) e, embaixo dela, uma frase e um botão por vez, o do comando do
+esquadro que está na hora:
 
-| Botão | Aparece quando |
-|---|---|
-| `/esquadro:handoff` | um gatilho contável da troca de chat cruzou |
-| `/esquadro:revisar <arquivo>` | um arquivo mudado na sessão é da marcha AAA com `referencias` declarada e nenhuma revisão contra ela fechou (a mesma condição do portão da referência de topo) |
-| `/esquadro:aprender` | o seu último prompt pareceu uma correção (a mesma conta da sugestão, no máximo 1 a cada 5 prompts) |
-| `/esquadro:init` | o projeto não tem `.claude/esquadro/projeto.json` |
-| `/esquadro:auditar` | a auditoria automática da abertura avisou nesta sessão |
-| `/esquadro:calibrar` | o limiar de contexto nunca foi calibrado e já há 30 conversas do projeto (contadas uma vez por dia) |
-| `/esquadro:paralelo` | a última resposta do agente ofereceu o `/esquadro:paralelo` |
-| `/esquadro:padrao` | um arquivo da marcha AAA mudou e o agente não carregou o manual (skill com "padrao" no nome) |
+| Comando | Rótulo do botão | Aparece quando |
+|---|---|---|
+| `/esquadro:handoff` | gerar handoff | um gatilho contável da troca de chat cruzou |
+| `/esquadro:revisar <arquivo>` | revisar | um arquivo mudado na sessão é da marcha AAA com `referencias` declarada e nenhuma revisão contra ela fechou (a mesma condição do portão da referência de topo) |
+| `/esquadro:aprender` | virar regra | o seu último prompt pareceu uma correção (a mesma conta da sugestão, no máximo 1 a cada 5 prompts) |
+| `/esquadro:init` | configurar | o projeto não tem `.claude/esquadro/projeto.json` |
+| `/esquadro:auditar` | ver o que cortar | a auditoria automática da abertura avisou nesta sessão |
+| `/esquadro:calibrar` | calibrar | o limiar de contexto nunca foi calibrado e já há 30 conversas do projeto (contadas uma vez por dia) |
+| `/esquadro:paralelo` | rodar em paralelo | a última resposta do agente ofereceu o `/esquadro:paralelo` |
+| `/esquadro:padrao` | carregar o manual | um arquivo da marcha AAA mudou e o agente não carregou o manual (skill com "padrao" no nome) |
 
 Com mais de um aceso, vale a ordem da tabela. O botão põe o comando no prompt, sem enviar, e some; volta se o sinal
-dele passar e acender de novo. Depois de recarregar os mods, o do padrão pode voltar numa sessão que já carregou o
-manual. Nada disso abre rede: os números vêm do próprio Claude Code e dos arquivos na sua máquina.
+dele passar e acender de novo. Se o Claude Code não deixar escrever no prompt, a faixa troca o botão por "Não
+consegui escrever no prompt. Digite **/esquadro:handoff** e envie." (com o comando daquele botão) até a próxima
+resposta. Depois de recarregar os mods, o botão do padrão pode voltar numa sessão que já carregou o manual: o mod recomeça sem
+lembrar que viu o manual carregado. Não é erro; ignore o botão, ou clique, e o manual carrega de novo (só gasta a
+leitura dele). Se o Node.js não responder, a linha de status diz "medidor parado: o Node.js não respondeu. Rode
+node -v num terminal para conferir.", e os dois comandos dizem o mesmo. Nada disso abre rede: os números vêm do
+próprio Claude Code e dos arquivos na sua máquina.
 
 **Como o painel do plano acha o plano e conta.**
 
@@ -493,6 +508,15 @@ neutros do tema. Na faixa acima do prompt, o acento pinta a borda e o nome "esqu
 a linha de status ficam com o desenho do Claude Code (botão e linha de status não aceitam cor). No terminal e no app
 Desktop a faixa usa a cor `warning` do tema do Claude Code, que acompanha o tema claro ou escuro sozinha. No chat do
 VS Code essa cor não pinta, e a faixa usa `#F59E0B` direto; com o VS Code em tema claro, esse âmbar fica fraco de ler.
+Só a borda e o nome "esquadro" ficam fracos: a linha do plano, a frase e o botão seguem a cor do tema e se leem
+normalmente, então não há nada a fazer para usar o plugin. Não há chave para trocar essa cor; se o nome fraco
+atrapalhar, registre como defeito do esquadro.
+
+Todo botão sai no desenho `primary` (no VS Code, o `secondary` sai igual), e a hierarquia fica no texto: um botão
+por vez, com a frase do que aconteceu antes dele. A linha de status e as respostas de `/esquadro-sessao` e
+`/esquadro-plano` saem com acento; os avisos dos ganchos seguem sem acento (o console do Windows os estraga) e têm
+uma forma só: a 1ª linha diz o que falta, os caminhos vêm entre aspas, um por linha, as saídas vêm numeradas em
+"Faca uma destas", e a linha de desligar, quando o aviso tem chave, vem por último.
 
 ---
 
@@ -1030,8 +1054,8 @@ produziu o bug reproduz o bug.
   cita o valor dela — não o gosto dele. Sem régua declarada, a revisão diz que rodou sem régua.
 - **Contra a peça de topo, nas duas ordens.** Com `referencias` declarada no `projeto.json` para o tipo do
   arquivo (`tela`, `codigo` ou `texto`), o pacote leva também o `R.txt` — a referência de topo, nomeada, não cega —
-  e uma 2ª passada com A e B trocados, em `invertida/`. Cada inspetor diz, para cada lado, se ele `vence`, `empata`
-  ou `perde` da referência, e lista as `lacunas` citando `arquivo:linha`. O `apurar-ronda.js` só aprova com toda
+  e uma 2ª passada com A e B trocados, em `invertida/`. Cada inspetor diz, para cada lado (A e B, o arquivo antes e
+  depois da mudança, sem saber qual é qual), se ele `vence`, `empata` ou `perde` da referência, e lista as `lacunas` citando `arquivo:linha`. O `apurar-ronda.js` só aprova com toda
   lente empatando ou vencendo nas duas ordens, sem lacuna P0/P1 do lado novo. **O custo em inspetores dobra.** A
   referência em texto vai inteira; imagem vai pelo caminho, para o inspetor abrir; URL fica escrita, e o inspetor
   não a abre.
@@ -1493,7 +1517,7 @@ propósito, para não invalidar o `projeto.json` de quem já tem um.
 
 | Chave | O que muda | Padrão |
 |---|---|---|
-| `referencias` | a peça de topo contra a qual o `/esquadro:revisar` compara (o `R.txt` no pacote e uma 2ª passada com A e B trocados, que dobra os inspetores), por tipo (`tela`, `codigo`, `texto`), cada tipo uma lista de caminhos ou URLs; tipo desconhecido (`telas`) e lista que não é de texto reprovam; o re-init funde por tipo | sem a chave: nada muda |
+| `referencias` | a peça de topo contra a qual o `/esquadro:revisar` compara (o `R.txt` no pacote e uma 2ª passada com A e B trocados, que dobra os inspetores), por tipo (`tela`, `codigo`, `texto`), cada tipo uma lista de caminhos ou URLs; tipo desconhecido (`telas`) e lista que tem item que não é texto reprovam no `node scripts/validar.js`, que diz a chave a corrigir; no `/esquadro:init` rodado de novo, o tipo que você responder troca a lista dele e o tipo que você não citar fica como estava (lista vazia, `[]`, tira um tipo; `{}` não apaga nada) | sem a chave: nada muda |
 
 **As quatro travas**, dentro de `travas`. As quatro são obrigatórias e booleanas.
 

@@ -759,6 +759,22 @@ test('D503: fiacao da referencia - o inspetor devolve vsReferencia e lacunas; a 
   assert.match(passo5, /\| teto de 3 rondas com P0\/P1 aberto ou a referência não alcançada \|/, 'o teto nao cita a referencia');
 });
 
+// Plano 082, Tarefa 6 (p4-2, p4-3, p4-4): o inspetor sabe ler cada bloco do R.txt, o que devolver contra a referencia
+// quando nao a ve, e o "nao tem acesso" nao contradiz a regua.md e o R.txt.
+test('082 T6 (p4-2, p4-3, p4-4): o inspetor le os blocos do R.txt e sabe o que devolver contra a referencia sem ve-la', () => {
+  const inspetor = fs.readFileSync(path.join(RAIZ, 'agents', 'inspetor.md'), 'utf8');
+  const ref = inspetor.slice(inspetor.indexOf('## Quando o briefing passa um `R.txt`'), inspetor.indexOf('## Proveni'));
+  for (const t of ['=== referencia i de n: <entrada> ===', '`\\===`', '(imagem ou binario: abra com Read em "<caminho>")',
+    '(maior que o teto do R.txt', '(URL:', '(NAO ACHADA', '`vsReferencia` e `lacunas` saem dos blocos que você leu']) {
+    assert.ok(ref.indexOf(t) !== -1, 'falta na secao do R.txt: ' + t);
+  }
+  const prov = inspetor.slice(inspetor.indexOf('## Proveni'));
+  assert.ok(!/nada al[eé]m dos dois arquivos/.test(prov), 'o "nada alem dos dois arquivos" contradiz a regua.md e o R.txt');
+  assert.match(prov, /regua\.md/);
+  assert.match(prov, /"vsReferencia": \{ "A": "perde", "B": "perde" \}/, 'o "nao sei" nao diz o que devolver contra a referencia');
+  assert.match(prov, /"lacunas": \[\]/);
+});
+
 // D503/D508 (plano d503, E9): o pacote com referencia tem R.txt e a 2a passada em <ronda>/invertida/vereditos.
 function projetoComReferencia() {
   const p = projeto();
@@ -803,5 +819,22 @@ test('D503 E9: invertida/vereditos fora de uma ronda com referencia (sem R.txt a
   const r = rodar(p, stop(p, JSON.stringify(vd)));
   avisou(r);
   assert.match(r.json.systemMessage, /ronda com referencia/);
+  assert.ok(!fs.existsSync(path.join(inv, 'vereditos', 'correcao.json')));
+});
+
+// Plano 082, Tarefa 6 (p1-1): "invertida" so e a 2a passada dentro de uma ronda numerada; revisao/<id>/invertida/ com
+// A.txt, B.txt e R.txt no <id> passava pela 2a passada de uma "ronda" que o apurar nunca le.
+test('082 T6 (p1-1): invertida/ fora de uma ronda numerada nao vira 2a passada, mesmo com A, B e R.txt acima', () => {
+  const p = projetoComReferencia();
+  const base = path.join(p.dir, '.claude', 'esquadro', 'revisao', 'src__a.js');
+  for (const n of ['A.txt', 'B.txt', 'R.txt']) fs.writeFileSync(path.join(base, n), 'x\n', 'utf8');
+  const inv = path.join(base, 'invertida');
+  fs.mkdirSync(path.join(inv, 'vereditos'), { recursive: true });
+  fs.writeFileSync(path.join(inv, 'A.txt'), 'b\n', 'utf8');
+  fs.writeFileSync(path.join(inv, 'B.txt'), 'a\n', 'utf8');
+  const vd = veredito(p, { vereditos: path.join(inv, 'vereditos'), vsReferencia: { A: 'vence', B: 'vence' }, lacunas: [] });
+  const r = rodar(p, stop(p, JSON.stringify(vd)));
+  avisou(r);
+  assert.match(r.json.systemMessage, /pasta numerada/);
   assert.ok(!fs.existsSync(path.join(inv, 'vereditos', 'correcao.json')));
 });

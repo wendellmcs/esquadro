@@ -207,11 +207,13 @@ const faixa = veredito.faixaDaMudanca({
 const tipoRef = cegar.tipoDaReferencia(rel, ehEstilo);
 let entradasRef = [];
 let refTorta = false;
+// Plano 082, Tarefa 5 (p1-27): os tipos que referencias declara quando falta o deste arquivo, para o aviso dizer.
+let tiposSemEste = null;
 if (projetoCfg && 'referencias' in projetoCfg) {
   const refs = projetoCfg.referencias;
   const lista = refs && typeof refs === 'object' && !Array.isArray(refs) ? refs[tipoRef] : null;
   if (lista === undefined) {
-    entradasRef = [];
+    if (Object.keys(refs).length) tiposSemEste = Object.keys(refs);
   } else if (Array.isArray(lista) && lista.every(function (e) { return typeof e === 'string' && e.trim() !== ''; })) {
     entradasRef = lista;
   } else {
@@ -219,19 +221,46 @@ if (projetoCfg && 'referencias' in projetoCfg) {
   }
 }
 // O caminho da referencia e relativo a raiz do projeto, como os do projeto.json. Imagem ou binario (byte 0) vai pelo
-// caminho, para o inspetor abrir com Read; o que nao se le como arquivo e "falta", e a causa fica para o aviso.
+// caminho, para o inspetor abrir com Read; o que nao se le como arquivo e "falta", e a causa fica para o aviso, para o
+// mapa.json e para a saida (p1-31). Plano 082 (p1-8, D531): so se le de dentro da raiz do projeto, pelo caminho real
+// (o link que aponta para fora tambem fica fora): o R.txt vai a cada inspetor, e uma entrada "../" ou absoluta
+// levaria qualquer arquivo do disco ate ele. (p1-7) Acima do teto do R.txt, nem se le: vai pelo caminho.
 const causaDaFalta = {};
-const referencia = entradasRef.length === 0 ? null : cegar.montarReferencia(entradasRef, function (e) {
+const montada = entradasRef.length === 0 ? null : cegar.montarReferencia(entradasRef, function (e) {
   const abs = path.resolve(raizProjeto, e);
+  if (!caminho.dentroPeloCaminhoReal(e, raizProjeto)) {
+    causaDaFalta[e] = { causa: 'fora da raiz do projeto', codigo: 'FORA_DA_RAIZ', caminho: abs };
+    return { tipo: 'falta' };
+  }
   try {
+    // Plano 082, Tarefa 8: o stat vem antes da extensao, para a imagem que nao existe (ou e pasta) ser "falta", como era.
+    const st = fs.statSync(abs);
+    if (st.isFile() && /\.(png|jpe?g|gif|webp|bmp|ico|pdf)$/i.test(e)) return { tipo: 'binario', caminho: abs };
+    if (st.isFile() && st.size > cegar.TETO_DA_REFERENCIA) return { tipo: 'grande', caminho: abs, tamanho: st.size };
     const buf = fs.readFileSync(abs);
-    if (buf.includes(0) || /\.(png|jpe?g|gif|webp|bmp|ico|pdf)$/i.test(e)) return { tipo: 'binario', caminho: abs };
-    return { tipo: 'texto', conteudo: buf.toString('utf8') };
+    if (buf.includes(0)) return { tipo: 'binario', caminho: abs };
+    // p1-10: o BOM (do PowerShell 5.1, por exemplo) nao vai ao R.txt
+    return { tipo: 'texto', conteudo: textoLib.semBom(buf.toString('utf8')), caminho: abs };
   } catch (err) {
-    causaDaFalta[e] = textoLib.causaDoErro(err);
+    causaDaFalta[e] = { causa: textoLib.causaDoErro(err), codigo: err && err.code, caminho: abs };
     return { tipo: 'falta' };
   }
 });
+// p1-14: sem nenhuma entrada que se leia (todas faltam ou sao URL), o R.txt nao teria nada para comparar: o pacote sai
+// sem referencia, e o aviso diz por que.
+const referencia = montada && montada.faltam.length + montada.urls.length < entradasRef.length ? montada : null;
+const faltasDaReferencia = Object.keys(causaDaFalta).map(function (e) {
+  return { entrada: e, causa: causaDaFalta[e].causa, codigo: causaDaFalta[e].codigo, caminho: causaDaFalta[e].caminho };
+});
+
+/** Plano 082, Tarefa 5 (p1-30): o que fazer com a referencia que nao se leu, conforme a causa. */
+function oQueFazerComAFalta(codigo) {
+  if (codigo === 'FORA_DA_RAIZ') return 'use um caminho dentro da raiz do projeto (a referencia so se le de dentro dele)';
+  if (codigo === 'ENOENT' || codigo === 'ENOTDIR') return 'confira o caminho em "referencias" do projeto.json (relativo a raiz do projeto)';
+  if (codigo === 'EISDIR') return 'aponte um arquivo, nao uma pasta';
+  if (codigo === 'EACCES' || codigo === 'EPERM' || codigo === 'EBUSY') return 'libere a leitura do arquivo';
+  return 'corrija a entrada em "referencias" do projeto.json ou libere a leitura do arquivo';
+}
 
 // D257 secao 11, item 11: uma base por arquivo (revisao/<id>/<n>/). Revisao em andamento no formato
 // da 0.3.0 - pasta numerada solta em revisao/ - segue na base unica, para nao partir a revisao ao meio.
@@ -379,6 +408,7 @@ try {
   // dentro do mesmo pacote (E3): outra pasta numerada seria contada como ronda e gastaria o teto.
   if (referencia) {
     mapaJson.referencia = { tipo: tipoRef, entradas: entradasRef };
+    if (faltasDaReferencia.length) mapaJson.referencia.faltam = faltasDaReferencia;
     mapaJson.invertida = { A: r.mapa.B, B: r.mapa.A };
     fs.writeFileSync(path.join(dir, 'R.txt'), referencia.texto, 'utf8');
     fs.mkdirSync(path.join(dir, 'invertida', 'vereditos'), { recursive: true });
@@ -428,18 +458,39 @@ if (referencia) {
   // D503/D508: o texto do aviso nomeia R.txt e invertida/; o brief do inspetor (Tarefa 3) diz o que fazer com eles.
   aviso += ' Ha referencia de topo (' + tipoRef + '): R.txt, nomeado, vai a cada inspetor junto de A e B. A 2a passada ' +
     'de cada lente julga invertida/A.txt e invertida/B.txt (os lados trocados) e grava em invertida/vereditos/.';
-  // Revisao s49/s50: o `ler` acima devolve "falta" para qualquer erro de leitura; o aviso diz a causa de cada uma.
-  if (referencia.faltam.length) {
-    aviso += ' Referencia que nao consegui ler: ' + referencia.faltam.map(function (e) {
-      return e + ' (causa: ' + causaDaFalta[e] + ')';
-    }).join(', ') + '. Corrija a entrada em referencias do projeto.json ou libere a leitura do arquivo; ate la, o ' +
-      'R.txt diz que ela falta.';
-  }
+  if (referencia.faltam.length) aviso += ' ' + quaisFaltam(referencia.faltam) + ' Ate la, o R.txt diz que ela falta, e o inspetor julga sem ela.';
   if (referencia.urls.length) aviso += ' Referencia que e URL, que o inspetor nao abre: ' + referencia.urls.join(', ') + '.';
+  if (referencia.grandes.length) {
+    aviso += ' Referencia maior que o teto do R.txt (' + cegar.TETO_DA_REFERENCIA + ' bytes), que vai pelo caminho e o ' +
+      'inspetor abre com Read: ' + referencia.grandes.join(', ') + '.';
+  }
+} else if (montada) {
+  // p1-14: havia entradas para o tipo, mas nenhuma se leu.
+  aviso += ' A chave "referencias" do projeto.json tem entrada para este arquivo, mas nenhuma entrada de "referencias" do ' +
+    'tipo "' + tipoRef + '" se le: o pacote saiu sem referencia (sem R.txt e sem invertida/), e a revisao compara so A ' +
+    'com B.' + (montada.faltam.length ? ' ' + quaisFaltam(montada.faltam) : '') +
+    (montada.urls.length ? ' Referencia que e URL, que o inspetor nao abre: ' + montada.urls.join(', ') + '.' : '');
 }
+
+// Revisao s49/s50: o `ler` acima devolve "falta" para qualquer erro de leitura; o aviso diz a causa de cada uma.
+// Plano 082, Tarefa 5 (p1-30): por entrada, a causa, o caminho absoluto tentado e o que fazer conforme a causa.
+function quaisFaltam(faltam) {
+  return 'Referencia que nao consegui ler: ' + faltam.map(function (e) {
+    const f = causaDaFalta[e];
+    return e + ' (causa: ' + f.causa + '; caminho tentado: "' + f.caminho + '"; ' + oQueFazerComAFalta(f.codigo) + ')';
+  }).join(', ') + '.';
+}
+// Plano 082, Tarefa 5 (p1-19): sem giria; o formato esperado, o efeito e o validar.
 if (refTorta) {
-  aviso += ' A chave referencias do projeto.json esta torta para o tipo ' + tipoRef + ' (tem de ser objeto com listas ' +
-    'de texto): o pacote saiu sem referencia. Rode scripts/validar.js para ver o erro.';
+  aviso += ' A chave "referencias" do projeto.json nao tem o formato esperado para o tipo "' + tipoRef + '": tem de ' +
+    'ser um objeto com uma lista de caminhos por tipo, como "referencias": { "' + tipoRef + '": ["<caminho>"] }. O ' +
+    'pacote saiu sem referencia, e a revisao compara so A com B. Rode scripts/validar.js para ver o erro.';
+}
+// Plano 082, Tarefa 5 (p1-27): quem errou o nome do tipo fica sabendo que a referencia nao entrou.
+if (tiposSemEste) {
+  aviso += ' A chave "referencias" do projeto.json tem os tipos ' + tiposSemEste.map(function (t) { return '"' + t + '"'; })
+    .join(', ') + ', e nao "' + tipoRef + '", que e o tipo deste arquivo: o pacote saiu sem referencia, e a revisao ' +
+    'compara so A com B. Se este arquivo devia ser comparado, acrescente "' + tipoRef + '": ["<caminho>"] em referencias.';
 }
 if (identico) {
   // L2-pre-2 (S7, D426): o identico sai da normalizacao; A.txt e B.txt seguem como estao no disco e no HEAD. Se
@@ -495,6 +546,7 @@ if (referencia) {
     vereditos: path.join(dir, 'invertida', 'vereditos')
   };
 }
+if (faltasDaReferencia.length) saida.referenciaQueFalta = faltasDaReferencia;
 if (arquivada) saida.arquivada = arquivada;
 if (!regua) saida.semRegua = 'nenhuma regua declarada no regras.md do projeto (secao "## Regua ...")';
 process.stdout.write(JSON.stringify(saida, null, 2) + '\n');

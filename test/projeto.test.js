@@ -577,3 +577,14 @@ test('D503: re-init aceita referencias, funde por tipo e nao a ignora', () => {
   const v = projeto.validar(fundida.config);
   assert.strictEqual(v.ok, true, v.erros.join(' | '));
 });
+
+// Plano 082, Tarefa 6 (p1-33): o Object.assign tratava a chave propria "__proto__" (do JSON.parse) como o setter: o
+// prototipo trocava e a chave sumia da fusao.
+test('082 T6 (p1-33): a fusao por chave guarda a chave "__proto__" do JSON como chave, sem trocar o prototipo', () => {
+  const resp = JSON.parse('{"marchas": {"__proto__": ["x/**"], "padrao": ["b/**"]}}');
+  const r = projeto.atualizar(copia({ marchas: { aaa: ['c/**'] } }), resp, '2026-10-16');
+  const m = r.config.marchas;
+  assert.strictEqual(Object.getPrototypeOf(m), Object.prototype, 'o prototipo trocou');
+  assert.deepStrictEqual(Object.keys(m).sort(), ['__proto__', 'aaa', 'padrao']);
+  assert.deepStrictEqual(m.padrao, ['b/**']);
+});

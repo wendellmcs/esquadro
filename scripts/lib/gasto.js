@@ -33,8 +33,12 @@ function custoDoTexto(texto, desdeMs) {
     let o;
     try { o = JSON.parse(linha); } catch (e) { continue; }
     const m = o && o.type === 'assistant' && o.message;
-    if (!m || !m.usage || !m.model || m.model === '<synthetic>' || vistos.has(m.id)) continue;
-    vistos.add(m.id);
+    if (!m || !m.usage || !m.model || m.model === '<synthetic>') continue;
+    // Plano 082 (p6-1): so o id que existe junta as linhas; sem id, cada linha conta (o undefined no Set descartava
+    // todas as mensagens sem id depois da primeira).
+    const temId = typeof m.id === 'string' && m.id !== '';
+    if (temId && vistos.has(m.id)) continue;
+    if (temId) vistos.add(m.id);
     if (!(Date.parse(o.timestamp) >= desdeMs)) continue;
     const p = PRECOS[m.model];
     if (!p) { semPreco++; continue; }
@@ -66,9 +70,11 @@ function arquivosDoProjeto(dir) {
 }
 
 /**
- * Estimativa do mes pelas transcricoes de `raiz` (a pasta projects). `cache`: { [arquivo]: { tamanho, data, mes, usd } };
- * vale a entrada do mesmo mes, tamanho e data. Arquivo com data antes do mes nao e lido. Devolve o total, quantos
- * arquivos ficaram para a proxima medida (`pendentes`) e o cache novo (so os arquivos do mes).
+ * Estimativa do mes pelas transcricoes de `raiz` (a pasta projects). `cache`: { [arquivo]: { tamanho, data, mes, usd,
+ * semPreco } }; vale a entrada do mesmo mes, tamanho e data. Arquivo com data antes do mes nao e lido. Devolve o total,
+ * quantos arquivos ficaram para a proxima medida (`pendentes`), quantos nao se leram (`ilegiveis`: fora do cache, a
+ * proxima medida tenta de novo), as mensagens de modelo sem preco (`semPreco`, tambem as do cache) e o cache novo (so
+ * os arquivos do mes).
  */
 function estimarMes(opcoes) {
   const o = opcoes || {};
@@ -78,7 +84,7 @@ function estimarMes(opcoes) {
   const prazo = num(o.prazoMs) ? o.prazoMs : PRAZO_PADRAO_MS;
   const inicio = Date.now();
   const cache = {};
-  let usd = 0, pendentes = 0, semPreco = 0;
+  let usd = 0, pendentes = 0, semPreco = 0, ilegiveis = 0;
   let projetos;
   try { projetos = fs.readdirSync(o.raiz, { withFileTypes: true }); } catch (e) { projetos = []; }
   for (const p of projetos) {
@@ -92,18 +98,21 @@ function estimarMes(opcoes) {
       if (c && c.mes === mes.chave && c.tamanho === st.size && c.data === st.mtimeMs && num(c.usd)) {
         cache[f.arquivo] = c;
         usd += c.usd;
+        // p6-3: o cache guarda o semPreco do arquivo (entrada antiga, sem o campo, conta 0).
+        if (num(c.semPreco)) semPreco += c.semPreco;
         continue;
       }
       if (Date.now() - inicio >= prazo) { pendentes++; continue; }
       let texto;
-      try { texto = fs.readFileSync(f.arquivo, 'utf8'); } catch (e) { continue; }
+      // p6-2: o que nao se le conta em `ilegiveis` (valia zero calado).
+      try { texto = fs.readFileSync(f.arquivo, 'utf8'); } catch (e) { ilegiveis++; continue; }
       const r = custoDoTexto(texto, mes.ms);
       semPreco += r.semPreco;
-      cache[f.arquivo] = { tamanho: st.size, data: st.mtimeMs, mes: mes.chave, usd: r.usd };
+      cache[f.arquivo] = { tamanho: st.size, data: st.mtimeMs, mes: mes.chave, usd: r.usd, semPreco: r.semPreco };
       usd += r.usd;
     }
   }
-  return { usd: usd, pendentes: pendentes, semPreco: semPreco, cache: cache };
+  return { usd: usd, pendentes: pendentes, semPreco: semPreco, ilegiveis: ilegiveis, cache: cache };
 }
 
 function pastaDosProjetos(env, casa) {
@@ -131,7 +140,9 @@ function gastoDoMes(opcoes) {
       fs.writeFileSync(o.arquivoDoCache, JSON.stringify(est.cache));
     } catch (e) { /* sem cache a proxima medida rele: so mais lenta */ }
   }
-  return { usd: real + est.usd, real: real, estimado: est.usd, pendentes: est.pendentes, desde: mes.desde };
+  // Plano 082 (p6-2, p6-3): ilegiveis e semPreco seguem adiante (o estimarMes devolvia, e paravam aqui).
+  return { usd: real + est.usd, real: real, estimado: est.usd, pendentes: est.pendentes, semPreco: est.semPreco,
+    ilegiveis: est.ilegiveis, desde: mes.desde };
 }
 
 const MAX_HISTORICO = 40;

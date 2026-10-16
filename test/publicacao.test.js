@@ -144,7 +144,8 @@ test('publicacao: o numero de baldes que negam vem do codigo, nao da memoria', (
 // Ronda 1 do Passo 8b: a frase dos baldes tem tres numeros, e o teste acima
 // conferia um so. O total e os que so contam passavam errados com a suite verde.
 test('publicacao: o total de baldes e os que so contam tambem vem do codigo', () => {
-  const m = CHANGELOG.match(/\*\*(\d+) baldes\*\* de contador: (\d+) que negam, (\d+) que so contam/);
+  // Plano 082, Tarefa 7 (p3-1): a frase ganhou acento ("só contam").
+  const m = CHANGELOG.match(/\*\*(\d+) baldes\*\* de contador: (\d+) que negam, (\d+) que s[oó] contam/);
   assert.ok(m, 'o CHANGELOG nao diz quantos baldes ha, nem quantos so contam');
   const noCodigo = baldesNoCodigo();
   assert.strictEqual(Number(m[1]), noCodigo.size, 'o total de baldes foi escrito a mao');

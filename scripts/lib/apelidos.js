@@ -135,29 +135,24 @@ function correcao(d) {
   };
 }
 
+// Plano 082, Tarefa 5 (mock S10): a forma unica dos avisos. "gatilho 3" e nome interno: a 1a linha diz o que falta.
 function motivo(r) {
   const linhas = [
-    'esquadro - gatilho 3: o mapa de agentes deste projeto envelheceu.',
+    'esquadro - o modelo de alguns agentes nao bate com o mapa deste projeto.',
     '',
-    'O `model:` que estes agentes declaram nao e o apelido que a entrevista gravou:',
-    ''
+    'Estes agentes declaram um modelo (`model:`) diferente do que a entrevista gravou no mapa',
+    '(campo "agentes" de .claude/esquadro/projeto.json):'
   ];
   for (const d of r.divergencias) {
-    linhas.push('  - ' + d.agente + ' (.claude/agents/' + d.arquivo + ')');
-    linhas.push('      arquivo diz: ' + d.declarado);
-    linhas.push('      mapa diz:    ' + d.gravado);
+    linhas.push('  - "' + d.agente + '" em ".claude/agents/' + d.arquivo + '"');
+    linhas.push('      o arquivo diz: ' + d.declarado);
+    linhas.push('      o mapa diz:    ' + d.gravado);
   }
+  linhas.push('Nada foi bloqueado: um dos dois lados ficou velho, e so o dono sabe qual.');
   linhas.push('');
-  linhas.push('Nada foi bloqueado: divergir nao e erro, e sinal de mapa velho.');
-  linhas.push('Um dos dois lados esta desatualizado, e so o dono sabe qual.');
-  linhas.push('');
-  linhas.push('Para consertar agora, escolha a direcao por agente:');
-  for (const d of r.divergencias) {
-    const c = correcao(d);
-    linhas.push('  ' + c.agente + ':');
-    linhas.push('    a) ' + c.paraArquivo);
-    linhas.push('    b) ' + c.paraMapa);
-  }
+  linhas.push('Faca uma destas para cada agente, com a escolha do dono:');
+  linhas.push('  1. o arquivo passa a dizer o que o mapa diz;');
+  linhas.push('  2. o mapa passa a dizer o que o arquivo diz.');
   return linhas.join('\n');
 }
 

@@ -135,8 +135,10 @@ test('continuo: o medidor da sessao mostra o gatilho calado pela chave, sem dize
   const medidor = require('../scripts/lib/medidor.js');
   const m = saude.medir({ turnosComTrabalho: 99 }, null, true);
   const r = medidor.linhaDaSessao({ uso: null, amostras: [], medidas: m, avisouSaude: false });
-  const linha = r.longa.split('\n').filter((l) => /turnos com trabalho real/.test(l))[0];
-  assert.ok(linha && /modo continuo: nao dispara/.test(linha) && !/cruzou/.test(linha), r.longa);
+  // Plano 082 (mock S4): os desligados numa linha so, depois dos que valem; nunca com "disparou".
+  const linha = r.longa.split('\n').filter((l) => /^- desligados pelo modo contínuo: /.test(l))[0];
+  assert.ok(linha && /respostas 99\/15/.test(linha) && !/disparou/.test(linha), r.longa);
+  assert.ok(r.longa.indexOf('respostas com trabalho real') === -1, r.longa);
 });
 
 test('continuo: a linha curta do medidor conta so os gatilhos que podem disparar (M2, D490)', () => {
@@ -145,12 +147,12 @@ test('continuo: a linha curta do medidor conta so os gatilhos que podem disparar
   const podem = m.filter((g) => g.calado !== true).length;
   assert.strictEqual(m.length - podem, c.CALADOS.length, 'controle: os cinco calados estao na lista');
   const r = medidor.linhaDaSessao({ uso: null, amostras: [], medidas: m, avisouSaude: false });
-  assert.ok(new RegExp('troca: 0 de ' + podem + ' gatilhos').test(r.curta), r.curta);
+  assert.strictEqual(r.curta, 'troca 0 de ' + podem);
   const cruzou = medidor.linhaDaSessao({ uso: null, amostras: [], medidas: saude.medir({ tokensDeContexto: 260000 }, null, true), avisouSaude: false });
-  assert.ok(new RegExp('troca: 1 de ' + podem + ' cruzou').test(cruzou.curta), cruzou.curta);
+  assert.ok(new RegExp('^troca 1 de ' + podem + ' cruzou').test(cruzou.curta), cruzou.curta);
   // sem a chave, nada se cala: o denominador segue todos
   const sem = medidor.linhaDaSessao({ uso: null, amostras: [], medidas: saude.medir({}, null), avisouSaude: false });
-  assert.ok(new RegExp('troca: 0 de ' + m.length + ' gatilhos').test(sem.curta), sem.curta);
+  assert.strictEqual(sem.curta, 'troca 0 de ' + m.length);
 });
 
 test('continuo: a esquadro:padrao e o README falam da chave e da validacao pelo proprio agente', () => {

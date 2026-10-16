@@ -232,7 +232,8 @@ function varrer(raizManual, raizCorpus, opcoes) {
 /** O texto. Quem nao tem cicatriz vem PRIMEIRO: e a lista que motiva a poda. */
 function texto(r, limite) {
   const teto = typeof limite === 'number' ? limite : 20;
-  const linhas = ['esquadro - auditoria por cicatriz', ''];
+  // Plano 082, Tarefa 5 (mock S10): a 1a linha diz o que o relatorio responde; arquivo:linha entre aspas.
+  const linhas = ['esquadro - auditoria por cicatriz: que regra tem dor de origem, e qual pode sair.', ''];
 
   if (!r.corpusLido) {
     linhas.push('CORPUS NAO LIDO. Sem historico para comparar, nada aqui distingue regra com');
@@ -255,7 +256,7 @@ function texto(r, limite) {
   const sem = r.itens.filter(function (a) { return !a.temCicatriz; });
   linhas.push('SEM cicatriz - candidatos a poda (' + sem.length + '):');
   for (const a of sem.slice(0, teto)) {
-    linhas.push('  ' + a.arquivo + ':' + a.linha + ' - ' + a.texto.slice(0, 90));
+    linhas.push('  - "' + a.arquivo + ':' + a.linha + '" ' + a.texto.slice(0, 90));
   }
   if (sem.length > teto) linhas.push('  ... mais ' + (sem.length - teto) + '.');
   linhas.push('');
@@ -264,8 +265,8 @@ function texto(r, limite) {
   linhas.push('COM cicatriz - ficam, e a prova esta ao lado (' + com.length + '):');
   for (const a of com.slice(0, teto)) {
     const p = a.provas[0];
-    linhas.push('  ' + a.arquivo + ':' + a.linha + ' [' + a.tipos.join(',') + '] <- ' +
-      p.arquivo + ':' + p.linha);
+    linhas.push('  - "' + a.arquivo + ':' + a.linha + '" [' + a.tipos.join(',') + '] <- "' +
+      p.arquivo + ':' + p.linha + '"');
   }
   if (com.length > teto) linhas.push('  ... mais ' + (com.length - teto) + '.');
   linhas.push('');

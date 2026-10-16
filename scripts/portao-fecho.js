@@ -139,20 +139,27 @@ function semRevisaoDeReferencia(e, s, projeto, cwd) {
   if ((saude.acumular(s).revisao_referencia_fechada || 0) > 0) return null;
   const arquivos = require('./lib/marcha.js').aaaComReferencia(s.arquivosTocados, projeto, cwd);
   if (!arquivos.length) return null;
-  const citados = arquivos.slice(0, MAX_CITADOS).join(', ') +
-    (arquivos.length > MAX_CITADOS ? ' (+' + (arquivos.length - MAX_CITADOS) + ')' : '');
+  // Plano 082, Tarefa 5 (mock S10; p7-18, p7-29, p7-30): o que falta em palavras do dono, um caminho por linha entre
+  // aspas (com espaco ficava ambiguo na lista por virgula; fora de ASCII vira "?", R5), e a saida quando nao fecha.
+  // "aprovado" e o que o apurar-ronda.js escreve no fecho ("duas rondas secas seguidas: aprovado").
+  const ascii = require('./lib/escopo.js').ascii;
+  const citados = arquivos.slice(0, MAX_CITADOS).map(function (a) { return '  - "' + ascii(a) + '"'; });
+  if (arquivos.length > MAX_CITADOS) citados.push('  - e mais ' + (arquivos.length - MAX_CITADOS));
   return [
-    'esquadro - portao da referencia de topo.',
+    'esquadro - falta comparar com a tela de referencia.',
     '',
-    'Voce alegou entrega e mudou nesta sessao arquivo da marcha AAA com referencia de topo declarada',
-    '(referencias do projeto.json): ' + citados + '.',
-    'Nenhuma revisao contra a referencia fechou nesta sessao. Para cada arquivo, rode',
+    'Voce disse que entregou, e mudou arquivo que o projeto manda comparar com uma',
+    'tela de referencia (lista "referencias" em .claude/esquadro/projeto.json):'
+  ].concat(citados, [
+    'Nenhuma dessas comparacoes fechou nesta sessao.',
     '',
-    '  /esquadro:revisar <arquivo>',
+    'Faca uma destas:',
+    '  1. rode /esquadro:revisar "<arquivo>" para cada um, ate sair "aprovado";',
+    '  2. se chegar a 3 rondas sem fechar, pare e leve ao usuario 3 opcoes;',
+    '  3. ou diga ao usuario por que esta entrega fica sem a comparacao.',
     '',
-    'ate a revisao fechar (o apurar-ronda.js conta o fecho), ou diga ao usuario por que esta entrega nao passa por ela.',
     'Desligar neste projeto: "portaoReferencia": false em .claude/esquadro/projeto.json.'
-  ].join('\n');
+  ]).join('\n');
 }
 
 /** Um bloqueio por turno, com os motivos que o turno juntou - o do subitem aberto OU o da
@@ -192,19 +199,22 @@ io.blindar(function () {
     const semPrompt = handoffSemPrompt(e, s, projeto);
     // D503: como o do handoff, calculado antes do retorno da trava 3 desligada; todo caminho abaixo com ele barra.
     const semReferencia = semRevisaoDeReferencia(e, s, projeto, cwd);
+    // Plano 082 (p7-25): o motivo da referencia entra so por aqui, e sempre depois dos outros do turno (o do handoff,
+    // o barrar soma no fim).
     const daReferencia = semReferencia ? [semReferencia] : [];
     if (semReferencia) {
       s.contadores = s.contadores || {};
       s.contadores.fecho_sem_referencia = (s.contadores.fecho_sem_referencia || 0) + 1;
     }
-    if (travas.fecho === false) return semPrompt || semReferencia ? barrar(e, s, daReferencia, semPrompt) : encerrarTurno(e, s);
+    if (travas.fecho === false) return (semPrompt || semReferencia) ? barrar(e, s, daReferencia, semPrompt) : encerrarTurno(e, s);
 
     const planoLib = require('./lib/plano.js');
     const ativo = planoLib.lerAtivo(cwd);
     let planoIlegivel = null;
     if (ativo && planoLib.alegaEtapaConcluida(e.last_assistant_message)) {
       let tarefas = [];
-      try { tarefas = planoLib.parseTarefas(require('node:fs').readFileSync(require('node:path').join(cwd, ativo.arquivo), 'utf8')); }
+      // Plano 082 (p7-5): caminhoDoPlano, como a faixa e o painel - o absoluto do --abrir se le.
+      try { tarefas = planoLib.parseTarefas(require('node:fs').readFileSync(planoLib.caminhoDoPlano(cwd, ativo.arquivo), 'utf8')); }
       catch (err) {
         // S52-fec-1: plano ilegivel nao barra, mas tambem nao passa calado.
         tarefas = [];
@@ -223,12 +233,11 @@ io.blindar(function () {
 
     const motivos = [];
     if (planoIlegivel) motivos.push(planoIlegivel);
-    if (semReferencia) motivos.push(semReferencia);
     if (semEvidencia) {
       s.contadores = s.contadores || {};
       s.contadores.fecho_sem_evidencia = (s.contadores.fecho_sem_evidencia || 0) + 1;
       motivos.push(evidencia.MOTIVO);
     }
-    barrar(e, s, motivos, semPrompt);
+    barrar(e, s, motivos.concat(daReferencia), semPrompt);
   });
 });

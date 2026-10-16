@@ -32,7 +32,10 @@ if (decisoes) {
 
 if (abrirEm) {
   const sessao = arg('sessao') || process.env.CLAUDE_CODE_SESSION_ID || process.env.CLAUDE_SESSION_ID || 'sem-sessao';
-  const a = planoLib.abrir(cwd, abrirEm, sessao);
+  let a;
+  // Plano 082 (p7-16): o abrir() diz o arquivo, a causa e o que fazer; aqui sai so a mensagem, sem stack.
+  try { a = planoLib.abrir(cwd, abrirEm, sessao); }
+  catch (e) { process.stderr.write(e.message + '\n'); process.exit(1); }
   process.stdout.write('plano ativo: ' + a.arquivo + ' (dono: ' + a.sessionId + ')\n');
   process.exit(0);
 }
@@ -78,11 +81,10 @@ if (process.argv.indexOf('--texto') !== -1) {
   if (alvo) {
     // D476: o painel le o formato real (Item/Etapa/..., travessao, [FEITO]); o JSON abaixo e o portao seguem no de hoje.
     let textoDoPlano;
-    try { textoDoPlano = fs.readFileSync(path.join(cwd, alvo.arquivo), 'utf8'); }
+    try { textoDoPlano = fs.readFileSync(planoLib.caminhoDoPlano(cwd, alvo.arquivo), 'utf8'); }
     catch (e) {
       // R2 da revisao cega: caminho com espaco, sem crases, chega cortado no primeiro espaco.
-      process.stdout.write('painel do plano\nnao consegui ler ' + alvo.arquivo + (alvo.frente
-        ? ' (se o caminho tem espaco, ponha-o entre crases no Objetivo: Plano: `meu plano.md`)' : '') + '\n');
+      process.stdout.write(planoLib.painelNaoLeu(alvo.arquivo, !!alvo.frente) + '\n');
       process.exit(0);
     }
     // P2 #8 e #15: so a leitura cabe no "nao consegui ler"; erro ao montar a conta de um plano lido e dito como tal.
@@ -107,7 +109,7 @@ if (!ativo) {
 }
 
 let tarefas = [];
-try { tarefas = planoLib.parseTarefas(fs.readFileSync(path.join(cwd, ativo.arquivo), 'utf8')); }
+try { tarefas = planoLib.parseTarefas(fs.readFileSync(planoLib.caminhoDoPlano(cwd, ativo.arquivo), 'utf8')); }
 catch (e) { process.stdout.write('ERRO: nao consegui ler ' + ativo.arquivo + '\n'); process.exit(1); }
 
 const abertas = tarefas.filter(function (t) { return t.abertos > 0; });

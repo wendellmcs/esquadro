@@ -36,14 +36,19 @@ function medidor(on: any, chamadas: Chamada[], resposta: { curta: string; longa:
 
 test('session.start registra /esquadro-sessao e /esquadro-plano', async ($, on) => {
   const nomes: string[] = []
+  const descricoes: Record<string, string> = {}
   on('session.start', () => ({ cwd: '/work' }))
   on('command.register', ($, e) => {
     nomes.push(e.name)
+    descricoes[e.name] = String(e.description)
     return { value: undefined }
   })
   await $.session.start({ surface: 'vscode', isInteractive: true, cwd: '/work' })
   expect(nomes).toContain('esquadro-sessao')
   expect(nomes).toContain('esquadro-plano')
+  // Plano 082 (p5-19): a descricao no menu sem jargao. ASCII: a sonda da T1 nao provou acento no menu de comandos.
+  expect(descricoes['esquadro-sessao']).toBe('esquadro: uso da conversa e dos limites de 5 horas e da semana, gasto e quando trocar de chat')
+  expect(/^[\x20-\x7E]*$/.test(descricoes['esquadro-sessao'])).toBe(true)
 })
 
 test('/esquadro-sessao manda uso e sessao ao sessao.js e responde a linha longa', async ($, on) => {
@@ -91,7 +96,10 @@ test('script que falha: o comando responde o motivo, nao lanca', async ($, on) =
   on('process.run', () => ({ value: { exitCode: 1, stdout: '', stderr: 'node nao achado' } }))
   const r = await $.command.run({ command: 'esquadro-sessao', args: '' })
   // Sem "esquadro:" na frente: o motor ja escreve o nome do plugin antes da resposta.
-  expect(r.text).toMatch(/^o medidor nao respondeu/)
+  // Achado da s60 (mock S3): o passo concreto, como no status, no lugar de "confira se o node esta no PATH".
+  expect(r.text).toBe('Medidor parado: o Node.js não respondeu. Rode **node -v** num terminal para conferir.')
+  const p = await $.command.run({ command: 'esquadro-plano', args: '' })
+  expect(p.text).toBe('Painel do plano parado: o Node.js não respondeu. Rode **node -v** num terminal para conferir.')
 })
 
 test('fim de turno: guarda a amostra do turno e poe a linha curta no status', async ($, on) => {
@@ -111,6 +119,8 @@ test('fim de turno: guarda a amostra do turno e poe a linha curta no status', as
   expect(ultimo.amostras).toEqual([{ tokens: 46900, cincoH: 49 }])
 })
 
+const MEDIDOR_PARADO = 'medidor parado: o Node.js não respondeu. Rode node -v num terminal para conferir.'
+
 test('script que falha no fim do turno: o status diz que o medidor nao respondeu, nao fica com o numero velho', async ($, on) => {
   let falha = false
   const status: (string | undefined)[] = []
@@ -129,7 +139,8 @@ test('script que falha no fim do turno: o status diz que o medidor nao respondeu
   expect(status[status.length - 1]).toBe('esquadro | contexto 5%')
   falha = true
   await $.turn.complete({ turnId: 't2', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
-  expect(String(status[status.length - 1])).toMatch(/^esquadro \| medidor sem resposta/)
+  // Plano 082 (p5-17, mock D532): sem jargao, com o passo concreto; sem "esquadro |" na frente, como a barra.
+  expect(status[status.length - 1]).toBe(MEDIDOR_PARADO)
 })
 
 test('chamada que lanca no fim do turno (ex.: prazo estourado): o status tambem diz que o medidor nao respondeu', async ($, on) => {
@@ -151,7 +162,7 @@ test('chamada que lanca no fim do turno (ex.: prazo estourado): o status tambem 
   expect(status[status.length - 1]).toBe('esquadro | contexto 5%')
   lanca = true
   await $.turn.complete({ turnId: 't2', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
-  expect(String(status[status.length - 1])).toMatch(/^esquadro \| medidor sem resposta/)
+  expect(status[status.length - 1]).toBe(MEDIDOR_PARADO)
 })
 
 const MEDIDA = { context: USO.context, rateLimits: USO.rateLimits, changed: ['context'] } as any
@@ -214,7 +225,7 @@ test('D442/7: leitura de uso que nunca responde nao congela o status - a medida 
   await relogio.settle()
   await relogio.advance(60000)
   await $.session.measure(MEDIDA)
-  expect(status).toContain('esquadro | medidor sem resposta (a leitura de uso travou; medindo de novo)')
+  expect(status).toContain('medidor atrasado: a leitura de uso travou; medindo de novo.')
   expect(status[status.length - 1]).toBe('esquadro | contexto 5%')
   // a presa responde tarde: o resultado dela e velho e nao volta para a tela
   soltarPresa()
@@ -411,16 +422,97 @@ for (const b of BOTOES) {
   })
 }
 
-test('botoes: prompt que falha ao preencher nao some com o botao (ele so conta como usado depois de preencher)', async ($, on) => {
+// Plano 082 (p5-25, mock D532 "o clique nao preencheu o prompt"): antes o catch do fill voltava calado. Agora a faixa
+// diz o comando a digitar no lugar do botao; o botao nao conta como usado e volta no turno seguinte.
+test('botoes: prompt que falha ao preencher - a faixa diz o comando a digitar, e o botao volta no turno seguinte', async ($, on) => {
   const preenchido: string[] = []
-  faixaComBotoes(on, () => [BOTOES[1]], preenchido, [], true)
+  const contagem = faixaComBotoes(on, () => [BOTOES[1]], preenchido, [], true)
   await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
   const ui = await $.ui.mount({ ...BANDA, surface: 'terminal' })
   await ui.press({ key: 'esquadro-revisar' })
   await ui.unmount()
+  expect(contagem.invalidou).toBe(2)
   const depois = await $.ui.mount({ ...BANDA, surface: 'terminal' })
-  expect(await depois.find({ key: 'esquadro-revisar' })).toBeDefined()
+  expect(await depois.find({ key: 'esquadro-revisar' })).toBeUndefined()
+  const textos = (await depois.findAll({ type: 'Text' })).map((t: any) => String(t.text))
+  expect(textos.join('')).toBe('esquadro Não consegui escrever no prompt. Digite /esquadro:revisar src/a.js e envie.')
+  const comando = await depois.find({ type: 'Text', text: '/esquadro:revisar src/a.js' })
+  expect(comando && comando.props.bold).toBe(true)
   await depois.unmount()
+  await $.turn.complete({ turnId: 't2', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  const outra = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  expect(await outra.find({ key: 'esquadro-revisar' })).toBeDefined()
+  expect(await outra.find({ type: 'Text', text: /consegui escrever/ })).toBeUndefined()
+  await outra.unmount()
+})
+
+// Plano 082, Tarefa 6 (p5-4): o botao da vez de antes e o que estava na tela; a poda dos usados vem depois dele. Antes,
+// o usado que saiu da lista "voltava" no calculo de antes e a faixa redesenhava sem nada mudar.
+test('botoes: o usado que sai da lista nao redesenha a faixa vazia de novo (p5-4)', async ($, on) => {
+  const preenchido: string[] = []
+  let lista: unknown[] = [BOTOES[1]]
+  const contagem = faixaComBotoes(on, () => lista, preenchido)
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  const ui = await $.ui.mount({ ...BANDA, surface: 'vscode' })
+  await ui.press({ key: 'esquadro-revisar' })
+  await ui.unmount()
+  expect(contagem.invalidou).toBe(2)
+  lista = []
+  await $.turn.complete({ turnId: 't2', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  expect(contagem.invalidou).toBe(2)
+})
+
+// Plano 082, Tarefa 6 (p5-10): o mesmo botao com as chaves em outra ordem e o mesmo botao - nao redesenha.
+test('botoes: o mesmo botao com as chaves em outra ordem nao redesenha a faixa (p5-10)', async ($, on) => {
+  const preenchido: string[] = []
+  const b = BOTOES[1]
+  let lista: unknown[] = [b]
+  const contagem = faixaComBotoes(on, () => lista, preenchido)
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  expect(contagem.invalidou).toBe(1)
+  lista = [{ comando: b.comando, rotulo: b.rotulo, texto: b.texto, nome: b.nome }]
+  await $.turn.complete({ turnId: 't2', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  expect(contagem.invalidou).toBe(1)
+  lista = [Object.assign({}, b, { texto: 'outro texto.' })]
+  await $.turn.complete({ turnId: 't3', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  expect(contagem.invalidou).toBe(2)
+})
+
+// Plano 082 (p5-8): botaoDaVez so olhava nome e comando; sem rotulo o botao saia sem nome e o texto "undefined ".
+test('botoes: botao sem rotulo ou sem texto nao desenha; o seguinte toma o lugar', async ($, on) => {
+  const preenchido: string[] = []
+  faixaComBotoes(on, () => [{ nome: 'a', texto: 't', comando: '/esquadro:init' }, { nome: 'b', texto: 3, rotulo: 'r',
+    comando: '/esquadro:init' }, { nome: 'c', texto: 't', rotulo: '', comando: '/esquadro:init' }, BOTOES[2]], preenchido)
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  const ui = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  for (const k of ['a', 'b', 'c']) expect(await ui.find({ key: 'esquadro-' + k })).toBeUndefined()
+  expect(await ui.find({ key: 'esquadro-aprender' })).toBeDefined()
+  const textos = (await ui.findAll({ type: 'Text' })).map((t: any) => String(t.text))
+  expect(textos.join('|')).not.toMatch(/undefined/)
+  await ui.unmount()
+})
+
+// Plano 082 (p5-3): a linha do plano so era checada como string; so espacos desenhava a faixa vazia e a quebra de
+// linha partia a faixa. Agora espaco em volta sai e espaco por dentro vira um so.
+test('faixa: plano so com espacos nao desenha; quebra de linha vira espaco', async ($, on) => {
+  let plano = ' \n\t '
+  on('session.usage', () => ({ value: USO }))
+  on('session.id', () => ({ value: 'sess-abc' }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify({ curta: 'c', longa: 'l', cruzou: false,
+    plano: plano, botoes: [] }), stderr: '' } }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.invalidate', () => ({ value: undefined }))
+  on('turn.complete', () => ({ text: '' }))
+  on('ui.render', () => ({ type: 'Text', props: {}, children: ['desenho do motor'] }))
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  let ui = await $.ui.mount({ ...BANDA, surface: 'vscode' })
+  expect(await ui.find({ key: 'esquadro-faixa' })).toBeUndefined()
+  await ui.unmount()
+  plano = '  plano 082 · 2 de 7 tarefas\n· próxima: Tarefa 3  '
+  await $.turn.complete({ turnId: 't2', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  ui = await $.ui.mount({ ...BANDA, surface: 'vscode' })
+  expect(await ui.find({ type: 'Text', text: 'plano 082 · 2 de 7 tarefas · próxima: Tarefa 3' })).toBeDefined()
+  await ui.unmount()
 })
 
 test('botoes: so o de maior prioridade aparece; usado, o seguinte toma o lugar', async ($, on) => {
@@ -469,6 +561,46 @@ test('botoes: comando que nao e do esquadro nao vira botao', async ($, on) => {
   await ui.unmount()
 })
 
+// Plano 082, Tarefa 2 (mock D532, parte 1): os estados da faixa como o dono aprovou, com os textos que o plano.js e o
+// botoes.js produzem (conferidos la por igualdade). O clique que falhou tem teste proprio acima; medidor parado e gasto
+// somando sao da barra (MEDIDOR_PARADO aqui, "somando" no medidor.test.js).
+const ESTADOS_DO_MOCK = [
+  { nome: 'plano em curso, titulo longo cortado', plano: 'plano 082 · 2 de 7 tarefas · próxima: Tarefa 3 — barra do medidor em uma linha e o res...',
+    botoes: [], linhas: 'esquadro plano 082 · 2 de 7 tarefas · próxima: Tarefa 3 — barra do medidor em uma linha e o res...', rotulo: null },
+  { nome: 'troca de chat urgente', plano: 'plano 082 · 2 de 7 tarefas · próxima: Tarefa 3',
+    botoes: [{ nome: 'handoff', texto: 'Um gatilho de troca de chat cruzou: gere o handoff e siga num chat novo.', rotulo: 'gerar handoff', comando: '/esquadro:handoff' }],
+    linhas: 'esquadro plano 082 · 2 de 7 tarefas · próxima: Tarefa 3|Um gatilho de troca de chat cruzou: gere o handoff e siga num chat novo. gerar handoff', rotulo: 'gerar handoff' },
+  { nome: 'arquivo AAA sem o manual', plano: '',
+    botoes: [{ nome: 'padrao', texto: 'Você mudou arquivo de rigor máximo sem carregar o manual.', rotulo: 'carregar o manual', comando: '/esquadro:padrao' }],
+    linhas: 'esquadro Você mudou arquivo de rigor máximo sem carregar o manual. carregar o manual', rotulo: 'carregar o manual' },
+]
+
+for (const estado of ESTADOS_DO_MOCK) {
+  test('estado do mock 082: ' + estado.nome, async ($, on) => {
+    on('session.usage', () => ({ value: USO }))
+    on('session.id', () => ({ value: 'sess-abc' }))
+    on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify({ curta: 'c', longa: 'l', cruzou: false,
+      plano: estado.plano, botoes: estado.botoes }), stderr: '' } }))
+    on('ui.status', () => ({ value: undefined }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('turn.complete', () => ({ text: '' }))
+    on('ui.render', () => ({ type: 'Text', props: {}, children: ['desenho do motor'] }))
+    await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+    const ui = await $.ui.mount({ ...BANDA, surface: 'vscode' })
+    // uma linha da faixa por Box: o plano em cima, o botao embaixo (o "|" separa as duas)
+    const linhas: string[] = []
+    for (const k of ['esquadro-linha-plano', 'esquadro-botao']) {
+      const box = await ui.find({ key: k })
+      if (box) linhas.push(box.text)
+    }
+    expect(linhas.join('|')).toBe(estado.linhas)
+    const botao = estado.botoes.length ? await ui.find({ key: 'esquadro-' + estado.botoes[0].nome }) : undefined
+    expect(botao ? botao.props.label : null).toBe(estado.rotulo)
+    if (botao) expect(botao.props.variant).toBe('primary')
+    await ui.unmount()
+  })
+}
+
 test('medida: manda ao sessao.js a ultima resposta do agente e se o manual (padrao) foi carregado', async ($, on) => {
   const stdins: any[] = []
   faixaComBotoes(on, () => [], [], stdins)
@@ -483,6 +615,11 @@ test('medida: manda ao sessao.js a ultima resposta do agente e se o manual (padr
   await $.tool.call({ tool: 'Skill', skill: 'esquadro:padrao', agentId: 'ag1' })
   await $.tool.call({ tool: 'Skill', skill: 'esquadro:revisar' })
   await $.turn.complete({ turnId: 't3', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  expect(stdins[stdins.length - 1].padrao).toBe(false)
+  // p5-5 (plano 082): o campo e `e.skill`, ao lado do `tool` (tipos do motor 2.1.301, ToolCallEnvelope); sem ele, nada
+  await $.tool.call({ tool: 'Skill' } as any)
+  await $.tool.call({ tool: 'Skill', input: { skill: 'esquadro:padrao' } } as any)
+  await $.turn.complete({ turnId: 't3b', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
   expect(stdins[stdins.length - 1].padrao).toBe(false)
   await $.tool.call({ tool: 'Skill', skill: 'esquadro:padrao' })
   await $.turn.complete({ turnId: 't4', answer: 'ok', durationMs: 10, isAborted: false, usage: null })

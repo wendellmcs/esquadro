@@ -40,7 +40,7 @@ test('sessao.js: soma turno + sessao e usa o limiar do projeto (a conta do porta
       JSON.stringify({ contadoresSessao: { revisao_fechada: 3 }, contadores: { revisao_fechada: 2 } }));
     const r = rodar(c, { uso: USO, amostras: [], sessao: 'sess-1' });
     assert.strictEqual(r.cruzou, true, JSON.stringify(r));
-    assert.ok(r.longa.indexOf('revisoes independentes fechadas: 5 de 5') !== -1, r.longa);
+    assert.ok(r.longa.indexOf('- revisões independentes fechadas: 5 de 5 ← disparou') !== -1, r.longa);
     assert.ok(r.curta.indexOf('contexto 5%') !== -1, r.curta);
   });
 });
@@ -49,7 +49,7 @@ test('sessao.js: sem estado e sem projeto -> limiares padrao, nada cruzou', () =
   cenario(function (c) {
     const r = rodar(c, { uso: USO, amostras: [], sessao: 'nao-existe' });
     assert.strictEqual(r.cruzou, false);
-    assert.ok(/troca: 0 de 7 gatilhos/.test(r.curta), r.curta);
+    assert.ok(/ · troca 0 de 7$/.test(r.curta), r.curta);
   });
 });
 
@@ -57,14 +57,14 @@ test('sessao.js: aviso ja dado na sessao aparece no medidor', () => {
   cenario(function (c) {
     fs.writeFileSync(path.join(c.base, 'esquadro', 'sess-2.json'), JSON.stringify({ avisouSaude: true }));
     const r = rodar(c, { uso: USO, amostras: [], sessao: 'sess-2' });
-    assert.ok(/troca: aviso ja dado/.test(r.curta), r.curta);
+    assert.ok(/ · troca já avisada → \/esquadro:handoff$/.test(r.curta), r.curta);
   });
 });
 
 test('sessao.js: entrada que nao e JSON -> saida 0, curta mesmo assim e o erro dito', () => {
   cenario(function (c) {
     const r = rodar(c, 'isto nao e json');
-    assert.ok(typeof r.curta === 'string' && r.curta.indexOf('esquadro') === 0, JSON.stringify(r));
+    assert.ok(typeof r.curta === 'string' && /(^| · )troca 0 de 7$/.test(r.curta), JSON.stringify(r));
     assert.ok(typeof r.erro === 'string' && r.erro.length > 0, JSON.stringify(r));
   });
 });
@@ -75,7 +75,23 @@ test('sessao.js: o gatilho de contexto usa uso.context.tokens ao vivo', () => {
     const alto = Object.assign({}, USO, { context: { tokens: 260000, window: 1000000, percent: 26 } });
     const r = rodar(c, { uso: alto, amostras: [], sessao: 'nao-existe' });
     assert.strictEqual(r.cruzou, true, JSON.stringify(r));
-    assert.ok(r.longa.indexOf('tokens de contexto: 260000 de 175000') !== -1, r.longa);
+    assert.ok(r.longa.indexOf('- tamanho do contexto: 260.000 de 175.000 tokens ← disparou') !== -1, r.longa);
+  });
+});
+
+// Plano 082 (p8-36): so `typeof number` deixava entrar negativo e Infinity (JSON.parse('1e400') da Infinity) no 7o
+// gatilho. Numero que nao e contagem de tokens fica fora: vale o gravado no estado.
+test('sessao.js: tokens ao vivo negativos ou infinitos nao entram no gatilho de contexto', () => {
+  cenario(function (c) {
+    fs.writeFileSync(path.join(c.base, 'esquadro', 'sess-t.json'), JSON.stringify({ tokensDeContexto: 1234 }));
+    for (const tokens of ['-5', '1e400', '-1e400']) {
+      const r = rodar(c, '{"uso":{"context":{"tokens":' + tokens + ',"window":1000000,"percent":5}},"amostras":[],"sessao":"sess-t"}');
+      assert.ok(r.longa.indexOf('- tamanho do contexto: 1.234 de ') !== -1, tokens + ': ' + r.longa);
+      assert.ok(!/tamanho do contexto: (-|Infinity)/.test(r.longa), tokens + ': ' + r.longa);
+    }
+    // controle: o valor ao vivo bom ainda manda (D445)
+    const bom = rodar(c, { uso: Object.assign({}, USO, { context: { tokens: 0, window: 1000000, percent: 0 } }), amostras: [], sessao: 'sess-t' });
+    assert.ok(bom.longa.indexOf('- tamanho do contexto: 0 de ') !== -1, bom.longa);
   });
 });
 
@@ -88,9 +104,9 @@ test('sessao.js: devolve a linha do plano (vazia sem plano)', () => {
     fs.writeFileSync(path.join(c.projeto, '.claude', 'esquadro', 'plano-ativo.json'),
       JSON.stringify({ arquivo: 'p/2026-01-01-x-plano.md', sessionId: 's' }));
     const comPlano = rodar(c, { uso: USO, amostras: [], sessao: 'nao-existe' });
-    assert.strictEqual(comPlano.plano, 'plano x | 1 de 2 | proxima: Tarefa 2 b');
-    // pedido 32: a barra leva o plano curto (nome e conta) logo depois de "esquadro"
-    assert.ok(comPlano.curta.indexOf('esquadro | plano x 1 de 2 | contexto') === 0, comPlano.curta);
+    assert.strictEqual(comPlano.plano, 'plano x · 1 de 2 tarefas · próxima: Tarefa 2 — b');
+    // plano 082 (p6-24): o plano fica so na faixa; a barra comeca no contexto
+    assert.ok(comPlano.curta.indexOf('contexto 5% · ') === 0 && comPlano.curta.indexOf('plano') === -1, comPlano.curta);
   });
 });
 
@@ -109,10 +125,12 @@ test('sessao.js: gasto do mes (real + transcricoes) na curta, e `guardar` com o 
     const antes = (t) => ({ t: t, medidas: 4, janelas: { seven_day: { resetIni: 'R', ini: 0, resetFim: 'R', fim: 10 } } });
     const r = rodar(c, { uso: uso, amostras: [], sessao: 'sess-g', historico: { a: antes(1), b: antes(2) }, gastoReal: {} });
     // semana 30% usada, 10% por sessao nas 2 anteriores -> 7 handoffs
-    assert.ok(r.curta.indexOf('semana 30% (~7 handoffs)') !== -1, r.curta);
+    // (plano 082, p6-32: a previsao em handoffs saiu da barra; fica na resposta do comando)
+    assert.ok(r.longa.indexOf('- a janela da semana acaba em ~7 trocas de chat') !== -1, r.longa);
+    assert.ok(r.curta.indexOf('semana 30% · ') !== -1 && r.curta.indexOf('handoffs') === -1, r.curta);
     // real: a sessao atual (US$ 1); estimado: so a "outra" (US$ 4) - a atual tem real e sai da estimativa.
-    assert.ok(r.curta.indexOf('mes US$ 5 |') !== -1, r.curta);
-    assert.ok(r.curta.indexOf('sessao US$ 1.00') !== -1, r.curta);
+    assert.ok(r.curta.indexOf('mês US$ 5 · ') !== -1, r.curta);
+    assert.ok(r.curta.indexOf('sessão US$ 1,00') !== -1, r.curta);
     assert.ok(r.guardar && r.guardar.historico['sess-g'].janelas.seven_day.ini === 30, JSON.stringify(r.guardar));
     const chave = Object.keys(r.guardar.gastoReal)[0];
     assert.deepStrictEqual(r.guardar.gastoReal[chave], { 'sess-g': 1 });

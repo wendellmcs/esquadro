@@ -172,17 +172,20 @@ fechou começa **revisão nova**: o `preparar-revisao.js` move a base inteira pa
 
 ## Passo 5 — parar
 
-O `apurar-ronda.js` diz quando parar. Três saídas possíveis:
+O `apurar-ronda.js` diz quando parar.
+
+Com referência, duas rondas secas só aprovam quando toda lente empata ou vence a referência nas duas ordens,
+sem lacuna P0/P1 do lado novo (`referencia.pronta`). **Referência não alcançada** é o contrário: alguma lente
+fica atrás dela numa das ordens, ou sobra lacuna P0/P1. Antes da ronda 3, a revisão não encerrou: o `motivo`
+lista as lentes que ficaram atrás, e a próxima ronda as chama. Na ronda 3, é o teto.
+
+Três saídas possíveis:
 
 | `motivo` | O que você faz |
 |---|---|
 | duas rondas secas (com referência: e `referencia.pronta`) | Aprovado. Feche dizendo quantos agentes rodaram, em quantas rondas |
 | teto de 3 rondas com P0/P1 aberto ou a referência não alcançada | **Para.** Leva ao dono com exatamente 3 opções, a recomendada marcada. O que sobrar vira registro |
 | ainda não encerrou (inclui a referência não alcançada antes da ronda 3) | Corrige e roda a próxima ronda, com as lentes que o `motivo` lista |
-
-Com referência, duas rondas secas só aprovam quando toda lente empata ou vence a referência nas duas ordens,
-sem lacuna P0/P1 do lado novo (`referencia.pronta`). Sem isso, antes da ronda 3 a revisão não encerrou: o `motivo`
-lista as lentes que ficaram atrás, e a próxima ronda as chama. Na ronda 3, é o teto.
 
 ## Passo 6 — o que não foi inspecionado
 

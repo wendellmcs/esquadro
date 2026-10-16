@@ -367,15 +367,27 @@ trabalho, e o fim do turno barra a entrega da marcha AAA que não foi revisada c
 `AskUserQuestion`, com 3 opções. Na pergunta ao dono, sem jargão: "qual é o melhor exemplo que existe do que este
 projeto entrega? A revisão vai comparar o trabalho com ele" — "marcha" só se explica no Passo 5.
 
-1. **nomear agora**, por tipo, caminhos de arquivo ou print local (recomendada): o inspetor só lê arquivo. Um link
-   pode ser gravado, mas o inspetor não abre a página: diga ao dono que, para valer, salve a página ou um print num
-   arquivo do projeto e dê esse caminho. Ofereça só caminhos que apareceram na listagem do Passo 3b ou na varredura;
-   sem candidato, pergunte aberto;
-2. **deixar para depois**: não grava a chave; a revisão e o fim do turno seguem como antes, e a abertura da sessão
-   avisa uma vez que ela falta;
-3. **nunca neste projeto**: grava `"referencias": {}`, e o aviso da abertura não sai.
+As 3 opções vão ao dono com estes rótulos e estas descrições, já em palavras dele (o que vem depois de "Grava:" é
+para você, não entra na opção):
 
-No re-init, mostre a `referencias` atual e pergunte só se o dono quer mudar: o re-init funde por tipo.
+1. **Nomear agora (recomendada)** — "Você aponta o melhor exemplo de cada tipo (tela, código, texto): um arquivo
+   ou um print salvo no projeto. Toda revisão de entrega de rigor máximo compara o trabalho com ele." Grava:
+   `referencias`, por tipo. O inspetor só lê arquivo: ofereça só caminhos que apareceram na listagem do Passo 3b ou
+   na varredura; sem candidato, pergunte aberto. Se o dono só tiver um link, diga que o inspetor não abre a página e
+   dê as duas saídas: salvar a página ou um print num arquivo do projeto e dar esse caminho; ou gravar o link assim
+   mesmo, sabendo que aquele exemplo fica fora da comparação até virar arquivo (o `/esquadro:revisar` avisa isso a
+   cada revisão);
+2. **Deixar para depois** — "Nada muda por ora: a revisão compara só o antes e o depois. A próxima sessão lembra
+   uma vez. Para nomear depois, rode `/esquadro:init` de novo e responda só esta pergunta." Grava: nada (a chave
+   fica de fora, e a abertura da sessão avisa uma vez que ela falta);
+3. **Nunca neste projeto** — "A revisão nunca compara o trabalho com um exemplo de fora: ela só vê se o depois
+   ficou melhor que o antes, não se ficou à altura do melhor que existe. O lembrete não sai mais." Grava:
+   `"referencias": {}`, e o aviso da abertura não sai.
+
+No re-init, mostre a `referencias` atual e pergunte só se o dono quer mudar. A resposta se junta à que existe,
+tipo a tipo: o tipo que o dono responder troca a lista dele, e o tipo que ele não citar fica como estava. Por isso
+`{}` no re-init não apaga nada; para tirar um tipo, grave a lista dele vazia (`"tela": []`), que vale como sem
+referência; para tirar todos, um `[]` por tipo, ou o dono apaga a chave à mão no `projeto.json`.
 
 ## Passo 5 — o mapa de marchas
 

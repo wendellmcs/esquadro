@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.8.2 — aparência nova na faixa, na linha de status e nos dois painéis; avisos numa forma só; 105 correções
+
+**Mudado: a aparência** (desenhada por imagem e aprovada antes do código)
+
+- **A linha de status em uma linha só**, na ordem contexto · 5h até HH:MM · semana · mês · sessão · troca N de M
+  (`contexto 24% · 5h 4% até 13:50 · semana 18% · mês US$ 3.311 · sessão US$ 7,52 · troca 0 de 2`). Sai o
+  "esquadro" da frente (o VS Code já escreve "esquadro plugin") e sai o plano, que mora na faixa. O mês vem
+  arredondado, com centavos abaixo de US$ 1, e com "+ (somando)" enquanto as conversas do mês ainda estão sendo
+  lidas. A previsão saiu da linha e foi para o `/esquadro-sessao`. Com o Node.js parado, a linha diz "medidor
+  parado: o Node.js não respondeu. Rode node -v num terminal para conferir."
+- **A faixa acima do prompt**: `plano 082 · 2 de 7 tarefas · próxima: Tarefa 3 — ...`, com a unidade do plano
+  (tarefa, etapa, fase, onda ou item) e "concluído (6 de 6 tarefas)" quando nada falta, em vez de "nada aberto".
+  Embaixo, a frase do que aconteceu e o botão, com rótulo em palavras (gerar handoff, virar regra, ver o que cortar,
+  carregar o manual). Todo botão sai `primary`: no VS Code o `secondary` sai igual. Se o clique não consegue
+  escrever no prompt, a faixa diz o comando a digitar, em vez de falhar calada.
+- **`/esquadro-sessao` em cinco blocos com título**: Contexto e limites, Gasto, Previsão, Troca de chat e O que
+  fazer. "Handoffs" virou "trocas de chat" e "turnos" virou "respostas" (troca de chat explicada no README); número
+  com ponto de milhar e dinheiro com vírgula. Os sinais que valem vêm do mais perto do limite, com "← disparou" ou
+  "← perto do limite" (a partir de 90% do limiar), e os que o modo contínuo desliga vão numa linha só. Sem leitura
+  ainda, a linha diz quando ela aparece.
+- **`/esquadro-plano` em Markdown**: título com a conta, uma linha com a frente e o caminho do plano, a lista das
+  tarefas (`- [x]`, `- [ ]`) e o bloco "Ritmo" (próxima, o que falta, sessões gastas e estimativa). O painel que
+  falha diz o que copiar e onde colar.
+- **Acento** na linha de status, na faixa e nas respostas dos dois comandos, provado no VS Code antes de mudar o
+  código. Os avisos dos ganchos seguem sem acento.
+- **Os avisos dos ganchos numa forma só**: a 1ª linha diz o que falta, em palavras de quem usa; caminhos entre
+  aspas, um por linha; as saídas numeradas em "Faca uma destas" (ou "Faca assim:", quando há uma só); a linha de
+  desligar por último, só no aviso que já tinha chave. No bloqueio de comando destrutivo e no do `cd` solto, a
+  última linha é "So o dono libera", sem ensinar a desligar. Os avisos da revisão dizem a lente, o caminho tentado
+  e o efeito prático.
+
+**Corrigido** (os P2 que as revisões da 0.8.0 e da 0.8.1 deixaram abertos: 51 de aparência, os de cima e os de
+documentação, mais 22 falhas, 27 de estilo, 3 de tamanho e 2 de segurança)
+
+- **Segurança.** Referência de topo fora da pasta do projeto (caminho absoluto, `../` ou link que aponta para fora)
+  não é mais lida nem vai ao inspetor: vira falta, com o código `FORA_DA_RAIZ`, pelo caminho real. Linha da
+  referência que começa com `===` ganha uma `\` na frente, para o conteúdo não forjar o cabeçalho de outra
+  referência no `R.txt`.
+- **Tamanho.** Referência acima de 100 KB (em bytes UTF-8) não entra inteira no `R.txt`: vai pelo caminho, como a
+  imagem. Plano acima de 1 MB no disco deixa a faixa vazia (o maior plano medido tinha 934.918 bytes), e o
+  `/esquadro-plano` o lê igual.
+- **Revisão.** Pacote em que nenhuma referência se leu sai como pacote sem referência. Com referência, a apuração
+  para se o `mapa.json` não diz qual lado é A, qual é B e qual é o trabalho; e para também com vereditos em
+  `invertida/vereditos/` sem a passada invertida no mapa (pasta vazia não). `invertida/` só vale dentro de ronda
+  numerada. O inspetor que tem o `R.txt` e responde "não sei" conta como perder dos dois lados (o padrão é
+  reprovar).
+- **Medidor e gasto.** Sem o id da sessão atual, não há média por sessão; as janelas da média vêm do histórico.
+  Gasto cujo total não bate com real mais estimado (diferença acima de meio centavo) fica de fora. Transcrição que
+  não se lê conta à parte (`ilegiveis`) e não entra no cache; modelo sem preço entra no cache e no gasto do mês
+  (`semPreco`). O medidor ainda não mostra esses dois números.
+- **Plano.** O caminho do plano se monta num lugar só, para o painel, para a saída JSON do `scripts/plano.js` e para
+  o portão de fecho. O `--abrir` que não consegue gravar sai com a mensagem do arquivo, da causa e do que fazer.
+- **Botões.** A ordem vem de uma lista só; caminho com espaço ou aspa vai entre aspas no comando que o botão põe no
+  prompt.
+- **Windows.** Dois caminhos que só diferem em maiúscula e minúscula contam como o mesmo arquivo na referência de
+  topo, como o glob já fazia; fora do Windows, são dois.
+- **Re-init.** A fusão por chave guarda uma chave `__proto__` vinda do JSON como chave comum.
+
+**Documentação.** O README diz o que é troca de chat, mostra a aparência nova, o que fazer quando o âmbar fica fraco
+no tema claro, o que é "lado" na revisão e o que o re-init faz com `referencias`. O `/esquadro:init` faz a pergunta
+da referência de topo com as 3 opções em palavras do dono, cada uma com o que ele perde. Este CHANGELOG ganhou
+acento na 0.7.8 e explica na 1ª vez os termos da 0.8.0 e da 0.8.1.
+
 ## 0.8.1 — a entrega AAA cobra a revisão contra a peça de topo; a faixa mostra o plano, o mês e um botão por comando
 
 **Novo**
@@ -27,7 +90,10 @@
   conta o fecho da revisão com referência num balde próprio, `revisao_referencia_fechada`, que é o que o portão lê;
   ele não abre arquivo nenhum. Sem `referencias`, nada muda. Desliga com `"portaoReferencia": false` (chave nova);
   `travas.fecho: false` não o desliga.
-- Sao **24 baldes** de contador: 18 que negam, 6 que so contam.
+- São **24 baldes** de contador: 18 que negam, 6 que só contam. Balde é cada tipo de evento que o plugin conta
+  na sessão. Os que negam são bloqueios de portão e somam no sinal "bloqueios de portão" da troca de chat; os que
+  só contam registram o que aconteceu (uma revisão fechada, um agente despachado) sem barrar nada. O balde novo,
+  `revisao_referencia_fechada`, é dos que só contam.
 
 **Corrigido**
 
@@ -40,70 +106,76 @@
 
 - **Chave `referencias` no `projeto.json`.** Opcional, por tipo de entrega (`tela`, `codigo`, `texto`), cada tipo
   uma lista de caminhos ou URLs da melhor peça que existe para ele, no mercado ou no próprio projeto.
-  `node scripts/validar.js` reprova tipo desconhecido e lista que não é de texto; o `/esquadro:init` rodado de novo
-  funde por tipo. Sem a chave, nada muda.
+  O `node scripts/validar.js` reprova tipo desconhecido e lista com item que não é texto, e a reprovação sai na
+  saída dele, com a chave a corrigir. No `/esquadro:init` rodado de novo, o tipo respondido troca a lista dele e o
+  tipo não citado fica como estava. Sem a chave, nada muda.
 - **A referência entra no pacote da revisão.** Quando o arquivo revisado tem referência do seu tipo (texto pela
   extensão `.md`, `.markdown` ou `.txt`; tela pela regra de estilo; código o resto), o
   `node scripts/preparar-revisao.js` grava o `R.txt` (cada referência com um cabeçalho; texto inteiro, imagem pelo
-  caminho para o inspetor abrir) e uma 2ª passada com A e B trocados em `invertida/`. O campo `aviso` da saída desse comando
-  lista as URLs (aceitas, mas o inspetor não abre a página: para ela contar, troque por um arquivo ou print local) e
+  caminho para o inspetor abrir) e uma 2ª passada em `invertida/`: a mesma revisão de novo, com A e B trocados, para a
+  ordem em que o inspetor lê os dois lados não pesar no voto. O campo `aviso` da saída desse comando
+  lista as URLs (aceitas, mas o inspetor não abre a página: para ela contar, salve a página ou um print num arquivo
+  dentro do projeto e ponha o caminho dele na mesma lista, no lugar da URL) e
   cada referência que não se leu, com a causa (corrija a entrada em `referencias` de `.claude/esquadro/projeto.json`
   ou dê ao seu usuário permissão de leitura no arquivo). Sem referência, o pacote sai byte a byte como antes. Se a chave estiver em formato errado, o
   pacote sai sem referência, sem parar, e o mesmo `aviso` manda rodar `node scripts/validar.js`, que diz o que
   corrigir.
-- **O inspetor julga cada lado contra a referência.** Com `R.txt`, o veredito traz `vsReferencia` (`vence`, `empata`
-  ou `perde`, para A e para B) e `lacunas` (o que separa um lado da referência, com severidade e `arquivo:linha`,
-  como o achado). O gancho grava também os vereditos da 2ª passada, em `invertida/vereditos/`.
+- **O inspetor julga cada lado contra a referência.** Cada lado é um dos dois arquivos que o inspetor recebe, A e B
+  (o antes e o depois da mudança, sem saber qual é qual). Com `R.txt`, o veredito traz o campo `vsReferencia`, o
+  placar de cada lado contra a referência (`vence`, `empata` ou `perde`, para A e para B), e o campo `lacunas`, o
+  que falta a um lado para chegar à referência, com severidade e `arquivo:linha`, como o achado. O
+  `gravar-veredito.js`, o gancho que guarda cada veredito quando o inspetor termina, guarda também os da 2ª
+  passada, em `invertida/vereditos/`.
 - **A apuração exige as duas ordens.** O `node scripts/apurar-ronda.js` lê as duas passadas e traz `referencia` na saída: por
   lente, o resultado em cada ordem e o final (perder em uma ordem é perder; vencer nas duas é vencer; o resto,
   empatar), as lacunas do lado novo e as lentes que ficaram atrás. Duas rondas secas só aprovam com toda lente
   empatando ou vencendo, sem lacuna P0/P1; o teto de 3 rondas segue. Achado da 2ª passada sai com `passada: 2`, e a
   refutação dele leva o mesmo campo. Sem referência, a apuração é a de antes.
 - **O manual pede a referência antes de fazer.** A seção 4.1 do `padrao` manda nomear, na marcha AAA, a referência
-  de topo que se abre (arquivo, print, repositório), nunca uma lembrança; sem ela, "sem referência" e o artefato
-  irmão já aprovado.
+  de topo que se abre (arquivo, print, repositório), nunca uma lembrança. Sem ela, o agente escreve "sem
+  referência" e compara com a peça irmã já aprovada no próprio projeto.
 
 **Custo:** com referência, cada lente roda duas vezes (o dobro de agentes); a revisão diz isso junto do número de
 agentes. Sem a chave `referencias`, a revisão custa o mesmo de antes.
 
-## 0.7.8 — o painel do plano acha o plano certo, conta as sessoes dele e le etapas em tabela
+## 0.7.8 — o painel do plano acha o plano certo, conta as sessões dele e lê etapas em tabela
 
 **Corrigido**
 
-- **Plano da sessao sem frente.** A sessao que nao esta ligada a nenhuma frente le agora o Objetivo do
-  `.claude/esquadro/escopo.md`; antes, ela via o plano de outra frente (a unica com plano anotado), sem aviso. Quando
-  o `escopo.md` nao anota plano e uma so frente anota, o painel mostra o plano dessa frente, diz que a sessao nao esta
-  ligada a ela e qual arquivo editar para ligar; com varias, lista as frentes, como antes.
-- **A forma que as sessoes ja escrevem.** Alem de `Plano: <caminho>`, vale `plano` seguido do caminho entre crases ou
+- **Plano da sessão sem frente.** A sessão que não está ligada a nenhuma frente lê agora o Objetivo do
+  `.claude/esquadro/escopo.md`; antes, ela via o plano de outra frente (a única com plano anotado), sem aviso. Quando
+  o `escopo.md` não anota plano e uma só frente anota, o painel mostra o plano dessa frente, diz que a sessão não está
+  ligada a ela e qual arquivo editar para ligar; com várias, lista as frentes, como antes.
+- **A forma que as sessões já escrevem.** Além de `Plano: <caminho>`, vale `plano` seguido do caminho entre crases ou
   aspas, terminado em `.md`. Com as duas formas no Objetivo, vale a que aponta para um arquivo que existe; se os
-  dois existem, vale o `Plano:`; se nenhum existe, tambem vale o `Plano:`, e o painel diz que nao consegue le-lo.
-- **Sessoes gastas do plano, nao da frente.** As sessoes gastas e a estimativa saem agora das marcas de sessao no
-  proprio plano. A sessao 12 anota `(s12: feito)` na caixa `- [x]` do plano que ela marca; caixa refeita por duas
-  sessoes leva as duas, `(s12, s13: refeito)`. Cada numero conta uma vez, tambem no plano aberto por `--abrir`. Antes
-  contavam as marcas da frente inteira (41 para um plano de 2 sessoes). Plano sem marca: o painel diz como anotar.
-- **Plano anotado fora do projeto.** O plano anotado no Objetivo so e lido dentro da pasta do projeto; fora dela, o
-  painel diz que nao le e da as duas saidas: anotar um caminho dentro do projeto ou abrir o plano com `--abrir`. Se
-  o plano e lido mas a conta falha, o painel diz isso, e nao mais "nao consegui ler", e pede para registrar a
+  dois existem, vale o `Plano:`; se nenhum existe, também vale o `Plano:`, e o painel diz que não consegue lê-lo.
+- **Sessões gastas do plano, não da frente.** As sessões gastas e a estimativa saem agora das marcas de sessão no
+  próprio plano. A sessão 12 anota `(s12: feito)` na caixa `- [x]` do plano que ela marca; caixa refeita por duas
+  sessões leva as duas, `(s12, s13: refeito)`. Cada número conta uma vez, também no plano aberto por `--abrir`. Antes
+  contavam as marcas da frente inteira (41 para um plano de 2 sessões). Plano sem marca: o painel diz como anotar.
+- **Plano anotado fora do projeto.** O plano anotado no Objetivo só é lido dentro da pasta do projeto; fora dela, o
+  painel diz que não lê e dá as duas saídas: anotar um caminho dentro do projeto ou abrir o plano com `--abrir`. Se
+  o plano é lido mas a conta falha, o painel diz isso, e não mais "nao consegui ler", e pede para registrar a
   mensagem como defeito do esquadro.
 
 **Novo**
 
-- **Etapas em tabela.** O painel le o plano que lista as etapas numa tabela: 1a coluna `Etapa`, `Fase`, `Item`,
-  `Tarefa` ou `Onda`, uma etapa por linha, comecando pelo id (como `P0` ou `2b-0`). Para marcar uma etapa como feita,
-  ponha `[FEITO]` na 1a celula dela. Sem nenhum `[FEITO]` na tabela, o painel segue a ultima `ETAPA <id>` do Objetivo
+- **Etapas em tabela.** O painel lê o plano que lista as etapas numa tabela: 1ª coluna `Etapa`, `Fase`, `Item`,
+  `Tarefa` ou `Onda`, uma etapa por linha, começando pelo id (como `P0` ou `2b-0`). Para marcar uma etapa como feita,
+  ponha `[FEITO]` na 1ª célula dela. Sem nenhum `[FEITO]` na tabela, o painel segue a última `ETAPA <id>` do Objetivo
   do escopo cujo id a tabela tem: as linhas acima dela contam como feitas, e ela como em curso; uma linha "estado
   pelo escopo:" diz isso e como marcar. Sem `ETAPA` com id da tabela, as etapas ficam sem estado (`[?]`). Com um
-  `[FEITO]` que seja, so as marcas valem. Vale a 1a dessas tabelas; linha sem id fica fora da conta, e o painel avisa
-  quais e pede o id; plano com caixas de passo segue nas caixas. `\|` dentro da celula e barra, nao divisa de coluna,
-  e o plano gravado com BOM (a marca invisivel que editores do Windows poem no comeco do arquivo) le igual. Antes, o
+  `[FEITO]` que seja, só as marcas valem. Vale a 1ª dessas tabelas; linha sem id fica fora da conta, e o painel avisa
+  quais e pede o id; plano com caixas de passo segue nas caixas. `\|` dentro da célula é barra, não divisa de coluna,
+  e o plano gravado com BOM (a marca invisível que editores do Windows põem no começo do arquivo) lê igual. Antes, o
   plano do APP (etapas P0-P7 numa tabela) dava "o painel nao consegue contar as tarefas".
 
 **Mudado**
 
-- **`/esquadro:handoff`.** O handoff grava a linha `Plano:` no Objetivo do escopo em vigor e pede a marca da sessao
-  em cada caixa marcada, para o painel achar o plano e contar as sessoes no chat novo; no plano em tabela, pede
-  `[FEITO]` na celula da etapa fechada e a marca da sessao na mesma linha, e, na 1a marca `[FEITO]`, tambem nas
-  etapas anteriores ja feitas (a 1a marca encerra a deducao pelo escopo).
+- **`/esquadro:handoff`.** O handoff grava a linha `Plano:` no Objetivo do escopo em vigor e pede a marca da sessão
+  em cada caixa marcada, para o painel achar o plano e contar as sessões no chat novo; no plano em tabela, pede
+  `[FEITO]` na célula da etapa fechada e a marca da sessão na mesma linha, e, na 1ª marca `[FEITO]`, também nas
+  etapas anteriores já feitas (a 1ª marca encerra a dedução pelo escopo).
 
 ## 0.7.7 — o README conta tudo o que o plugin instala
 

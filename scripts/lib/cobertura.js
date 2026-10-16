@@ -149,7 +149,8 @@ function relatorio(cwd, projeto) {
 
 /** O relatorio em texto. Declarar o que NAO da e o ponto, nao o rodape. */
 function texto(r) {
-  const linhas = ['esquadro - cobertura neste ambiente', ''];
+  // Plano 082, Tarefa 5 (mock S10): a 1a linha diz o que o relatorio responde.
+  const linhas = ['esquadro - cobertura neste ambiente: o que consigo verificar aqui, e o que nao.', ''];
   linhas.push('Consigo verificar aqui (' + r.resumo.verificaveis + ' de ' + r.resumo.total + '):');
   for (const p of r.portoes) {
     if (p.verificavel) linhas.push('  [x] ' + p.titulo + ' - ' + p.porque);

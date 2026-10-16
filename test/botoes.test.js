@@ -37,7 +37,7 @@ test('botao handoff: o gatilho contavel cruzou', () => {
   assert.deepStrictEqual(nomes(b), ['handoff']);
   assert.strictEqual(b[0].comando, '/esquadro:handoff');
   assert.strictEqual(b[0].rotulo, 'gerar handoff');
-  assert.match(b[0].texto, /troca de chat/);
+  assert.match(b[0].texto, /troca de chat cruzou/);
 });
 
 test('botao revisar: arquivo AAA com referencia mudado e nenhuma revisao contra ela fechada (a condicao do portao, D503)', () => {
@@ -117,13 +117,65 @@ test('botoes: tudo aceso sai na ordem de prioridade', () => {
   assert.deepStrictEqual(nomes(b), ['handoff', 'revisar', 'aprender', 'auditar', 'calibrar', 'paralelo', 'padrao']);
   b.forEach(function (x) {
     assert.match(x.comando, /^\/esquadro:[a-z]+( \S.*)?$/, 'comando do esquadro: ' + x.comando);
-    assert.ok(/^[\x20-\x7e]+$/.test(x.texto + x.rotulo), 'ASCII (R5): ' + x.texto + ' / ' + x.rotulo);
   });
+});
+
+// Plano 082, Tarefa 2 (p5-36; mock D532, S1-S2): texto e rotulo sem jargao, dizendo o que fazer, com acento (D532: a
+// faixa e excecao a R5). handoff, calibrar e padrao como no mock; os outros 5 na mesma voz.
+test('plano 082 (p5-36): os 8 textos e rotulos, sem jargao e com acento', () => {
+  const s = { arquivosTocados: [path.join(RAIZ, 'src', 'a.js')], esperaAprender: correcao.ESPERA_ENTRE_SUGESTOES,
+    auditoriaAvisou: true };
+  const tudo = botoes.daSessao(base({ cruzou: true, s: s, projeto: COM_REF, resposta: '/esquadro:paralelo',
+    contarConversas: function () { return 557; } })).concat(botoes.daSessao(base({ temProjeto: false, projeto: null })));
+  const visto = {};
+  tudo.forEach(function (x) { visto[x.nome] = x.texto + ' [' + x.rotulo + ']'; });
+  assert.deepStrictEqual(visto, {
+    handoff: 'Um gatilho de troca de chat cruzou: gere o handoff e siga num chat novo. [gerar handoff]',
+    revisar: 'Você mudou arquivo de rigor máximo e nenhuma revisão contra a referência do projeto fechou. [revisar]',
+    aprender: 'Isso pareceu uma correção sua: dá para virar regra das próximas vezes. [virar regra]',
+    init: 'Este projeto ainda não tem o esquadro configurado. [configurar]',
+    auditar: 'A auditoria automática achou regras ou skills para cortar. [ver o que cortar]',
+    calibrar: 'Já há 557 conversas salvas: dá para calibrar quando trocar de chat. [calibrar]',
+    paralelo: 'O agente ofereceu rodar as tarefas em paralelo. [rodar em paralelo]',
+    padrao: 'Você mudou arquivo de rigor máximo sem carregar o manual. [carregar o manual]'
+  });
+  for (const x of tudo) {
+    assert.ok(!/AAA|execucao|contavel|\?/.test(x.texto + x.rotulo), 'sem jargao nem "?": ' + x.texto);
+    assert.ok(/^[A-ZÀ-Ú].*\.$/.test(x.texto), 'frase inteira, com maiuscula e ponto: ' + x.texto);
+  }
 });
 
 test('botoes: estado torto nao lanca (arquivosTocados que nao e lista, contador que nao e numero)', () => {
   assert.deepStrictEqual(botoes.daSessao(base({ s: { arquivosTocados: 'x', contadores: 'y' }, projeto: COM_REF })), []);
   assert.deepStrictEqual(botoes.daSessao({}), []);
+});
+
+// Plano 082, Tarefa 6 (p5-31): o contarConversas() lancava e a lista inteira caia; agora so o calibrar fica de fora.
+test('082 T6 (p5-31): contarConversas que lanca tira so o calibrar, os outros botoes ficam', () => {
+  const b = botoes.daSessao(base({ cruzou: true, s: { auditoriaAvisou: true },
+    contarConversas: function () { throw new Error('EACCES'); } }));
+  assert.deepStrictEqual(nomes(b), ['handoff', 'auditar']);
+});
+
+// p5-33: a ORDEM exportada e a ordem da lista (antes valia a ordem dos if, e as duas podiam divergir).
+test('082 T6 (p5-33): a lista sai na ordem de ORDEM, nao na ordem dos if', () => {
+  const s = { arquivosTocados: [path.join(RAIZ, 'src', 'a.js')], esperaAprender: correcao.ESPERA_ENTRE_SUGESTOES,
+    auditoriaAvisou: true };
+  const entrada = base({ cruzou: true, s: s, projeto: COM_REF, resposta: '/esquadro:paralelo',
+    contarConversas: function () { return 999; } });
+  const antes = botoes.ORDEM.slice();
+  try {
+    botoes.ORDEM.reverse();
+    assert.deepStrictEqual(nomes(botoes.daSessao(entrada)), ['padrao', 'paralelo', 'calibrar', 'auditar', 'aprender', 'revisar', 'handoff']);
+  } finally { botoes.ORDEM.splice(0, botoes.ORDEM.length, ...antes); }
+  assert.deepStrictEqual(botoes.ORDEM, antes);
+});
+
+// p5-37: o caminho com espaco ia cru no comando e virava dois argumentos do /esquadro:revisar.
+test('082 T6 (p5-37): arquivo com espaco vai entre aspas no comando do revisar (sem espaco, cru: teste do botao revisar)', () => {
+  const s = { arquivosTocados: [path.join(RAIZ, 'src', 'meu arquivo.js')] };
+  const b = botoes.daSessao(base({ s: s, projeto: COM_REF, padraoCarregado: true }));
+  assert.strictEqual(b[0].comando, '/esquadro:revisar "src/meu arquivo.js"');
 });
 
 test('conversasDoProjeto: conta os .jsonl da pasta uma vez por dia (marca no cache)', () => {

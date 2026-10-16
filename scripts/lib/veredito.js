@@ -129,6 +129,8 @@ const RESULTADOS_REFERENCIA = ['vence', 'empata', 'perde'];
 // D223 e D228 (ronda 2 do 8c.10): o que invalida o veredito inteiro, e nao so um achado. O
 // apurar-ronda.js para nestes, como no ilegivel, e o apurar os recusa; o validarVeredito os
 // devolve junto dos erros de achado, que so descartam o achado.
+// opcoes (opcional): { comReferencia } - true quando o pacote tem R.txt; ai vsReferencia e lacunas sao exigidos.
+// Sem opcoes (ou com comReferencia falso), os dois campos nao se olham: e a regra da revisao sem referencia.
 function errosDoVeredito(vd, opcoes) {
   if (!vd || typeof vd !== 'object') return ['veredito nao e objeto'];
   const erros = [];
@@ -139,8 +141,9 @@ function errosDoVeredito(vd, opcoes) {
     const vs = vd.vsReferencia;
     if (!vs || typeof vs !== 'object' || Array.isArray(vs) || RESULTADOS_REFERENCIA.indexOf(vs.A) === -1 ||
         RESULTADOS_REFERENCIA.indexOf(vs.B) === -1) {
-      erros.push('vsReferencia tem de ser { "A": ..., "B": ... }, cada um vence, empata ou perde contra a referencia ' +
-        '(o pacote tem R.txt)');
+      // Plano 082, Tarefa 5 (p2-16): a lente diz qual veredito regravar.
+      erros.push('vsReferencia' + (vd.lente ? ' da lente "' + String(vd.lente) + '"' : '') + ' tem de ser { "A": ..., ' +
+        '"B": ... }, cada um vence, empata ou perde contra a referencia (o pacote tem R.txt)');
     }
     if (!Array.isArray(vd.lacunas)) erros.push('lacunas tem de ser lista, vazia quando nada separa os lados da referencia');
   }
@@ -160,6 +163,11 @@ function linhaDoAchado(linha) {
   return Number.isSafeInteger(n) && n >= 1 ? n : null;
 }
 
+/**
+ * Os erros do veredito e os achados (e lacunas) que valem. opcoes: as do errosDoVeredito - com comReferencia, as
+ * lacunas sao conferidas e sobem em lacunasValidas; sem ela, lacunasValidas sai vazia mesmo que o veredito traga
+ * lacunas (sem R.txt nao ha contra o que comparar).
+ */
 function validarVeredito(vd, opcoes) {
   const erros = errosDoVeredito(vd, opcoes);
   const validos = [];
@@ -277,7 +285,9 @@ function refutado(lista, ronda, lente, a, passada) {
   });
 }
 
+// O peso de cada resultado contra a referencia: quanto maior, pior. O pior entre lados e vereditos e o que vale.
 const PESO_REFERENCIA = { vence: 0, empata: 1, perde: 2 };
+
 /**
  * D503 (E6): o resultado do lado trabalho contra a referencia numa passada: o pior dos lados que o mapa diz trabalho
  * (os dois, quando o arquivo e identico ao HEAD). null quando nenhum lado e trabalho.
@@ -289,6 +299,17 @@ function vsDoTrabalho(vs, mapa) {
     if (pior === null || PESO_REFERENCIA[vs[rot]] > PESO_REFERENCIA[pior]) pior = vs[rot];
   });
   return pior;
+}
+
+/**
+ * Plano 082 (p2-6, p2-7): com referencia, o mapa de cada passada tem de dizer o lado dos dois rotulos ("trabalho" ou
+ * "HEAD") e ter ao menos um trabalho. Sem isso o resultado contra a referencia ficava "incompleta" calado (nunca
+ * aprovava) e o achado de um rotulo sem lado caia na chave por arquivo, igual nas duas passadas.
+ */
+function mapaDoTrabalho(mapa) {
+  if (!mapa || typeof mapa !== 'object' || Array.isArray(mapa)) return false;
+  const lado = function (v) { return v === 'trabalho' || v === 'HEAD'; };
+  return lado(mapa.A) && lado(mapa.B) && (mapa.A === 'trabalho' || mapa.B === 'trabalho');
 }
 
 /** D503 (E6): as duas ordens viram um resultado: perde em alguma = perde; vence nas duas = vence; o resto, empata. */
@@ -374,15 +395,16 @@ function chavePeloTexto(kBase, bruto, variantesDaChave, ronda) {
  *   mapas[i]   = { A: 'trabalho'|'HEAD', B: ... } da ronda i (o mapa.json). Com ele, so P0/P1 do
  *                lado 'trabalho' molha; os do lado 'HEAD' saem em achadosDoLadoAntigo. A chave
  *                passa a ser pelo LADO: o rotulo A/B e sorteado a cada ronda.
- *   refutados  = [{ ronda, lente, arquivo, linha, severidade, prova }]: achado refutado na fonte
- *                primaria nao molha. Sem `prova` ou sem `severidade`, lanca erro.
+ *   refutados  = [{ ronda, lente, arquivo, linha, severidade, prova, passada? }]: achado refutado na fonte
+ *                primaria nao molha. Sem `prova` ou sem `severidade`, lanca erro. `passada` e 2 para o achado
+ *                da ordem trocada (invertida/); sem ela, vale a 1a.
  *   mesmos     = [{ novo, outro, resposta }] (D387, #11c): so ALIMENTA provaveisMesmos; nao entra em
  *                secas, encerrar, motivo, novos, abertos nem no teto. A palavra do juiz e aviso, nao prova.
  *   textoDaLinha(indiceDaRonda, rotulo, linha, passada) -> texto ou null (D475): com ele, a mesma chave sobre um
  *                texto diferente do ja visto vira achado novo (chave + "|r<ronda>"); texto igual segue repeticao.
  *   invertidas[i] = { mapa, vereditos } (D503, E6-E8): a 2a passada (A/B trocados) da ronda i com referencia. Os
- *                vereditos das duas passadas exigem vsReferencia e lacunas; os achados da 2a contam pelo mapa dela e
- *                saem com passada 2. Sai `referencia` (null sem ela): { pronta, lentes, lacunas, lentesAtras };
+ *                vereditos das duas passadas exigem vsReferencia e lacunas, e os mapas das duas passadas exigem o
+ *                lado de A e de B (mapaDoTrabalho); os achados da 2a contam pelo mapa dela e saem com passada 2. Sai `referencia` (null sem ela): { pronta, lentes, lacunas, lentesAtras };
  *                com a ultima ronda fora da referencia, duas secas nao aprovam.
  * paresCandidatos sai sempre: achado P0/P1 novo da ultima ronda x outro achado do lado novo, mesmo
  * arquivo (o lado, com mapa; o rotulo, sem), a ate DISTANCIA_PAR linhas, chave diferente.
@@ -427,7 +449,15 @@ function apurar(rondas, opcoes) {
       throw new Error('ronda ' + (indice + 1) + ' com referencia sem nenhum veredito da 2a passada (invertida/vereditos): ' +
         'a ordem trocada e metade do voto; grave os vereditos da 2a passada e rode de novo');
     }
-    const mapaInv = comReferencia && inv.mapa && typeof inv.mapa === 'object' ? inv.mapa : null;
+    if (comReferencia) {
+      [[mapa, ''], [inv.mapa, ' (com A e B trocados)']].forEach(function (par) {
+        if (mapaDoTrabalho(par[0])) return;
+        throw new Error('ronda ' + (indice + 1) + par[1] + ' sem o mapa que diz qual lado e o trabalho ({ "A": "trabalho" ' +
+          'ou "HEAD", "B": ... }, com ao menos um trabalho): sem ele a comparacao com a referencia nunca fecha. Prepare ' +
+          'a ronda de novo (Passo 1 do /esquadro:revisar) e rode de novo');
+      });
+    }
+    const mapaInv = comReferencia ? inv.mapa : null;
     const daRonda = new Map();
     const passadas = comReferencia ? [[ronda, mapa, 1], [inv.vereditos, mapaInv, 2]] : [[ronda, mapa, 1]];
     for (const [lista, mapaP, passada] of passadas) {
@@ -436,23 +466,29 @@ function apurar(rondas, opcoes) {
         // apurar-ronda.js para antes de chegar aqui; quem chamar direto recebe o erro, com o motivo.
         const invalido = errosDoVeredito(vd, { comReferencia: comReferencia });
         if (invalido.length) {
-          throw new Error('veredito que nao e veredito na ronda ' + (indice + 1) + (passada === 2 ? ' (2a passada)' : '') +
-            ': ' + invalido.join('; '));
+          // Plano 082, Tarefa 5 (p2-16): a ronda, a ordem dos lados sem giria e a lente - qual veredito regravar.
+          throw new Error('veredito que nao e veredito na ronda ' + (indice + 1) + (passada === 2 ? ' (com A e B trocados)' : '') +
+            (vd && vd.lente ? ', lente "' + String(vd.lente) + '"' : '') + ': ' + invalido.join('; '));
         }
         const r = validarVeredito(vd, { comReferencia: comReferencia });
+        // O placar (qual rotulo saiu melhor) conta so a ordem normal: a ordem trocada julga os mesmos dois arquivos
+        // com os rotulos invertidos, e somar as duas contaria cada lente duas vezes, uma em cada rotulo.
         if (passada === 1 && indice === rondas.length - 1 && placar[vd.melhor] !== undefined) placar[vd.melhor] += 1;
         // RV-02 (D422): a chave leva a lente CANONICA; "Correcao e regressao" e "correcao" sao a mesma lente.
         const lenteChave = lenteCanonica(vd.lente);
         if (comReferencia) {
           if (!daRonda.has(lenteChave)) daRonda.set(lenteChave, { ordem1: null, ordem2: null, lacunas: [] });
-          const e = daRonda.get(lenteChave);
+          const daLente = daRonda.get(lenteChave);
           const campo = passada === 1 ? 'ordem1' : 'ordem2';
-          const x = vsDoTrabalho(vd.vsReferencia, mapaP);
-          if (x !== null && (e[campo] === null || PESO_REFERENCIA[x] > PESO_REFERENCIA[e[campo]])) e[campo] = x;
-          for (const l of r.lacunasValidas) {
-            if (!mapaP || mapaP[rotuloDoArquivo(l.arquivo)] !== 'trabalho') continue;
-            e.lacunas.push({ lente: lenteChave, ronda: indice + 1, passada: passada, severidade: l.severidade,
-              arquivo: l.arquivo, linha: l.linha, descricao: l.descricao });
+          const resultado = vsDoTrabalho(vd.vsReferencia, mapaP);
+          if (resultado !== null && (daLente[campo] === null || PESO_REFERENCIA[resultado] > PESO_REFERENCIA[daLente[campo]])) {
+            daLente[campo] = resultado;
+          }
+          for (const lacuna of r.lacunasValidas) {
+            // so a lacuna do trabalho barra a referencia: a do lado HEAD e o que ja estava atras antes da mudanca
+            if (mapaP[rotuloDoArquivo(lacuna.arquivo)] !== 'trabalho') continue;
+            daLente.lacunas.push({ lente: lenteChave, ronda: indice + 1, passada: passada, severidade: lacuna.severidade,
+              arquivo: lacuna.arquivo, linha: lacuna.linha, descricao: lacuna.descricao });
           }
         }
         for (const a of r.achadosValidos) {
@@ -565,26 +601,30 @@ function apurar(rondas, opcoes) {
   const ronda = rondas.length;
   const extra = { achadosDoLadoAntigo: antigosDaUltima, refutados: refutados, paresCandidatos: paresCandidatos,
     provaveisMesmos: provaveisMesmos, referencia: referencia };
-  const atras = referencia && !referencia.pronta;
-  const quaisAtras = atras ? ' (' + (referencia.lentesAtras.join(', ') || 'nenhuma lente julgada') + ')' : '';
+  // A ultima ronda tem referencia e ela ainda nao foi alcancada: barra a aprovacao. Sem referencia (null), nao barra.
+  const atrasDaReferencia = referencia !== null && !referencia.pronta;
+  // Plano 082, Tarefa 5 (p2-15): lista vazia aqui nao acontece (ronda sem veredito lanca antes, e lente julgada que nao
+  // empata nem vence entra em lentesAtras); se acontecer, diz a causa e o que fazer, e nao "nenhuma lente julgada".
+  const quaisAtras = atrasDaReferencia ? ' (' + (referencia.lentesAtras.join(', ') ||
+    'nenhuma lente julgou contra a referencia: grave os vereditos desta ronda com vsReferencia e apure de novo') + ')' : '';
 
-  if (secas >= 2 && !atras) {
+  if (secas >= 2 && !atrasDaReferencia) {
     return Object.assign({ ronda: ronda, secas: secas, encerrar: true,
       motivo: 'duas rondas secas seguidas: aprovado', novos: novosDaUltima, placar: placar }, extra);
   }
   if (ronda >= TETO) {
     return Object.assign({ ronda: ronda, secas: secas, encerrar: true,
       motivo: 'teto de ' + TETO + ' rondas com ' + abertos.size + ' achado(s) P0/P1' +
-        (atras ? ' e a referencia nao alcancada' + quaisAtras : '') +
+        (atrasDaReferencia ? ' e a referencia nao alcancada' + quaisAtras : '') +
         ': para aqui e leva ao dono com 3 opcoes; o que sobrar vira registro',
       novos: novosDaUltima, placar: placar }, extra);
   }
   return Object.assign({ ronda: ronda, secas: secas, encerrar: false,
     motivo: 'ronda ' + (ronda + 1) + ' chama so as lentes que acharam P0/P1' +
-      (atras ? ' e as que nao empatam com a referencia ou tem lacuna P0/P1' + quaisAtras : ''),
+      (atrasDaReferencia ? ' e as que nao empatam com a referencia ou tem lacuna P0/P1' + quaisAtras : ''),
     novos: novosDaUltima, placar: placar }, extra);
 }
 
 module.exports = { LENTES, LENTES_UI, FAMILIAS, SAEM_SO_LOGICA, familiasPara, FAIXA_UMA_ATE, FAIXA_DUAS_ATE,
   faixaDaMudanca, lentesDaFaixa, SEVERIDADES, RESULTADOS_REFERENCIA, TETO, chaveAchado, chaveDaLente, errosDoVeredito,
-  validarVeredito, apurar, conferirMesmos, DISTANCIA_PAR };
+  validarVeredito, apurar, conferirMesmos, DISTANCIA_PAR, mapaDoTrabalho };

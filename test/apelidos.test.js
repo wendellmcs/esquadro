@@ -95,7 +95,9 @@ test('apelidos: o motivo cita os dois lados e as duas direcoes de conserto', () 
   const m = apelidos.motivo(r);
   assert.ok(m.includes('busca'), m);
   assert.ok(m.includes('caro') && m.includes('barato'), m);
-  assert.ok(/a\)/.test(m) && /b\)/.test(m), 'tem de oferecer as DUAS direcoes: ' + m);
+  // Plano 082, Tarefa 5: as duas direcoes em "Faca uma destas" numerado (era a) e b)).
+  assert.ok(/\n {2}1\. o arquivo passa a dizer/.test(m) && /\n {2}2\. o mapa passa a dizer/.test(m),
+    'tem de oferecer as DUAS direcoes: ' + m);
   assert.ok(!/arquiteto/.test(m), 'agente que nao divergiu nao entra na mensagem');
 });
 

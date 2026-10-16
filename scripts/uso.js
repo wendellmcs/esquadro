@@ -16,7 +16,8 @@ const linhas = Object.keys(dados).map(function (k) { return [k, dados[k]]; })
   .sort(function (a, b) { return b[1] - a[1]; });
 const total = linhas.reduce(function (s, l) { return s + l[1]; }, 0);
 
-process.stdout.write('esquadro - disparos por trava (' + alvo + ')\n\n');
+// Plano 082, Tarefa 5 (mock S10): a 1a linha diz o que o relatorio responde; o arquivo lido entre aspas.
+process.stdout.write('esquadro - quantas vezes cada trava disparou neste projeto.\n\nContado em:\n  - "' + alvo + '"\n\n');
 for (const [chave, n] of linhas) {
   process.stdout.write('  ' + String(n).padStart(6) + ' | ' + chave + '\n');
 }

@@ -187,18 +187,27 @@ function avaliar(estado, limiares, continuo) {
 
   if (!gatilhos.length) return { disparou: false, alarme: false, gatilhos: [], aviso: null };
 
-  const aviso = (alarme ? [
-    'esquadro - ALARME: a conversa passou do tamanho em que cada chamada custa varias vezes a de um chat novo.',
-    gatilhos.map(function (g) { return '  - ' + g; }).join('\n'),
-    'Troque de chat agora: rode /esquadro:handoff, cole o prompt pronto num chat novo, e continue de la.'
-  ] : [
-    'esquadro - hora de abrir chat novo. Gatilho contavel disparou:',
-    gatilhos.map(function (g) { return '  - ' + g; }).join('\n'),
-    'Rode /esquadro:handoff, cole o prompt pronto num chat novo, e continue de la.',
-    'Se surgiu a duvida "ja e hora?", ja era.'
-  ]).join('\n');
+  return { disparou: true, alarme: alarme, gatilhos: gatilhos, aviso: avisoDeSaude(gatilhos, alarme) };
+}
 
-  return { disparou: true, alarme: alarme, gatilhos: gatilhos, aviso: aviso };
+/** Plano 082, Tarefa 5 (mock S10): o aviso de troca de chat na forma unica dos avisos. Vai ao usuario (systemMessage). */
+function avisoDeSaude(gatilhos, alarme) {
+  const lista = gatilhos.map(function (g) { return '  - ' + g; }).join('\n');
+  return (alarme ? [
+    'esquadro - ALARME: troque de chat agora; esta conversa ficou cara demais.',
+    '',
+    'Ela passou do tamanho em que cada chamada custa varias vezes a de um chat novo:',
+    lista
+  ] : [
+    'esquadro - hora de abrir chat novo.',
+    '',
+    'Gatilho contavel disparou:',
+    lista,
+    'Se surgiu a duvida "ja e hora?", ja era.'
+  ]).concat([
+    '',
+    'Faca assim: rode /esquadro:handoff, cole o prompt pronto num chat novo e continue de la.'
+  ]).join('\n');
 }
 
 /**
@@ -385,16 +394,18 @@ function expandirPrefixo(linha) {
 }
 
 // D412/D415. R5: ASCII puro - chega ao Claude como motivo do bloqueio.
+// Plano 082, Tarefa 5 (mock S10): a forma unica dos avisos.
 const MOTIVO_HANDOFF_SEM_PROMPT = [
-  'esquadro - portao de fecho (prompt do handoff).',
+  'esquadro - falta colar no chat o prompt do handoff (portao de fecho).',
   '',
-  'Voce gravou um arquivo de handoff neste turno e a sua resposta final nao tem bloco de codigo.',
-  'O prompt pronto tem de chegar ao chat, nao so ao arquivo: cole-o agora num bloco de codigo',
-  '(tres crases ou tres tis), nesta resposta final - uma vez so. O portao le so a resposta final:',
-  'se o bloco ficou numa mensagem anterior deste turno, ele nao a ve.',
+  'Voce gravou um arquivo de handoff neste turno, e a sua resposta final nao tem bloco de codigo.',
+  'O prompt pronto tem de chegar ao chat, nao so ao arquivo. O portao le so a resposta final:',
+  'um bloco numa mensagem anterior deste turno ele nao ve.',
   '',
-  'Para desligar este portao no projeto: "portaoHandoff": false em .claude/esquadro/projeto.json.'
+  'Faca assim: cole o prompt agora num bloco de codigo (tres crases ou tres tis), nesta resposta final - uma vez so.',
+  '',
+  'Desligar neste projeto: "portaoHandoff": false em .claude/esquadro/projeto.json.'
 ].join('\n');
 
-module.exports = { LIMIARES_PADRAO, BALDES_DE_BLOQUEIO, contextoDoTranscript, limiaresValidos, medir, acumular, avaliar, instrucaoAoModelo, perguntaSobreSaude,
+module.exports = { LIMIARES_PADRAO, BALDES_DE_BLOQUEIO, contextoDoTranscript, limiaresValidos, medir, acumular, avaliar, avisoDeSaude, instrucaoAoModelo, perguntaSobreSaude,
   INSTRUCAO_DA_PERGUNTA, ehArquivoDeHandoff, temBlocoDeCodigo, MOTIVO_HANDOFF_SEM_PROMPT };

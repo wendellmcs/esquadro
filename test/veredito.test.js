@@ -966,3 +966,41 @@ test('D503 E5/E8: na ronda com referencia, veredito sem vsReferencia (qualquer p
   const vazia = rondaRef([comRef('correcao', 'empata', 'empata')], []);
   assert.throws(() => apurarRef([vazia]), /2a passada/);
 });
+
+// Plano 082, Tarefa 5, tela S11 (p2-16): o erro do vsReferencia diz a lente (qual veredito regravar) e a ordem sem giria.
+test('082 T5: vsReferencia invalido diz a lente e a ordem dos lados, sem "2a passada"', () => {
+  const erros = v.errosDoVeredito(comRef('acessibilidade', 'vence', 'ganha'), { comReferencia: true });
+  assert.ok(erros.some((e) => /^vsReferencia da lente "acessibilidade" tem de ser/.test(e)), erros.join(' | '));
+  const sem2 = rondaRef([comRef('correcao', 'empata', 'empata')], [comRef('estados', 'vence', 'ganha')]);
+  assert.throws(() => apurarRef([sem2]), (err) => {
+    assert.match(err.message, /ronda 1 \(com A e B trocados\), lente "estados"/, err.message);
+    assert.doesNotMatch(err.message, /2a passada/, err.message);
+    return true;
+  });
+  const sem1 = rondaRef([comRef('correcao', 'perde', 'x')], [comRef('correcao', 'empata', 'empata')]);
+  assert.throws(() => apurarRef([sem1]), /ronda 1, lente "correcao"/);
+});
+
+// Plano 082, Tarefa 6 (p2-6, p2-7): com referencia, cada passada precisa do mapa que diz qual lado e o trabalho.
+test('082 T6 (p2-6): ronda com referencia sem mapa valido em alguma passada derruba a apuracao, com a ronda e a ordem', () => {
+  const r1 = rondaRef([comRef('correcao', 'empata', 'empata')], [comRef('correcao', 'empata', 'empata')]);
+  const semInv = { mapa: undefined, vereditos: r1.invertida.vereditos };
+  assert.throws(() => v.apurar([r1.vereditos], { mapas: [MAPA_REF], invertidas: [semInv] }),
+    /ronda 1 \(com A e B trocados\) sem o mapa/);
+  assert.throws(() => v.apurar([r1.vereditos], { mapas: [MAPA_REF], invertidas: [{ mapa: {}, vereditos: r1.invertida.vereditos }] }),
+    /ronda 1 \(com A e B trocados\) sem o mapa/);
+  assert.throws(() => v.apurar([r1.vereditos], { mapas: [null], invertidas: [r1.invertida] }), /ronda 1 sem o mapa/);
+  // nenhum lado e o trabalho: a comparacao nunca fecharia
+  assert.throws(() => v.apurar([r1.vereditos], { mapas: [{ A: 'HEAD', B: 'HEAD' }], invertidas: [r1.invertida] }), /ronda 1 sem o mapa/);
+  // sem referencia, o mapa segue opcional (a conta de antes)
+  assert.doesNotThrow(() => v.apurar([[veredito('correcao', [])]], { mapas: [null] }));
+});
+
+test('082 T6 (p2-7): mapa sem um dos lados nao deixa o A.txt da ordem trocada cair na chave sem lado', () => {
+  const r1 = rondaRef([comRef('correcao', 'empata', 'empata', [achado('P1', 'B.txt', 5)])],
+    [comRef('correcao', 'empata', 'empata', [achado('P1', 'B.txt', 5)])]);
+  assert.throws(() => v.apurar([r1.vereditos], { mapas: [MAPA_REF], invertidas: [{ mapa: { B: 'trabalho' }, vereditos: r1.invertida.vereditos }] }),
+    /sem o mapa/);
+  assert.throws(() => v.apurar([r1.vereditos], { mapas: [MAPA_REF], invertidas: [{ mapa: { A: 'HEAD', B: 'novo' }, vereditos: r1.invertida.vereditos }] }),
+    /sem o mapa/);
+});

@@ -164,8 +164,10 @@ para responder sem régua: consistência interna. Não inventar uma régua.
 **A referência de topo, nomeada antes de começar.** Na marcha AAA, antes de fazer, nomeie a melhor peça
 que existe para este tipo de entrega, no mercado ou no próprio projeto. Ela tem de ser algo que se abre
 (arquivo, print, repositório), nunca uma lembrança. O projeto a declara em `referencias`, no
-`projeto.json`, por tipo (`tela`, `codigo`, `texto`), e o `/esquadro:revisar` a põe no pacote cego como
-`R.txt`, com uma 2ª passada de ordem A/B trocada. Pronto, contra ela, é empatar ou vencer em cada lente,
+`projeto.json`, por tipo (`tela`, `codigo`, `texto`), e o `/esquadro:revisar` a põe no pacote cego (as
+cópias A e B, sem dizer qual é o novo) como `R.txt`, o arquivo com o texto dela. Cada lente julga duas
+vezes: na ordem normal e numa 2ª passada com A e B trocados, e contra a referência só vale o que se repete
+nas duas. Pronto, contra ela, é empatar ou vencer em cada lente,
 nas duas ordens, sem lacuna P0/P1. Sem referência que se abra, diga "sem referência" e use o artefato
 irmão acima.
 

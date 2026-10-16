@@ -75,9 +75,13 @@ function pastaDaRonda(campo, raiz) {
   const naInvertida = path.basename(ronda).toLowerCase() === 'invertida';
   const daRonda = naInvertida ? path.dirname(ronda) : ronda;
   const comReferencia = ehArquivo(path.join(daRonda, 'R.txt'));
-  if (naInvertida && (!comReferencia || !ehArquivo(path.join(daRonda, 'A.txt')) || !ehArquivo(path.join(daRonda, 'B.txt')))) {
-    return { erro: 'a pasta invertida de "' + campo.trim() + '" nao fica numa ronda com referencia (A.txt, B.txt e R.txt ' +
-      'ao lado), entao nao parece a 2a passada de uma ronda' };
+  // Plano 082 (p1-1): a 2a passada mora numa ronda numerada (revisao/<id>/<n>/invertida); "invertida" como ronda do
+  // <id> (revisao/<id>/invertida) passava com R.txt no <id>, e o apurar so le rondas numeradas.
+  const rondaNumerada = /^\d+$/.test(path.basename(daRonda));
+  if (naInvertida && (!rondaNumerada || !comReferencia || !ehArquivo(path.join(daRonda, 'A.txt')) ||
+      !ehArquivo(path.join(daRonda, 'B.txt')))) {
+    return { erro: 'a pasta invertida de "' + campo.trim() + '" nao fica numa ronda com referencia (a pasta numerada ' +
+      'da ronda, com A.txt, B.txt e R.txt), entao nao parece a 2a passada de uma ronda' };
   }
   return { pasta: abs, comReferencia: comReferencia };
 }

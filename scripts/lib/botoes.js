@@ -1,11 +1,18 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+// Plano 082 (p5-35): os require no topo (estavam dentro das funcoes): erro de carga aparece ao carregar, nao no meio.
+const caminho = require('./caminho.js');
+const marcha = require('./marcha.js');
+const saude = require('./saude.js');
+const correcao = require('./correcao.js');
+const calibracao = require('./calibracao.js');
 
 // Pedido 32 (plano dos pedidos 30-32, Tarefa 4 subitem 3): um botao por comando na faixa do mod, na hora certa.
 // Cada gatilho usa um sinal que ja existe (tabela do §2 do plano); nenhum processo novo por turno. O sessao.js
 // devolve a lista na ordem de prioridade e o mod desenha o primeiro que a pessoa ainda nao usou.
-// R5: texto e rotulo em ASCII - chegam a tela do motor.
+// R5 tinha texto e rotulo em ASCII; a faixa e excecao desde a D532 (a sonda da Tarefa 1 do plano 082 viu o acento
+// inteiro). Plano 082 (p5-36): frase inteira, sem jargao, dizendo o que fazer.
 
 const ORDEM = ['handoff', 'revisar', 'aprender', 'init', 'auditar', 'calibrar', 'paralelo', 'padrao'];
 
@@ -18,8 +25,6 @@ function botao(nome, texto, rotulo, comando) {
 /** Algum arquivo da sessao, relativo a raiz, resolve para `aaa`? Lista torta = nenhum. */
 function temArquivoAaa(arquivos, projeto, raiz) {
   if (!Array.isArray(arquivos)) return false;
-  const caminho = require('./caminho.js');
-  const marcha = require('./marcha.js');
   return arquivos.some(function (a) {
     const rel = caminho.relativoAoProjeto(a, raiz);
     return Boolean(rel) && marcha.resolverMarcha(rel, projeto) === 'aaa';
@@ -40,48 +45,57 @@ function daSessao(entrada) {
   const projeto = e.projeto && typeof e.projeto === 'object' ? e.projeto : null;
   const lista = [];
 
-  if (e.cruzou === true) lista.push(botao('handoff', 'troca de chat - gatilho contavel cruzou.', 'gerar handoff'));
+  if (e.cruzou === true) lista.push(botao('handoff', 'Um gatilho de troca de chat cruzou: gere o handoff e siga num chat novo.', 'gerar handoff'));
 
   // A condicao do portao da referencia (D503, Tarefa 5): arquivo AAA com referencia de topo e nenhuma revisao contra
   // ela fechada na sessao. O comando ja leva o primeiro arquivo.
-  const fechadas = require('./saude.js').acumular(s).revisao_referencia_fechada;
+  const fechadas = saude.acumular(s).revisao_referencia_fechada;
   if (projeto && !(fechadas > 0)) {
-    const comRef = require('./marcha.js').aaaComReferencia(s.arquivosTocados, projeto, e.raiz);
+    const comRef = marcha.aaaComReferencia(s.arquivosTocados, projeto, e.raiz);
     if (comRef.length) {
-      lista.push(botao('revisar', 'arquivo AAA com referencia mudou e nenhuma revisao contra ela fechou.', 'revisar',
-        '/esquadro:revisar ' + comRef[0]));
+      lista.push(botao('revisar', 'Você mudou arquivo de rigor máximo e nenhuma revisão contra a referência do projeto fechou.', 'revisar',
+        '/esquadro:revisar ' + argumento(comRef[0])));
     }
   }
 
   // O abrir-turno.js poe a espera cheia no prompt em que sugere o aprender; o prompt seguinte ja a desce.
-  if (s.esperaAprender === require('./correcao.js').ESPERA_ENTRE_SUGESTOES) {
-    lista.push(botao('aprender', 'parece uma correcao - virar regra?', 'aprender'));
+  if (s.esperaAprender === correcao.ESPERA_ENTRE_SUGESTOES) {
+    lista.push(botao('aprender', 'Isso pareceu uma correção sua: dá para virar regra das próximas vezes.', 'virar regra'));
   }
 
-  if (e.temProjeto === false) lista.push(botao('init', 'projeto sem configuracao do esquadro.', 'configurar'));
+  if (e.temProjeto === false) lista.push(botao('init', 'Este projeto ainda não tem o esquadro configurado.', 'configurar'));
 
-  if (s.auditoriaAvisou === true) lista.push(botao('auditar', 'a auditoria automatica achou o que cortar.', 'auditar'));
+  if (s.auditoriaAvisou === true) lista.push(botao('auditar', 'A auditoria automática achou regras ou skills para cortar.', 'ver o que cortar'));
 
   // O calibrar grava no projeto.json: so com ele carregado. "Nunca calibrado" = sem limiares.tokensDeContexto (o init
   // nao grava).
   const limiares = projeto && projeto.limiares;
   const calibrado = limiares && typeof limiares === 'object' && limiares.tokensDeContexto !== undefined;
   if (projeto && !calibrado && typeof e.contarConversas === 'function') {
-    const n = e.contarConversas();
-    if (n >= require('./calibracao.js').AMOSTRA_MINIMA.sessoes) {
-      lista.push(botao('calibrar', 'ja ha ' + n + ' conversas para medir o limiar de troca de chat.', 'calibrar'));
+    // Plano 082 (p5-31): contar que lanca tira so este botao; a lista inteira caia junto.
+    let n = 0;
+    try { n = e.contarConversas(); } catch (err) { n = 0; }
+    if (n >= calibracao.AMOSTRA_MINIMA.sessoes) {
+      lista.push(botao('calibrar', 'Já há ' + n + ' conversas salvas: dá para calibrar quando trocar de chat.', 'calibrar'));
     }
   }
 
   if (RE_PARALELO.test(String(e.resposta || ''))) {
-    lista.push(botao('paralelo', 'o agente ofereceu rodar em paralelo.', 'rodar em paralelo'));
+    lista.push(botao('paralelo', 'O agente ofereceu rodar as tarefas em paralelo.', 'rodar em paralelo'));
   }
 
   if (e.padraoCarregado !== true && temArquivoAaa(s.arquivosTocados, projeto, e.raiz)) {
-    lista.push(botao('padrao', 'arquivo AAA mudou sem o manual de execucao carregado.', 'carregar o padrao'));
+    lista.push(botao('padrao', 'Você mudou arquivo de rigor máximo sem carregar o manual.', 'carregar o manual'));
   }
 
-  return lista;
+  // Plano 082 (p5-33): a ordem e a de ORDEM, nao a dos if acima (as duas podiam divergir sem aviso).
+  return lista.sort(function (a, b) { return ORDEM.indexOf(a.nome) - ORDEM.indexOf(b.nome); });
+}
+
+/** p5-37: caminho com espaco ou aspa vai entre aspas no comando; sem isso, viraria dois argumentos. */
+function argumento(p) {
+  const s = String(p);
+  return /[\s"]/.test(s) ? '"' + s.replace(/"/g, '\\"') + '"' : s;
 }
 
 /** Dia local AAAA-MM-DD de `agoraMs`. */

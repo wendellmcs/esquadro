@@ -232,10 +232,19 @@ function abrir(cwd, arquivoDoPlano, sessionId) {
     tarefa: null
   };
   const alvo = path.join(cwd, ATIVO);
-  fs.mkdirSync(path.dirname(alvo), { recursive: true });
-  fs.writeFileSync(alvo, JSON.stringify(dado, null, 2) + '\n', 'utf8');
+  // Plano 082 (p7-16): o erro do disco (EACCES, ENOSPC, pasta que e arquivo) sobe com o arquivo e o que fazer, sem stack.
+  try {
+    fs.mkdirSync(path.dirname(alvo), { recursive: true });
+    fs.writeFileSync(alvo, JSON.stringify(dado, null, 2) + '\n', 'utf8');
+  } catch (e) {
+    throw new Error('esquadro: nao consegui gravar ' + alvo + ' (' + (e.code || e.message) + '); confira a permissao da ' +
+      'pasta e o espaco em disco, e rode de novo. O plano nao foi aberto.');
+  }
   return dado;
 }
+
+/** Plano 082 (p7-5): o --abrir aceita caminho absoluto; o path.join o colava no cwd e a leitura dava ENOENT. */
+function caminhoDoPlano(cwd, arquivo) { return path.resolve(cwd, String(arquivo)); }
 
 /**
  * D476 (Tarefa 4 da 0.7.1): nada chamava `plano.js --abrir`, e o painel dizia "nenhum plano ativo" numa sessao
@@ -388,34 +397,63 @@ function estimativaDeSessoes(sessoes, feitas, faltam) {
   return { sessoes: faltam > 0 ? Math.max(1, Math.round(media * faltam)) : 0, media: media };
 }
 
+/*
+ * Plano 082 (mock D532, S5): os paineis do /esquadro-plano sao lidos como Markdown no VS Code (D442/2) e saem com
+ * acento (D532; era ASCII pela R5). Sem "painel do plano" no topo: o motor ja escreve o nome do plugin antes. O texto
+ * que vem do plano ou do disco passa por `limpo`; comando, caminho com `<...>` e mensagem de erro vao por `codigo`
+ * (o Markdown leria `<caminho do plano>` como tag e o apagaria).
+ */
+
+/** Uma linha so, e caractere de controle vira "?" (o que o ascii fazia, sem tirar o acento). */
+function limpo(v) { return umaLinha(v).replace(/[\u0000-\u001F\u007F-\u009F]/g, '?'); }
+
+/** Trecho de codigo em Markdown: a cerca tem uma crase a mais que a maior sequencia de crases do texto. */
+function codigo(v) {
+  const s = limpo(v);
+  const maior = (s.match(/`+/g) || []).reduce(function (m, c) { return Math.max(m, c.length); }, 0);
+  const cerca = '`'.repeat(maior + 1);
+  const folga = maior ? ' ' : '';
+  return cerca + folga + s + folga + cerca;
+}
+
 /** D476: varias frentes com plano e a sessao sem vinculo - lista e diz como escolher. */
 function painelVariasFrentes(lista, script) {
-  const linhas = ['painel do plano', 'nenhum plano ativo, e esta sessao nao esta ligada a nenhuma frente (frente = linha ' +
-    'de trabalho com arquivo proprio em ' + escopoLib.PASTA_FRENTES + '). Frentes com plano:'];
+  const linhas = ['Nenhum plano ativo, e esta sessão não está ligada a nenhuma frente (frente = linha de trabalho com ' +
+    'arquivo próprio em ' + escopoLib.PASTA_FRENTES + '). Frentes com plano:', ''];
   for (const f of lista) {
-    linhas.push('  ' + escopoLib.ascii(f.frente) + ': ' + (f.arquivo ? escopoLib.ascii(f.arquivo) : '(o arquivo da frente nao se le)'));
+    linhas.push('- ' + limpo(f.frente) + ': ' + (f.arquivo ? limpo(f.arquivo) : '(o arquivo da frente não se lê)'));
   }
-  linhas.push('Para escolher: edite o arquivo da frente que voce quer, ' + escopoLib.PASTA_FRENTES + '<frente>.md ' +
-    '(qualquer edicao liga esta sessao a ela), e rode /esquadro-plano de novo; ou abra um plano: ' + comandoDeAbrir(script));
+  linhas.push('', 'Para escolher, edite o arquivo da frente que você quer, ' + codigo(escopoLib.PASTA_FRENTES + '<frente>.md') +
+    ' (qualquer edição liga esta sessão a ela), e rode /esquadro-plano de novo. Ou abra um plano: ' +
+    codigo(comandoDeAbrir(script)));
   return linhas.join('\n');
 }
 
 /** R1 da revisao cega: o arquivo da frente vinculada existe mas nao se le - nao e "frente sem Plano:". */
 function painelFrenteIlegivel(frente, rel) {
   // R1 da revisao cega D502: sem frente, quem nao se le e o escopo.md da raiz.
-  return 'painel do plano\nnao consegui ler ' + (frente ? 'o arquivo da frente ' + escopoLib.ascii(frente) + ' (' +
-    escopoLib.ascii(rel) + ')' : 'o escopo ' + escopoLib.ascii(rel)) +
-    '. Confira se ele e um arquivo e se abre, e rode /esquadro-plano de novo.';
+  return 'Não consegui ler ' + (frente ? 'o arquivo da frente ' + limpo(frente) + ' (' + limpo(rel) + ')'
+    : 'o escopo ' + limpo(rel)) + '. Confira se ele é um arquivo e se abre, e rode /esquadro-plano de novo.';
 }
 
 /** D476: a frente vinculada nao declara plano no Objetivo. P2 #4: cita as duas formas que o leitor aceita. */
 function painelFrenteSemPlano(frente, script) {
-  return 'painel do plano\na frente ' + escopoLib.ascii(frente) + ' nao declara plano no Objetivo (o paragrafo ' +
-    '"**Objetivo:**" de ' + escopoLib.PASTA_FRENTES + escopoLib.ascii(frente) + '.md). Anote no fim dele ' +
-    '"Plano: <caminho>" (ou plano `<caminho>.md`, entre crases), ou abra um: ' + comandoDeAbrir(script);
+  return 'A frente ' + limpo(frente) + ' não declara plano no Objetivo (o parágrafo ' + codigo('**Objetivo:**') + ' de ' +
+    escopoLib.PASTA_FRENTES + limpo(frente) + '.md). Anote no fim dele ' + codigo('Plano: <caminho>') + ' (ou ' +
+    codigo('plano `<caminho>.md`') + ', entre crases), ou abra um plano: ' + codigo(comandoDeAbrir(script));
 }
 
-/** F17: Outra sessao detem este plano. */
+/** R2 da revisao cega: o plano anotado nao se le; da frente, o caminho com espaco e sem crases chega cortado. */
+function painelNaoLeu(arquivo, daFrente) {
+  return 'Não consegui ler o plano ' + limpo(arquivo) + '. Confira se o arquivo existe' + (daFrente
+    ? '; se o caminho tem espaço, ponha-o entre crases no Objetivo: ' + codigo('Plano: `meu plano.md`') : '') + '.';
+}
+
+/**
+ * F17: outra sessao detem este plano - o plano-ativo.json tem sessionId e ele nao e o desta sessao. Sem plano ativo,
+ * ou com plano ativo sem sessionId (gravado a mao), o plano conta como livre (false). Sessao sem id vale 'sem-sessao',
+ * o mesmo que abrir() grava.
+ */
 function donoOutro(ativo, sessionId) {
   if (!ativo || !ativo.sessionId) return false;
   return ativo.sessionId !== String(sessionId || 'sem-sessao');
@@ -480,39 +518,41 @@ function comandoDeAbrir(script) {
 
 /** P2 #6: o plano do Objetivo fora da pasta do projeto - diz por que nao le e as duas saidas. */
 function painelPlanoFora(arquivo, script) {
-  return 'painel do plano\no plano ' + escopoLib.ascii(arquivo) + ' fica fora da pasta do projeto, e o painel so le ' +
-    'plano anotado no Objetivo dentro dela. Anote um caminho relativo a pasta do projeto, ou abra o plano: ' +
-    comandoDeAbrir(script);
+  return 'O plano ' + limpo(arquivo) + ' fica fora da pasta do projeto, e o painel só lê plano anotado no Objetivo ' +
+    'dentro dela. Anote um caminho relativo à pasta do projeto, ou abra o plano: ' + codigo(comandoDeAbrir(script));
 }
 
 /**
  * P2 #8 e #15: o plano foi lido e a conta falhou - nao e "nao consegui ler". R1 da s43: diz o que fazer agora; a
- * mensagem da excecao fica, entre parenteses, porque e ela que vai no registro do defeito.
+ * mensagem da excecao fica, entre parenteses, porque e ela que vai no registro do defeito. p7-11 (mock D532, S5): diz
+ * o que copiar e onde colar.
  */
 function painelQueFalhou(arquivo, erro) {
-  return 'painel do plano\nli ' + escopoLib.ascii(arquivo) + ', mas o painel falhou ao montar a conta (' +
-    escopoLib.ascii(erro && erro.message ? erro.message : String(erro)) + '). O defeito e do esquadro, nao do plano: ' +
-    'veja as tarefas direto no arquivo do plano e registre a mensagem entre parenteses como defeito do esquadro.';
+  return 'Li o plano ' + limpo(arquivo) + ', mas o painel falhou ao contar as tarefas. Veja as tarefas direto no ' +
+    'arquivo do plano. Para avisar o defeito, copie a mensagem entre parênteses (' +
+    codigo(erro && erro.message ? erro.message : String(erro)) + ') e cole no chat com o pedido "registrar defeito do ' +
+    'esquadro".';
 }
 
 /** D442/10: plano-ativo.json presente que nao se le (JSON quebrado, sem "arquivo") nao e "nenhum plano ativo". */
 function painelIlegivel(script) {
-  return 'painel do plano\n.claude/esquadro/plano-ativo.json existe mas nao se le (JSON quebrado, ou sem o campo ' +
-    '"arquivo"). Abra o plano de novo: ' + comandoDeAbrir(script);
+  return 'O arquivo .claude/esquadro/plano-ativo.json existe, mas não se lê (JSON quebrado, ou sem o campo "arquivo"). ' +
+    'Abra o plano de novo: ' + codigo(comandoDeAbrir(script));
 }
 
 /** P2 #16: as linhas da tabela de etapas sem id nao somem caladas (cita ate 3, com o numero da linha). */
 function avisoDeLinhasSemId(semId) {
   const um = semId.length === 1;
-  const citadas = semId.slice(0, 3).map(function (s) { return s.linha + ': "' + escopoLib.ascii(s.texto) + '"'; });
-  return 'aviso: ' + semId.length + (um ? ' linha' : ' linhas') + ' da tabela de etapas sem id no comeco da 1a celula ' +
+  const citadas = semId.slice(0, 3).map(function (s) { return s.linha + ': "' + limpo(s.texto) + '"'; });
+  return 'Aviso: ' + semId.length + (um ? ' linha' : ' linhas') + ' da tabela de etapas sem id no começo da 1ª célula ' +
     (um ? 'ficou' : 'ficaram') + ' fora da conta (' + (um ? 'linha ' : 'linhas ') + citadas.join(', ') +
-    (semId.length > 3 ? ', ...' : '') + '); para contar, comece a 1a celula pelo id (P0, 2a, 2b-0)';
+    (semId.length > 3 ? ', ...' : '') + '); para contar, comece a 1ª célula pelo id (P0, 2a, 2b-0).';
 }
 
 /**
- * Bloco M / M2 (D435): o painel do plano em texto (ASCII, R5) - o que o /esquadro-plano do mod
- * responde. Mostra a vista o que o portao de fecho so barra no fim: passo aberto = tarefa aberta.
+ * Bloco M / M2 (D435): o painel do plano em texto - o que o /esquadro-plano do mod responde. Mostra a vista o que o
+ * portao de fecho so barra no fim: passo aberto = tarefa aberta. Plano 082 (mock D532, S5): titulo "Plano X — N de M
+ * tarefas" (ou "concluído"), linha fraca com a origem e o caminho, a lista e o bloco "Ritmo", em Markdown e com acento.
  * D442/3: `script` e o caminho do plano.js para o "como abrir"; sem ele, o marcador.
  * D514 #19: quem monta os argumentos e o chamador (scripts/plano.js --texto): `ativo` vem do plano-ativo.json
  * (lerAtivo: arquivo, sessionId) ou de acharPlanoDaFrente (arquivo, frente, objetivo, escopo, semVinculo), e ele
@@ -521,108 +561,123 @@ function avisoDeLinhasSemId(semId) {
  */
 function painelTexto(ativo, tarefas, script) {
   if (!ativo || !ativo.arquivo) {
-    // Sem "esquadro - " no titulo: o motor ja escreve o nome do plugin antes da resposta do comando.
-    return 'painel do plano\nnenhum plano ativo (.claude/esquadro/plano-ativo.json). Para abrir: ' + comandoDeAbrir(script);
+    return 'Nenhum plano ativo nesta sessão: não há .claude/esquadro/plano-ativo.json nem plano anotado na frente ou no ' +
+      'escopo. Para abrir um: ' + codigo(comandoDeAbrir(script));
   }
-  const linhas = ['painel do plano', ativo.escopo
-    // D502: plano achado no escopo.md da raiz (sessao sem vinculo). P2 #1: diz de onde veio, sem "escopo" solto.
-    ? 'plano: ' + escopoLib.ascii(ativo.arquivo) + ' (anotado no escopo desta sessao, ' + escopoLib.ascii(ativo.escopo) + ')'
-    : ativo.frente
-      // D476: plano achado pela frente (sem plano-ativo.json): diz de qual frente veio. D502: e se a sessao e dela.
-      // P2 #2: sem vinculo, diz como ligar.
-      ? 'plano: ' + escopoLib.ascii(ativo.arquivo) + ' (frente: ' + escopoLib.ascii(ativo.frente) +
-        (ativo.semVinculo ? '; esta sessao nao esta ligada a ela - para ligar, edite ' + escopoLib.PASTA_FRENTES +
-          escopoLib.ascii(ativo.frente) + '.md)' : ')')
-      // D513 #16: em ASCII como os outros dois ramos (R5); o plano-ativo.json pode ser editado a mao.
-      : 'plano ativo: ' + escopoLib.ascii(ativo.arquivo) + ' (dono: ' + escopoLib.ascii(ativo.sessionId || 'sem-sessao') + ')'];
   const lista = Array.isArray(tarefas) ? tarefas : [];
-  if (!lista.length) {
-    linhas.push('o plano nao tem cabecalhos "### Tarefa N: titulo" (nem Item/Etapa/Onda/Fase N) nem tabela de etapas ' +
-      '(1a coluna "Etapa"): o painel nao consegue contar as tarefas. Para contar, escreva as tarefas num desses formatos.');
-    return linhas.join('\n');
-  }
-  // D476: os itens vem do parseItens (tipo, id, estado). Titulo e tipo em ASCII (R5): o plano real tem acento e travessao.
   const estado = function (t) { return t.estado; };
-  const rotulo = function (t) { return escopoLib.ascii(t.tipo) + ' ' + escopoLib.ascii(t.id); };
-  // P2 #17: etapa de tabela sem titulo nao deixa a linha cortada em "Etapa P0: ".
-  const titulo = function (t) { return escopoLib.ascii(t.titulo) || '(sem titulo)'; };
   // Tarefa sem caixa de passo nem [FEITO]: o portao nao a cobra, mas o painel nao a da como feita.
-  const feitas = lista.filter(function (t) { return estado(t) === 'feita'; });
-  linhas.push('tarefas: ' + feitas.length + ' de ' + lista.length + ' concluidas');
-  // D509: estado da tabela deduzido pela "ETAPA <id>" do Objetivo - o painel diz que deduziu e como marcar.
-  // P2 #23: em frases curtas, com o que e o Objetivo, e sem "deduzido".
-  const deduzida = lista.filter(function (t) { return t.deduzido && t.estado === 'em curso'; })[0];
-  if (deduzida) {
-    linhas.push('estado pelo escopo: a tabela nao tem [FEITO], entao o painel segue o Objetivo do escopo (o paragrafo ' +
-      '"Objetivo:"), que diz ETAPA ' + escopoLib.ascii(deduzida.id) + '. As etapas antes dela contam como feitas, e ela ' +
-      'como em curso. Para nao depender disso, ponha [FEITO] na 1a celula de cada etapa feita.');
+  const resumo = resumoDoPlano(lista);
+  const feitas = resumo.feitas;
+  const faltam = resumo.faltam;
+  const nome = 'Plano ' + nomeCurto(ativo);
+  const conta = lista.length ? contaDoPlano(lista, feitas.length) : '';
+  const blocos = ['**' + (!conta ? nome : faltam.length ? nome + ' — ' + conta : nome + ' — concluído (' + conta + ')') + '**',
+    origemDoPlano(ativo)];
+  if (!lista.length) {
+    blocos.push('O plano não tem cabeçalhos ' + codigo('### Tarefa N: título') + ' (nem Item/Etapa/Onda/Fase N) nem ' +
+      'tabela de etapas (1ª coluna "Etapa"): o painel não consegue contar as tarefas. Para contar, escreva as tarefas ' +
+      'num desses formatos.');
+    return blocos.join('\n\n');
   }
-  if (Array.isArray(lista.semId) && lista.semId.length) linhas.push(avisoDeLinhasSemId(lista.semId));
+  // D476: os itens vem do parseItens (tipo, id, estado), com o acento e o travessao do plano (D532).
+  const rotulo = function (t) { return limpo(t.tipo) + ' ' + limpo(t.id); };
+  // P2 #17: etapa de tabela sem titulo nao deixa a linha cortada em "Etapa P0: ".
+  const titulo = function (t) { return limpo(t.titulo) || '(sem título)'; };
   // R1 da s43: uma linha por estado (tres de estadoDoItem, dois de deduzirPeloEscopo); estado que nao esta aqui cai no [?].
   // D513 #18: estado novo tambem pede `p`, `semCaixas` e `faltam`, abaixo. #19: "a fazer" e `[ ]` sem passos de
   // proposito - a etapa nao comecou; "aberta" diz quantos passos faltam.
   const linhaDoItem = function (t) {
-    const nome = rotulo(t) + ': ' + titulo(t);
+    const item = rotulo(t) + ': ' + titulo(t);
     switch (estado(t)) {
-      case 'aberta': return '  [ ] ' + nome + ' (' + t.abertos + ' de ' + t.total + ' passos abertos)';
-      case 'feita': return '  [x] ' + nome;
-      case 'em curso': return '  [>] ' + nome + ' (em curso, pelo escopo)';
-      case 'a fazer': return '  [ ] ' + nome;
+      case 'aberta': return '- [ ] ' + item + ' (' + t.abertos + ' de ' + t.total + ' passos abertos)';
+      case 'feita': return '- [x] ' + item;
+      case 'em curso': return '- [>] ' + item + ' (em curso, pelo escopo)';
+      case 'a fazer': return '- [ ] ' + item;
       case 'sem marca': // D513 #17: o default e so a rede do estado que ninguem pos aqui
-      default: return '  [?] ' + nome + (t.tabela
-        ? ' (sem [FEITO] na celula da etapa: o painel nao sabe se esta feita)'
-        : ' (sem caixas de passo nem [FEITO]: o painel nao sabe se esta feita)');
+      default: return '- [?] ' + item + (t.tabela
+        ? ' (sem [FEITO] na célula da etapa: o painel não sabe se está feita)'
+        : ' (sem caixas de passo nem [FEITO]: o painel não sabe se está feita)');
     }
   };
-  for (const t of lista) linhas.push(linhaDoItem(t));
-  // D514 #10: a linha "proxima:" em ifs, um por caso (era um ternario de 4 saidas).
-  const linhaDaProxima = function () {
-    const p = lista.filter(function (t) { return estado(t) === 'aberta' || estado(t) === 'em curso'; })[0];
-    if (p && estado(p) === 'em curso') return 'proxima: ' + rotulo(p) + ' "' + titulo(p) + '" - em curso (pelo escopo)';
-    if (p) return 'proxima: ' + rotulo(p) + ' "' + titulo(p) + '" - faltam ' + p.abertos + ' de ' + p.total + ' passos';
-    const semCaixas = lista.filter(function (t) { return estado(t) === 'sem marca'; }).length;
+  blocos.push(lista.map(linhaDoItem).join('\n'));
+  // D509: estado da tabela deduzido pela "ETAPA <id>" do Objetivo - o painel diz que deduziu e como marcar.
+  // P2 #23: em frases curtas, com o que e o Objetivo, e sem "deduzido".
+  const deduzida = lista.filter(function (t) { return t.deduzido && t.estado === 'em curso'; })[0];
+  if (deduzida) {
+    blocos.push('Estado pelo escopo: a tabela não tem [FEITO], então o painel segue o Objetivo do escopo (o parágrafo ' +
+      '"Objetivo:"), que diz ETAPA ' + limpo(deduzida.id) + '. As etapas antes dela contam como feitas, e ela como em ' +
+      'curso. Para não depender disso, ponha [FEITO] na 1ª célula de cada etapa feita.');
+  }
+  if (Array.isArray(lista.semId) && lista.semId.length) blocos.push(avisoDeLinhasSemId(lista.semId));
+  const ritmo = [];
+  if (faltam.length) {
+    // D514 #10: a "proxima" em ifs, um por caso (era um ternario de 4 saidas).
+    const p = resumo.proxima;
+    const semCaixas = resumo.semCaixas;
+    let proxima;
+    if (p && estado(p) === 'em curso') proxima = rotulo(p) + ' — ' + titulo(p) + ' (em curso, pelo escopo)';
+    else if (p) proxima = rotulo(p) + ' — ' + titulo(p) + ' (faltam ' + p.abertos + ' de ' + p.total + ' passos)';
     // D436: so tarefa sem caixa sobrando nao e plano acabado - o painel nao sabe se ela esta feita.
-    if (semCaixas) return 'proxima: nenhuma tarefa com passo aberto; ' + semCaixas + ' sem caixas de passo, confira a mao';
-    return 'proxima: nenhuma tarefa aberta';
-  };
-  linhas.push(linhaDaProxima());
-  // D476 (item 4): o que falta (tudo que nao esta feito, inclusive o [?]), as sessoes gastas e a estimativa com a base.
-  const faltam = lista.filter(function (t) { return estado(t) !== 'feita'; });
-  linhas.push(faltam.length
-    ? 'falta: ' + faltam.length + ' de ' + lista.length + ' (' + faltam.map(rotulo).join(', ') + ')'
-    : 'falta: nada');
-  return linhas.concat(linhasDeSessoes(ativo, feitas.length, faltam.length)).join('\n');
+    else if (semCaixas) proxima = 'nenhuma tarefa com passo aberto; ' + semCaixas + ' sem caixas de passo, confira à mão';
+    else proxima = 'nenhuma tarefa aberta';
+    ritmo.push('- próxima: ' + proxima,
+      '- falta: ' + faltam.length + ' de ' + lista.length + ' (' + faltam.map(rotulo).join(', ') + ')');
+  }
+  ritmo.push(linhaDeSessoes(ativo, feitas.length, faltam.length));
+  blocos.push(['**Ritmo**'].concat(ritmo).join('\n'));
+  return blocos.join('\n\n');
 }
 
 /**
- * D476 (item 4): "sessoes gastas:" e "estimativa:" com a base da conta. D502: a conta e a do plano,
- * com frente ou aberto por --abrir. Quem preenche `ativo.sessoesDoPlano` e o chamador, nao este arquivo:
- * scripts/plano.js --texto le o arquivo do plano e anexa sessoesDoPlano(texto) a copia do `ativo`
- * (abrir() e acharPlanoDaFrente() nao o preenchem); se a leitura falha, ele sai antes de chamar o painel.
+ * D502 / P2 #1 / P2 #2: a linha fraca do painel - de onde veio o plano e o caminho dele. Escopo da raiz (sessao sem
+ * vinculo), frente (e, sem vinculo, como ligar) ou plano-ativo.json (o dono; pode ter sido editado a mao).
  */
-function linhasDeSessoes(ativo, feitas, faltam) {
+function origemDoPlano(ativo) {
+  const arquivo = limpo(ativo.arquivo);
+  if (ativo.escopo) return 'anotado no escopo desta sessão (' + limpo(ativo.escopo) + ') · ' + arquivo;
+  if (ativo.frente) {
+    return 'frente ' + limpo(ativo.frente) + ' · ' + arquivo + (ativo.semVinculo ? ' · esta sessão não está ligada a ' +
+      'ela; para ligar, edite ' + escopoLib.PASTA_FRENTES + limpo(ativo.frente) + '.md' : '');
+  }
+  return 'plano ativo (dono: ' + limpo(ativo.sessionId || 'sem-sessao') + ') · ' + arquivo;
+}
+
+/**
+ * D476 (item 4): as sessoes gastas e a estimativa com a base da conta, num item do "Ritmo" (mock D532, S5: "7 sessões
+ * gastas · nada falta"). D502: a conta e a do plano, com frente ou aberto por --abrir. Quem preenche
+ * `ativo.sessoesDoPlano` e o chamador, nao este arquivo: scripts/plano.js --texto le o arquivo do plano e anexa
+ * sessoesDoPlano(texto) a copia do `ativo` (abrir() e acharPlanoDaFrente() nao o preenchem); se a leitura falha, ele
+ * sai antes de chamar o painel.
+ */
+function linhaDeSessoes(ativo, feitas, faltam) {
   // P2 #5: "3" de um plano-ativo.json editado a mao vale 3; o que nao e inteiro positivo nao conta.
   const lido = Number(ativo.sessoesDoPlano);
   const gastas = Number.isInteger(lido) && lido > 0 ? lido : 0;
   if (!gastas) {
-    return [
-      'sessoes gastas: nao contadas - o plano nao tem marca de sessao; ao marcar uma caixa, anote "(sN: o que fez)", ' +
-        'com N o numero da sessao',
-      faltam ? 'estimativa: sem as sessoes gastas nao ha base' : 'estimativa: nada falta'
-    ];
+    return faltam
+      ? '- sessões gastas: não contadas — o plano não tem marca de sessão; ao marcar uma caixa, anote "(sN: o que fez)", ' +
+        'com N o número da sessão. Sem elas, não há base para estimar.'
+      : '- nada falta · sessões gastas não contadas (o plano não tem marca de sessão)';
   }
-  const sessoes = function (n) { return n + (n === 1 ? ' sessao' : ' sessoes'); };
-  const linhas = ['sessoes gastas: ' + gastas + ' (marcas "(sN" ou "(sessao N" distintas no plano)'];
-  if (!faltam) return linhas.concat('estimativa: nada falta');
+  const sessoes = function (n) { return n + (n === 1 ? ' sessão' : ' sessões'); };
+  const ja = '- ' + sessoes(gastas) + (gastas === 1 ? ' gasta' : ' gastas');
+  if (!faltam) return ja + ' · nada falta';
   const est = estimativaDeSessoes(gastas, feitas, faltam);
-  if (!est) return linhas.concat('estimativa: sem base para estimar ainda (nenhuma tarefa feita)');
-  const media = est.media.toFixed(1).replace('.', ',') + (est.media === 1 ? ' sessao' : ' sessoes');
-  return linhas.concat('estimativa: ' + sessoes(est.sessoes) + ' para ' +
-    (faltam === 1 ? 'a 1 que falta' : 'as ' + faltam + ' que faltam') + ' (base: media de ' + media +
-    ' por tarefa feita = ' + sessoes(gastas) + ' / ' + feitas + (feitas === 1 ? ' feita)' : ' feitas)'));
+  if (!est) return ja + ' · estimativa: sem base ainda (nenhuma tarefa feita)';
+  const media = est.media.toFixed(1).replace('.', ',') + (est.media === 1 ? ' sessão' : ' sessões');
+  return ja + ' · estimativa: ' + sessoes(est.sessoes) + ' para ' +
+    (faltam === 1 ? 'a 1 que falta' : 'as ' + faltam + ' que faltam') + ' (média de ' + media +
+    ' por tarefa feita = ' + sessoes(gastas) + ' / ' + feitas + (feitas === 1 ? ' feita)' : ' feitas)');
 }
 
 const TITULO_NA_LINHA = 48;
+
+/**
+ * Plano 082 (p7-2): teto, em bytes no disco, do plano que a faixa le a cada medida. 1 MB: o maior plano do workspace
+ * (docs/plano-v2.md, 934.918 bytes em 2026-10-16) cabe; acima disso a faixa fica vazia, e o /esquadro-plano (que roda so quando pedido) le igual.
+ */
+const TETO_DO_PLANO = 1024 * 1024;
 
 /** Pedido 30: o nome do plano sem a data, sem o nome da frente e sem o "-plano" ("...-pendencias-d503-plano.md" -> d503). */
 function nomeCurto(ativo) {
@@ -633,26 +688,64 @@ function nomeCurto(ativo) {
   return escopoLib.ascii(nome || base);
 }
 
+// Plano 082 (p7-9): a unidade da conta, pelo tipo das linhas (os de RE_ITEM); singular no total 1.
+const UNIDADE = { tarefa: ['tarefa', 'tarefas'], etapa: ['etapa', 'etapas'], fase: ['fase', 'fases'],
+  onda: ['onda', 'ondas'], item: ['item', 'itens'] };
+
+/** Uma linha so: espaco, tab e quebra viram um espaco (o texto vem do plano, que o dono escreve). */
+function umaLinha(v) { return String(v === undefined || v === null ? '' : v).replace(/\s+/g, ' ').trim(); }
+
 /**
- * Pedido 30 (plano dos pedidos 30-32, Tarefa 2): o plano em UMA linha ASCII, para a faixa do mod - a sonda da s53
- * provou que o status do VS Code desenha uma linha so. `ativo` e `tarefas` como no painelTexto. Sem plano, ou plano
- * sem tarefa contavel, '' (a faixa nao mostra nada). A proxima e a mesma do painel: a 1a aberta ou em curso.
+ * Plano 082 (p7-6): feitas, faltam e proxima, uma regra so para o painel e a faixa (eram copiadas nos dois). A proxima
+ * e a 1a aberta ou em curso; `semCaixas` conta as sem marca.
+ */
+function resumoDoPlano(lista) {
+  return {
+    feitas: lista.filter(function (t) { return t.estado === 'feita'; }),
+    // D476 (item 4): o que falta e tudo que nao esta feito, inclusive o [?].
+    faltam: lista.filter(function (t) { return t.estado !== 'feita'; }),
+    proxima: lista.filter(function (t) { return t.estado === 'aberta' || t.estado === 'em curso'; })[0],
+    semCaixas: lista.filter(function (t) { return t.estado === 'sem marca'; }).length
+  };
+}
+
+/** "N de M tarefas" da faixa e do painel (S1 e S5): a unidade pelo tipo das linhas, "itens" se misturam. */
+function contaDoPlano(lista, feitas) {
+  const tipos = lista.map(function (t) { return umaLinha(t.tipo).toLowerCase(); });
+  const par = UNIDADE[tipos.every(function (t) { return t === tipos[0]; }) ? tipos[0] : 'item'] || UNIDADE.item;
+  return feitas + ' de ' + lista.length + ' ' + par[lista.length === 1 ? 0 : 1];
+}
+
+/**
+ * Pedido 30 (plano dos pedidos 30-32, Tarefa 2): o plano em UMA linha, para a faixa do mod - a sonda da s53 provou
+ * que o status do VS Code desenha uma linha so. `ativo` e `tarefas` como no painelTexto. Sem plano, ou plano sem
+ * tarefa contavel, '' (a faixa nao mostra nada). A proxima e a mesma do painel: a 1a aberta ou em curso.
+ * Plano 082 (mock D532, S1): " · " entre as partes, a unidade depois da conta, "concluído" quando nada falta, e acento
+ * (D532: a sonda da Tarefa 1 viu o acento inteiro na faixa; o painel do /esquadro-plano ganhou acento na Tarefa 4).
  */
 function linhaDoPlano(ativo, tarefas) {
   if (!ativo || !ativo.arquivo) return '';
   const lista = Array.isArray(tarefas) ? tarefas : [];
   if (!lista.length) return '';
-  const feitas = lista.filter(function (t) { return t.estado === 'feita'; }).length;
-  const p = lista.filter(function (t) { return t.estado === 'aberta' || t.estado === 'em curso'; })[0];
+  const resumo = resumoDoPlano(lista);
+  const conta = contaDoPlano(lista, resumo.feitas.length);
+  const p = resumo.proxima;
   // D436, como no painel: so tarefa sem caixa sobrando nao e plano acabado.
-  const semCaixas = lista.filter(function (t) { return t.estado === 'sem marca'; }).length;
-  let proxima = semCaixas ? semCaixas + ' sem caixas, confira a mao' : 'nada aberto';
+  const semCaixas = resumo.semCaixas;
+  const partes = ['plano ' + nomeCurto(ativo)];
   if (p) {
-    const titulo = escopoLib.ascii(p.titulo);
-    proxima = 'proxima: ' + escopoLib.ascii(p.tipo) + ' ' + escopoLib.ascii(p.id) + (titulo ? ' ' +
-      (titulo.length > TITULO_NA_LINHA ? titulo.slice(0, TITULO_NA_LINHA - 3) + '...' : titulo) : '');
+    const titulo = umaLinha(p.titulo);
+    partes.push(conta, 'próxima: ' + umaLinha(p.tipo) + ' ' + umaLinha(p.id) + (titulo ? ' — ' +
+      (titulo.length > TITULO_NA_LINHA ? titulo.slice(0, TITULO_NA_LINHA - 3) + '...' : titulo) : ''));
+  } else if (semCaixas) {
+    partes.push(conta, semCaixas + ' sem caixas, confira à mão');
+  } else {
+    partes.push('concluído (' + conta + ')');
   }
-  return 'plano ' + nomeCurto(ativo) + ' | ' + feitas + ' de ' + lista.length + ' | ' + proxima;
+  // p7-7: a linha da tabela sem id nao entra no "N de M" (P2 #16, como no painel); a faixa diz quantas ficaram fora.
+  const fora = Array.isArray(lista.semId) ? lista.semId.length : 0;
+  if (fora) partes.push(fora + (fora === 1 ? ' linha' : ' linhas') + ' da tabela fora da conta');
+  return partes.join(' · ');
 }
 
 /**
@@ -672,7 +765,10 @@ function linhaDoPlanoDaSessao(cwd, frente) {
       if (!achado || !achado.arquivo || !dentroDoProjeto(cwd, achado.arquivo)) return '';
       alvo = achado;
     }
-    const texto = fs.readFileSync(path.join(cwd, alvo.arquivo), 'utf8');
+    const abs = caminhoDoPlano(cwd, alvo.arquivo);
+    // p7-2: roda a cada medida; plano acima do teto nao se le (a faixa fica vazia, o /esquadro-plano segue lendo).
+    if (fs.statSync(abs).size > TETO_DO_PLANO) return '';
+    const texto = fs.readFileSync(abs, 'utf8');
     return linhaDoPlano(alvo, deduzirPeloEscopo(parseItens(texto), alvo.objetivo));
   } catch (e) { return ''; }
 }
@@ -682,5 +778,5 @@ module.exports = {
   proximaDecisao, alegaEtapaConcluida, motivoSubitemAberto, painelTexto, painelIlegivel,
   planoDoObjetivo, planosDoObjetivo, planosCitados, frentesComPlano, acharPlanoDaFrente, painelVariasFrentes,
   painelFrenteSemPlano, sessoesDoPlano, estimativaDeSessoes, painelFrenteIlegivel, deduzirPeloEscopo,
-  dentroDoProjeto, painelPlanoFora, painelQueFalhou
+  dentroDoProjeto, painelPlanoFora, painelQueFalhou, painelNaoLeu, caminhoDoPlano, TETO_DO_PLANO
 };

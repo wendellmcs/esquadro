@@ -100,7 +100,7 @@ const PONTOS = [
     chave: 'process_platform',
     classe: SO_NO_SISTEMA,
     titulo: 'Deducao do sistema e do idioma de shell',
-    arquivos: ['scripts/autorizar-paralelo.js', 'scripts/lib/glob.js', 'scripts/lib/plataforma.js',
+    arquivos: ['scripts/autorizar-paralelo.js', 'scripts/lib/glob.js', 'scripts/lib/marcha.js', 'scripts/lib/plataforma.js',
                'scripts/lib/projeto.js', 'scripts/lib/varredura.js', 'scripts/medir-qualidade.js'],
     comoSeProva: 'rodando a suite naquele sistema: quem responde e o proprio Node',
     ressalva: 'a CONSEQUENCIA da deducao e injetavel e esta exercitada - ver tabela_de_plataforma ' +

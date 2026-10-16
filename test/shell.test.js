@@ -666,7 +666,8 @@ test('T1/F3-11: o aviso diz que o comando seguinte ja usa a tabela consertada (c
   const quebrada = shellComTabela('{ "quando": ');
   const t = quebrada.avisoTabela(quebrada.problemasDaTabela(WIN, 'PowerShell'));
   assert.ok(!t.includes('sessao nova'), t);
-  assert.ok(t.includes('Conserte o arquivo no plugin esquadro; o comando seguinte ja usa a tabela consertada.'), t);
+  // Plano 082, Tarefa 5: o conserto e o "Faca assim:" da forma unica.
+  assert.ok(t.includes('Faca assim: conserte o arquivo no plugin esquadro; o comando seguinte ja usa a tabela consertada.'), t);
   assert.ok(t.includes('Este aviso sai uma vez por sessao.'), t);
 });
 

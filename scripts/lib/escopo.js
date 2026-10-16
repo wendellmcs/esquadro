@@ -130,14 +130,17 @@ function declaradoFora(caminho, esc) {
 
 /**
  * R5/D36: nada que venha de fora chega cru ao texto do hook. Acento vira letra sem acento; travessao e meia-risca
- * viram hifen (s131 par.5: o painel mostrava "(0.8.0) ? depende" no titulo do plano).
+ * viram hifen (s131 par.5: o painel mostrava "(0.8.0) ? depende" no titulo do plano). Plano 082 (p8-12): os hifens
+ * U+2010/2011 e o menos U+2212 tambem; (p8-11) quebra de linha e tab viram espaco, e o que sobra conta por caractere
+ * (flag `u`): o emoji, par de surrogates, vira UM "?", nao dois.
  */
 function ascii(valor) {
   return String(valor == null ? '' : valor)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[\u2012-\u2015]/g, '-')
-    .replace(/[^\x20-\x7E]/g, '?');
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .replace(/\r\n|[\t\n\v\f\r]/g, ' ')
+    .replace(/[^\x20-\x7E]/gu, '?');
 }
 
 /**
@@ -383,15 +386,18 @@ function blocoDeFrentes(cwd, frente) {
 
 function motivoIntocavel(alvo) {
   alvo = ascii(alvo);
+  // Plano 082, Tarefa 5 (mock S10): a forma unica dos avisos.
   return [
-    'esquadro - intocavel.',
+    'esquadro - arquivo intocavel: mexer nele e decisao do dono.',
     '',
     // 0.3.3, item 25: diz onde a lista mora (o nome do campo e `intocaveis`).
-    'O arquivo ' + alvo + ' esta na lista "intocaveis" de .claude/esquadro/projeto.json.',
+    'Este arquivo esta na lista "intocaveis" de .claude/esquadro/projeto.json:',
+    '  - "' + alvo + '"',
     'Nem o escopo declarado libera este caminho.',
     '',
-    'Mexer nele e decisao do dono do projeto, nao julgamento seu.',
-    'Leve a ele com 3 opcoes e a recomendada marcada.'
+    'Faca uma destas:',
+    '  1. siga sem mexer nele: o que ele precisar vira registro;',
+    '  2. ou leve ao dono 3 opcoes com a recomendada marcada.'
   ].join('\n');
 }
 

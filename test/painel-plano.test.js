@@ -10,7 +10,10 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const planoLib = require('../scripts/lib/plano.js');
 
-const ASCII = /^[\x20-\x7E\n]*$/;
+// Plano 082 (mock D532, S5): o painel sai com acento (D532) e em Markdown; o que nao pode e caractere de controle.
+const LIMPO = /^[^\x00-\x09\x0B-\x1F\x7F]*$/;
+// Fora dos trechos de codigo nao sobra `<palavra`: o Markdown leria `<caminho do plano>` como tag e a apagaria.
+function semTagSolta(t) { return !/<[a-z]/i.test(t.replace(/(`+)[\s\S]*?\1/g, '')); }
 const PLANO = [
   '# Plano',
   '### Tarefa 1: Medidor',
@@ -26,35 +29,61 @@ const PLANO = [
 
 test('painelTexto: conta concluidas, marca cada tarefa e aponta a proxima com os passos que faltam', () => {
   const t = planoLib.painelTexto({ arquivo: 'p.md', sessionId: 's1' }, planoLib.parseItens(PLANO));
-  assert.ok(ASCII.test(t), JSON.stringify(t));
-  assert.ok(t.indexOf('plano ativo: p.md') !== -1, t);
-  assert.ok(t.indexOf('tarefas: 1 de 3 concluidas') !== -1, t);
-  assert.ok(t.indexOf('[x] Tarefa 1: Medidor') !== -1, t);
-  assert.ok(t.indexOf('[ ] Tarefa 2: Painel (2 de 3 passos abertos)') !== -1, t);
-  assert.ok(t.indexOf('proxima: Tarefa 2 "Painel" - faltam 2 de 3 passos') !== -1, t);
+  assert.ok(LIMPO.test(t), JSON.stringify(t));
+  assert.ok(t.indexOf('**Plano p — 1 de 3 tarefas**\n\nplano ativo (dono: s1) · p.md\n\n') === 0, t);
+  assert.ok(t.indexOf('\n- [x] Tarefa 1: Medidor\n') !== -1, t);
+  assert.ok(t.indexOf('\n- [ ] Tarefa 2: Painel (2 de 3 passos abertos)\n') !== -1, t);
+  assert.ok(t.indexOf('**Ritmo**\n- próxima: Tarefa 2 — Painel (faltam 2 de 3 passos)\n') !== -1, t);
 });
 
-test('painelTexto: tudo feito diz que nao ha tarefa aberta', () => {
+// Plano 082 (mock D532, S5): a cena do mock parte 3, inteira - titulo, linha fraca, lista e o bloco "Ritmo".
+test('plano 082 S5: plano concluido sai igual a cena do mock', () => {
+  const plano = ['### Tarefa 1: chave `referencias` (0.8.0)', '### Tarefa 2: pacote com referência (0.8.0)',
+    '### Tarefa 3: veredito e apuração (0.8.0)', '### Tarefa 4: textos e fecho da 0.8.0',
+    '### Tarefa 5: gatilho automático (0.8.1)', '### Tarefa 6: init e fecho da 0.8.1'].join('\n- [x] a\n') + '\n- [x] a';
+  const arquivo = 'esquadro/.context/plans/2026-10-13-esquadro-pendencias-d503-plano.md';
+  const t = planoLib.painelTexto({ arquivo: arquivo, frente: 'esquadro-pendencias', sessoesDoPlano: 7 },
+    planoLib.parseItens(plano));
+  assert.strictEqual(t, [
+    '**Plano d503 — concluído (6 de 6 tarefas)**',
+    '',
+    'frente esquadro-pendencias · ' + arquivo,
+    '',
+    '- [x] Tarefa 1: chave `referencias` (0.8.0)',
+    '- [x] Tarefa 2: pacote com referência (0.8.0)',
+    '- [x] Tarefa 3: veredito e apuração (0.8.0)',
+    '- [x] Tarefa 4: textos e fecho da 0.8.0',
+    '- [x] Tarefa 5: gatilho automático (0.8.1)',
+    '- [x] Tarefa 6: init e fecho da 0.8.1',
+    '',
+    '**Ritmo**',
+    '- 7 sessões gastas · nada falta'
+  ].join('\n'));
+});
+
+test('painelTexto: tudo feito diz concluido no titulo, sem linha de proxima', () => {
   const t = planoLib.painelTexto({ arquivo: 'p.md', sessionId: 's1' }, planoLib.parseItens('### Tarefa 1: A\n- [x] um'));
-  assert.ok(t.indexOf('tarefas: 1 de 1 concluidas') !== -1, t);
-  assert.ok(t.indexOf('proxima: nenhuma tarefa aberta') !== -1, t);
+  assert.ok(t.indexOf('**Plano p — concluído (1 de 1 tarefa)**') === 0, t);
+  assert.ok(t.indexOf('próxima') === -1, t);
+  assert.ok(t.indexOf('**Ritmo**\n- nada falta · sessões gastas não contadas (o plano não tem marca de sessão)') !== -1, t);
 });
 
 test('painelTexto: tarefa sem nenhuma caixa de passo nao aparece como concluida (revisao cega do M, lib/plano B:115)', () => {
   const t = planoLib.painelTexto({ arquivo: 'p.md', sessionId: 's1' },
     planoLib.parseItens('### Tarefa 1: A\n- [x] um\n### Tarefa 2: Revisar\nsem caixas aqui'));
-  assert.ok(ASCII.test(t), JSON.stringify(t));
+  assert.ok(LIMPO.test(t), JSON.stringify(t));
   assert.ok(t.indexOf('[x] Tarefa 2') === -1, t);
-  assert.ok(t.indexOf('[?] Tarefa 2: Revisar (sem caixas de passo') !== -1, t);
-  assert.ok(t.indexOf('tarefas: 1 de 2 concluidas') !== -1, t);
-  // D436: sem tarefa de passo aberto mas com [?], a "proxima" nao diz que o plano acabou.
-  assert.ok(t.indexOf('proxima: nenhuma tarefa aberta') === -1, t);
-  assert.ok(t.indexOf('proxima: nenhuma tarefa com passo aberto; 1 sem caixas de passo, confira a mao') !== -1, t);
+  assert.ok(t.indexOf('\n- [?] Tarefa 2: Revisar (sem caixas de passo nem [FEITO]: o painel não sabe se está feita)') !== -1, t);
+  assert.ok(t.indexOf('**Plano p — 1 de 2 tarefas**') === 0, t);
+  // D436: sem tarefa de passo aberto mas com [?], o painel nao diz que o plano acabou.
+  assert.ok(t.indexOf('concluído') === -1 && t.indexOf('nenhuma tarefa aberta') === -1, t);
+  assert.ok(t.indexOf('- próxima: nenhuma tarefa com passo aberto; 1 sem caixas de passo, confira à mão') !== -1, t);
 });
 
 test('painelTexto: sem plano ativo diz como abrir um', () => {
   const t = planoLib.painelTexto(null, []);
-  assert.ok(/nenhum plano ativo/.test(t) && /--abrir/.test(t), t);
+  assert.ok(/^Nenhum plano ativo/.test(t) && /--abrir/.test(t), t);
+  assert.ok(semTagSolta(t), t);
 });
 
 test('painelTexto: plano sem cabecalho "Tarefa N:" diz que nao consegue contar, em vez de 0 de 0', () => {
@@ -70,7 +99,7 @@ test('plano.js --texto: le o plano ativo do projeto e imprime o painel', () => {
     planoLib.abrir(base, 'plano.md', 's1');
     const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'plano.js'), '--texto'], { cwd: base, encoding: 'utf8' });
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.ok(r.stdout.indexOf('tarefas: 1 de 3 concluidas') !== -1, r.stdout);
+    assert.ok(r.stdout.indexOf('**Plano plano — 1 de 3 tarefas**') === 0, r.stdout);
   } finally { fs.rmSync(base, { recursive: true, force: true }); }
 });
 
@@ -79,7 +108,7 @@ test('plano.js --texto: sem plano ativo, saida 0 e o texto de como abrir', () =>
   try {
     const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'plano.js'), '--texto'], { cwd: base, encoding: 'utf8' });
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.ok(/nenhum plano ativo/.test(r.stdout), r.stdout);
+    assert.ok(/^Nenhum plano ativo/.test(r.stdout), r.stdout);
   } finally { fs.rmSync(base, { recursive: true, force: true }); }
 });
 
@@ -102,7 +131,8 @@ test('D442/3: sem plano ativo, o painel diz o caminho real do plano.js, entre as
   const r = painelEm(null);
   assert.strictEqual(r.status, 0, r.stderr);
   assert.ok(r.stdout.indexOf('<pasta do plugin') === -1, r.stdout);
-  assert.ok(r.stdout.indexOf('node "' + SCRIPT + '" --abrir <caminho do plano>') !== -1, r.stdout);
+  // Plano 082 (S5): o comando vai entre crases - copiavel, e o Markdown nao le <caminho do plano> como tag
+  assert.ok(r.stdout.indexOf('`node "' + SCRIPT + '" --abrir <caminho do plano>`') !== -1, r.stdout);
   // caminho que nao e ASCII (R5) ou que o shell reinterpretaria: volta ao marcador, sem inventar
   assert.ok(/<pasta do plugin esquadro>/.test(planoLib.painelTexto(null, [], 'C:/Usuários/zé/plano.js')));
   assert.ok(/<pasta do plugin esquadro>/.test(planoLib.painelTexto(null, [], '/tmp/$x/plano.js')));
@@ -114,13 +144,13 @@ test('D442/3: sem plano ativo, o painel diz o caminho real do plano.js, entre as
 test('D442/10: plano-ativo.json com BOM vale; JSON quebrado diz que existe mas nao se le', () => {
   const comBom = painelEm('\uFEFF' + JSON.stringify({ arquivo: 'plano.md', sessionId: 's1' }));
   assert.strictEqual(comBom.status, 0, comBom.stderr);
-  assert.ok(comBom.stdout.indexOf('tarefas: 1 de 3 concluidas') !== -1, comBom.stdout);
+  assert.ok(comBom.stdout.indexOf('1 de 3 tarefas**') !== -1, comBom.stdout);
   for (const torto of ['{"arquivo": ', '[]', '"x"']) {
     const r = painelEm(torto);
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.ok(r.stdout.indexOf('nenhum plano ativo') === -1, torto + ' -> ' + r.stdout);
-    assert.ok(/plano-ativo\.json existe mas nao se le/.test(r.stdout), torto + ' -> ' + r.stdout);
-    assert.ok(ASCII.test(r.stdout), JSON.stringify(r.stdout));
+    assert.ok(!/nenhum plano ativo/i.test(r.stdout), torto + ' -> ' + r.stdout);
+    assert.ok(/^O arquivo \.claude\/esquadro\/plano-ativo\.json existe, mas não se lê/.test(r.stdout), torto + ' -> ' + r.stdout);
+    assert.ok(LIMPO.test(r.stdout) && semTagSolta(r.stdout), JSON.stringify(r.stdout));
   }
 });
 
@@ -176,11 +206,11 @@ test('D476: sem plano-ativo.json, o painel acha o plano pelo ULTIMO "Plano:" do 
     vinculo: 'f1'
   });
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.ok(r.stdout.indexOf('nenhum plano ativo') === -1, r.stdout);
-  assert.ok(r.stdout.indexOf('plano: plano.md (frente: f1)') !== -1, r.stdout);
-  assert.ok(r.stdout.indexOf('tarefas: 1 de 3 concluidas') !== -1, r.stdout);
+  assert.ok(!/nenhum plano ativo/i.test(r.stdout), r.stdout);
+  assert.ok(r.stdout.indexOf('\n\nfrente f1 · plano.md\n\n') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('1 de 3 tarefas**') !== -1, r.stdout);
   // D502: a marca "(sessao 1" do Objetivo e da frente, nao do plano - o plano sem marca nao conta sessoes
-  assert.ok(r.stdout.indexOf('sessoes gastas: nao contadas') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('- sessões gastas: não contadas') !== -1, r.stdout);
 });
 
 test('D502: as sessoes gastas vem das marcas do PLANO, nao das 40 do Objetivo da frente', () => {
@@ -192,26 +222,27 @@ test('D502: as sessoes gastas vem das marcas do PLANO, nao das 40 do Objetivo da
       '### Tarefa 3: C\n- [ ] quatro'
   });
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.ok(r.stdout.indexOf('sessoes gastas: 2 (marcas "(sN" ou "(sessao N" distintas no plano)') !== -1, r.stdout);
-  assert.ok(r.stdout.indexOf('estimativa: 1 sessao para a 1 que falta (base: media de 1,0 sessao por tarefa feita = ' +
-    '2 sessoes / 2 feitas)') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('- 2 sessões gastas · estimativa: 1 sessão para a 1 que falta (média de 1,0 sessão por ' +
+    'tarefa feita = 2 sessões / 2 feitas)') !== -1, r.stdout);
 });
+
+const DO_ESCOPO = 'anotado no escopo desta sessão (.claude/esquadro/escopo.md) · velho.md';
 
 test('D502: sessao sem vinculo le o escopo.md da raiz antes das frentes', () => {
   const r = projetoComFrentes({ escopo: 'APP. Plano: velho.md', frentes: { so: 'outra frente. Plano: plano.md' } });
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.ok(ASCII.test(r.stdout), JSON.stringify(r.stdout));
-  assert.ok(r.stdout.indexOf('plano: velho.md (anotado no escopo desta sessao, .claude/esquadro/escopo.md)') !== -1, r.stdout);
-  assert.ok(r.stdout.indexOf('frente: so') === -1, r.stdout);
+  assert.ok(LIMPO.test(r.stdout), JSON.stringify(r.stdout));
+  assert.ok(r.stdout.indexOf(DO_ESCOPO) !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('frente so') === -1, r.stdout);
   // varias frentes com plano tambem nao passam na frente do escopo.md
   const v = projetoComFrentes({ escopo: 'APP. Plano: velho.md', frentes: { fa: 'A. Plano: plano.md', fb: 'B. Plano: plano.md' } });
-  assert.ok(v.stdout.indexOf('plano: velho.md (anotado no escopo desta sessao, .claude/esquadro/escopo.md)') !== -1, v.stdout);
+  assert.ok(v.stdout.indexOf(DO_ESCOPO) !== -1, v.stdout);
 });
 
 test('D502: a forma que o escopo da raiz ja escreve, plano `caminho.md` (minusculo, sem dois-pontos), vale', () => {
   const r = projetoComFrentes({ escopo: 'ETAPA P2 (plano `velho.md` secao 7, linha P2)', frentes: { so: 'X. Plano: plano.md' } });
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.ok(r.stdout.indexOf('plano: velho.md (anotado no escopo desta sessao, .claude/esquadro/escopo.md)') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf(DO_ESCOPO) !== -1, r.stdout);
 });
 
 test('R1 D502: escopo.md da raiz que nao se le e dito; Plano: dele que nao existe no disco nao cai noutra frente', () => {
@@ -226,18 +257,20 @@ test('R1 D502: escopo.md da raiz que nao se le e dito; Plano: dele que nao exist
     fs.writeFileSync(path.join(base, '.claude', 'esquadro', 'escopos', 'so.md'), '**Objetivo:** X. Plano: plano.md\n');
     const r = spawnSync(process.execPath, [SCRIPT, '--texto', '--sessao', 'nada'], { cwd: base, encoding: 'utf8', env: env });
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.ok(r.stdout.indexOf('nao consegui ler o escopo .claude/esquadro/escopo.md. Confira se ele e um arquivo') !== -1, r.stdout);
-    assert.ok(r.stdout.indexOf('frente: so') === -1, r.stdout);
+    assert.ok(r.stdout.indexOf('Não consegui ler o escopo .claude/esquadro/escopo.md. Confira se ele é um arquivo') === 0, r.stdout);
+    assert.ok(r.stdout.indexOf('frente so') === -1, r.stdout);
   } finally { fs.rmSync(base, { recursive: true, force: true }); }
   const p = projetoComFrentes({ escopo: 'APP. Plano: pendente.md', frentes: { so: 'X. Plano: plano.md' } });
-  assert.ok(p.stdout.indexOf('nao consegui ler pendente.md') !== -1, p.stdout);
-  assert.ok(p.stdout.indexOf('frente: so') === -1, p.stdout);
+  assert.ok(p.stdout.indexOf('Não consegui ler o plano pendente.md. Confira se o arquivo existe.') === 0, p.stdout);
+  assert.ok(p.stdout.indexOf('frente so') === -1, p.stdout);
 });
+
+const SEM_VINCULO = 'frente so · plano.md · esta sessão não está ligada a ela; para ligar, edite .claude/esquadro/escopos/so.md';
 
 test('D502: sem plano no escopo.md, cai na frente unica e diz que a sessao nao esta ligada a ela', () => {
   const r = projetoComFrentes({ escopo: 'APP sem plano anotado', frentes: { so: 'X. Plano: plano.md' } });
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.ok(r.stdout.indexOf('plano: plano.md (frente: so; esta sessao nao esta ligada a ela - para ligar, edite .claude/esquadro/escopos/so.md)') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('\n\n' + SEM_VINCULO + '\n\n') !== -1, r.stdout);
 });
 
 test('D502: plano minusculo so com crase ou aspas e .md; "Plano:" ganha quando os dois existem', () => {
@@ -246,39 +279,41 @@ test('D502: plano minusculo so com crase ou aspas e .md; "Plano:" ganha quando o
   assert.deepStrictEqual(p('(plano `docs/meu plano.md` secao 7) e plano "b.md" e Plano \'c.md\''), ['docs/meu plano.md', 'b.md', 'c.md']);
   assert.deepStrictEqual(p('plano `notas.txt`'), []);
   const r = projetoComFrentes({ frentes: { f1: 'X. Plano: plano.md (s1) depois o plano `velho.md` citado' }, vinculo: 'f1' });
-  assert.ok(r.stdout.indexOf('plano: plano.md (frente: f1)') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('\n\nfrente f1 · plano.md\n\n') !== -1, r.stdout);
 });
 
 test('D476: sem vinculo e com UMA frente com plano no disco, o painel usa ela; ponto final do caminho nao entra', () => {
   const r = projetoComFrentes({ frentes: { so: 'fazer X. Plano: plano.md.', semplano: 'nada aqui' } });
   assert.strictEqual(r.status, 0, r.stderr);
   // D502: sem vinculo, o rotulo diz que a sessao nao e da frente
-  assert.ok(r.stdout.indexOf('plano: plano.md (frente: so; esta sessao nao esta ligada a ela - para ligar, edite .claude/esquadro/escopos/so.md)') !== -1, r.stdout);
-  assert.ok(r.stdout.indexOf('tarefas: 1 de 3 concluidas') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('\n\n' + SEM_VINCULO + '\n\n') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('1 de 3 tarefas**') !== -1, r.stdout);
 });
 
 test('D476: sem vinculo e com VARIAS frentes com plano, o painel lista as frentes e diz como escolher', () => {
   const r = projetoComFrentes({ frentes: { fa: 'A. Plano: plano.md', fb: 'B. Plano: velho.md' } });
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.ok(ASCII.test(r.stdout), JSON.stringify(r.stdout));
-  assert.ok(r.stdout.indexOf('tarefas:') === -1, r.stdout);
-  assert.ok(/fa: plano\.md/.test(r.stdout) && /fb: velho\.md/.test(r.stdout), r.stdout);
-  assert.ok(/\.claude\/esquadro\/escopos\/<frente>\.md/.test(r.stdout) && /--abrir/.test(r.stdout), r.stdout);
+  assert.ok(LIMPO.test(r.stdout) && semTagSolta(r.stdout), JSON.stringify(r.stdout));
+  assert.ok(r.stdout.indexOf('tarefas') === -1, r.stdout);
+  assert.ok(r.stdout.indexOf('\n- fa: plano.md\n- fb: velho.md\n') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('`.claude/esquadro/escopos/<frente>.md`') !== -1 && /--abrir/.test(r.stdout), r.stdout);
 });
 
 test('D476: plano-ativo.json presente manda, mesmo com a sessao vinculada a uma frente com outro plano', () => {
   const r = projetoComFrentes({ frentes: { f1: 'X. Plano: velho.md' }, vinculo: 'f1', ativo: 'plano.md' });
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.ok(r.stdout.indexOf('plano ativo: plano.md') !== -1, r.stdout);
-  assert.ok(r.stdout.indexOf('tarefas: 1 de 3 concluidas') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('\n\nplano ativo (dono: s1) · plano.md\n\n') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('1 de 3 tarefas**') !== -1, r.stdout);
 });
 
 test('D476: frente vinculada sem "Plano:" no Objetivo diz isso, e nao pega o plano de outra frente', () => {
   const r = projetoComFrentes({ frentes: { f1: 'sem plano anotado', f2: 'X. Plano: plano.md' }, vinculo: 'f1' });
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.ok(r.stdout.indexOf('tarefas:') === -1, r.stdout);
-  assert.ok(r.stdout.indexOf('a frente f1 nao declara plano no Objetivo (o paragrafo "**Objetivo:**" de ' +
-    '.claude/esquadro/escopos/f1.md). Anote no fim dele "Plano: <caminho>" (ou plano `<caminho>.md`, entre crases)') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('tarefas') === -1, r.stdout);
+  assert.ok(semTagSolta(r.stdout), r.stdout);
+  assert.ok(r.stdout.indexOf('A frente f1 não declara plano no Objetivo (o parágrafo `**Objetivo:**` de ' +
+    '.claude/esquadro/escopos/f1.md). Anote no fim dele `Plano: <caminho>` (ou `` plano `<caminho>.md` ``, entre ' +
+    'crases), ou abra um plano: `node ') === 0, r.stdout);
 });
 
 // D476: o painel le o formato real dos planos (o da 0.7 usa "### Item N —" sem caixas): cabecalho #{2,4} com
@@ -310,15 +345,17 @@ test('D476: parseItens le Tarefa/Item/Etapa/Onda/Fase, numero com letra e os 4 s
   assert.strictEqual(planoLib.parseItens('### Fase 7: X [FEITO]\n- [ ] y')[0].estado, 'aberta');
 });
 
-test('D476: o painel mostra o formato real em ASCII, com [FEITO] sem caixa como feita e "sem marca" como [?]', () => {
+test('D476: o painel mostra o formato real, com [FEITO] sem caixa como feita e "sem marca" como [?]', () => {
   const t = planoLib.painelTexto({ arquivo: 'p.md', frente: 'f1' }, planoLib.parseItens(PLANO_REAL));
-  assert.ok(ASCII.test(t), JSON.stringify(t));
-  assert.ok(t.indexOf('tarefas: 3 de 7 concluidas') !== -1, t);
-  assert.ok(t.indexOf('[x] Item 2: calibrador (sessao 93)') !== -1, t);
-  assert.ok(t.indexOf('[x] Item 3a: ligado por padrao') !== -1, t);
-  assert.ok(t.indexOf('[?] Item 3b: sob chave (sem caixas de passo nem [FEITO]') !== -1, t);
-  assert.ok(t.indexOf('[ ] Etapa 4: Revisao (1 de 2 passos abertos)') !== -1, t);
-  assert.ok(t.indexOf('proxima: Etapa 4 "Revisao" - faltam 1 de 2 passos') !== -1, t);
+  assert.ok(LIMPO.test(t), JSON.stringify(t));
+  // tipos misturados (Tarefa, Item, Etapa...): a unidade e "itens", como na faixa
+  assert.ok(t.indexOf('**Plano p — 3 de 7 itens**') === 0, t);
+  // Plano 082 (D532): o titulo sai com o acento do plano
+  assert.ok(t.indexOf('\n- [x] Item 2: calibrador (sessão 93)\n') !== -1, t);
+  assert.ok(t.indexOf('\n- [x] Item 3a: ligado por padrão\n') !== -1, t);
+  assert.ok(t.indexOf('\n- [?] Item 3b: sob chave (sem caixas de passo nem [FEITO]') !== -1, t);
+  assert.ok(t.indexOf('\n- [ ] Etapa 4: Revisão (1 de 2 passos abertos)\n') !== -1, t);
+  assert.ok(t.indexOf('\n- próxima: Etapa 4 — Revisão (faltam 1 de 2 passos)\n') !== -1, t);
 });
 
 test('D476: o portao de fecho segue no formato de hoje - parseTarefas nao le "Item N" nem travessao', () => {
@@ -345,53 +382,50 @@ test('D476: estimativaDeSessoes = media por tarefa feita x as que faltam, arredo
   assert.strictEqual(planoLib.estimativaDeSessoes(5, 0, 3), null);
 });
 
-// D476 (item 4): o painel diz o que falta, as sessoes gastas e a estimativa com a base, em ASCII.
+// D476 (item 4): o painel diz o que falta, as sessoes gastas e a estimativa com a base. Plano 082 (S5): no bloco "Ritmo".
 test('D476: painel com frente mostra falta, sessoes gastas e estimativa com a base', () => {
   const t = planoLib.painelTexto({ arquivo: 'p.md', frente: 'f1', sessoesDoPlano: 4 },
     planoLib.parseItens(PLANO_REAL));
-  assert.ok(ASCII.test(t), JSON.stringify(t));
-  assert.ok(t.indexOf('falta: 4 de 7 (Item 3b, Etapa 4, Onda 5, Fase 6)') !== -1, t);
-  assert.ok(t.indexOf('sessoes gastas: 4 (marcas "(sN" ou "(sessao N" distintas no plano)') !== -1, t);
-  assert.ok(t.indexOf('estimativa: 5 sessoes para as 4 que faltam (base: media de 1,3 sessoes por tarefa feita = ' +
-    '4 sessoes / 3 feitas)') !== -1, t);
-  // a ordem do plano: proxima, falta, sessoes gastas, estimativa
-  assert.ok(t.indexOf('proxima:') < t.indexOf('falta:') && t.indexOf('falta:') < t.indexOf('sessoes gastas:') &&
-    t.indexOf('sessoes gastas:') < t.indexOf('estimativa:'), t);
+  assert.ok(LIMPO.test(t), JSON.stringify(t));
+  // a ordem do plano: proxima, falta, sessoes gastas com a estimativa, cada uma num item da lista
+  assert.ok(t.indexOf('\n\n**Ritmo**\n- próxima: Etapa 4 — Revisão (faltam 1 de 2 passos)\n' +
+    '- falta: 4 de 7 (Item 3b, Etapa 4, Onda 5, Fase 6)\n' +
+    '- 4 sessões gastas · estimativa: 5 sessões para as 4 que faltam (média de 1,3 sessões por tarefa feita = ' +
+    '4 sessões / 3 feitas)') !== -1, t);
+  assert.ok(/\(média de 1,3 sessões por tarefa feita = 4 sessões \/ 3 feitas\)$/.test(t), t);
 });
 
 test('D502: plano sem marca de sessao (com ou sem frente) diz como anotar e nao estima', () => {
   const t = planoLib.painelTexto({ arquivo: 'p.md', sessionId: 's1' }, planoLib.parseItens(PLANO));
-  assert.ok(ASCII.test(t), JSON.stringify(t));
-  assert.ok(t.indexOf('falta: 2 de 3 (Tarefa 2, Tarefa 3)') !== -1, t);
-  assert.ok(t.indexOf('sessoes gastas: nao contadas - o plano nao tem marca de sessao; ao marcar uma caixa, anote ' +
-    '"(sN: o que fez)", com N o numero da sessao') !== -1, t);
-  assert.ok(t.indexOf('estimativa: sem as sessoes gastas nao ha base') !== -1, t);
+  assert.ok(LIMPO.test(t), JSON.stringify(t));
+  assert.ok(t.indexOf('\n- falta: 2 de 3 (Tarefa 2, Tarefa 3)\n') !== -1, t);
+  assert.ok(t.indexOf('\n- sessões gastas: não contadas — o plano não tem marca de sessão; ao marcar uma caixa, anote ' +
+    '"(sN: o que fez)", com N o número da sessão. Sem elas, não há base para estimar.') !== -1, t);
+  assert.ok(t.indexOf('estimativa') === -1, t);
   // D502: aberto por --abrir tambem conta, se o plano tem marca
   const a = planoLib.painelTexto({ arquivo: 'p.md', sessionId: 's1', sessoesDoPlano: 2 }, planoLib.parseItens(PLANO));
-  assert.ok(a.indexOf('sessoes gastas: 2 (marcas') !== -1, a);
-  assert.ok(a.indexOf('estimativa: 4 sessoes para as 2 que faltam') !== -1, a);
+  assert.ok(a.indexOf('\n- 2 sessões gastas · estimativa: 4 sessões para as 2 que faltam') !== -1, a);
 });
 
 test('D502: plano.js --texto conta as marcas do plano tambem no plano aberto por --abrir', () => {
   const r = projetoComFrentes({ ativo: 'plano.md', plano: '### Tarefa 1: A\n- [x] a (s5: ok)\n### Tarefa 2: B\n- [ ] b' });
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.ok(r.stdout.indexOf('plano ativo: plano.md') !== -1, r.stdout);
-  assert.ok(r.stdout.indexOf('sessoes gastas: 1 (marcas') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('\n\nplano ativo (dono: s1) · plano.md\n\n') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('\n- 1 sessão gasta · estimativa:') !== -1, r.stdout);
 });
 
 test('D476: frente sem tarefa feita nao estima; tudo feito diz que nada falta; 1 sessao no singular', () => {
   const sem = planoLib.painelTexto({ arquivo: 'p.md', frente: 'f1', sessoesDoPlano: 1 },
     planoLib.parseItens('### Item 1: A\n- [ ] a\n### Item 2: B'));
-  assert.ok(sem.indexOf('sessoes gastas: 1 (marcas') !== -1, sem);
-  assert.ok(sem.indexOf('estimativa: sem base para estimar ainda (nenhuma tarefa feita)') !== -1, sem);
+  assert.ok(sem.indexOf('\n- 1 sessão gasta · estimativa: sem base ainda (nenhuma tarefa feita)') !== -1, sem);
   const tudo = planoLib.painelTexto({ arquivo: 'p.md', frente: 'f1', sessoesDoPlano: 2 },
     planoLib.parseItens('### Item 1: A\n- [x] a'));
-  assert.ok(tudo.indexOf('falta: nada') !== -1, tudo);
-  assert.ok(tudo.indexOf('estimativa: nada falta') !== -1, tudo);
+  assert.ok(/\*\*Ritmo\*\*\n- 2 sessões gastas · nada falta$/.test(tudo), tudo);
+  assert.ok(tudo.indexOf('falta:') === -1 && tudo.indexOf('estimativa') === -1, tudo);
   const um = planoLib.painelTexto({ arquivo: 'p.md', frente: 'f1', sessoesDoPlano: 2 },
     planoLib.parseItens('### Item 1: A\n- [x] a\n### Item 2: B [FEITO]\n### Item 3: C\n- [ ] c'));
-  assert.ok(um.indexOf('estimativa: 1 sessao para a 1 que falta (base: media de 1,0 sessao por tarefa feita = ' +
-    '2 sessoes / 2 feitas)') !== -1, um);
+  assert.ok(um.indexOf('\n- 2 sessões gastas · estimativa: 1 sessão para a 1 que falta (média de 1,0 sessão por ' +
+    'tarefa feita = 2 sessões / 2 feitas)') !== -1, um);
 });
 
 // R1 da revisao cega D469 de scripts/lib/plano.js (sessao 101).
@@ -417,8 +451,8 @@ test('R1: plano sem marca de sessao e com tarefa feita nao estima 0 sessoes', ()
   assert.strictEqual(planoLib.estimativaDeSessoes(0, 2, 3), null);
   const t = planoLib.painelTexto({ arquivo: 'p.md', frente: 'f1', sessoesDoPlano: 0 },
     planoLib.parseItens('### Item 1: A\n- [x] a\n### Item 2: B\n- [ ] b'));
-  assert.ok(t.indexOf('sessoes gastas: nao contadas') !== -1, t);
-  assert.ok(t.indexOf('estimativa: sem as sessoes gastas nao ha base') !== -1, t);
+  assert.ok(t.indexOf('- sessões gastas: não contadas') !== -1, t);
+  assert.ok(t.indexOf('Sem elas, não há base para estimar.') !== -1 && t.indexOf('0 sess') === -1, t);
 });
 
 test('R1: arquivo da frente vinculada que nao se le nao vira "nao tem Plano:"', () => {
@@ -433,18 +467,18 @@ test('R1: arquivo da frente vinculada que nao se le nao vira "nao tem Plano:"', 
     delete env.CLAUDE_SESSION_ID;
     const r = spawnSync(process.execPath, [SCRIPT, '--texto', '--sessao', 's-frente'], { cwd: base, encoding: 'utf8', env: env });
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.ok(r.stdout.indexOf('nao declara plano') === -1, r.stdout);
-    assert.ok(/nao consegui ler o arquivo da frente f1 \(\.claude\/esquadro\/escopos\/f1\.md\)/.test(r.stdout), r.stdout);
+    assert.ok(r.stdout.indexOf('não declara plano') === -1, r.stdout);
+    assert.ok(/^Não consegui ler o arquivo da frente f1 \(\.claude\/esquadro\/escopos\/f1\.md\)\. Confira se ele é um arquivo e se abre, e rode \/esquadro-plano de novo\.\n$/.test(r.stdout), r.stdout);
   } finally { fs.rmSync(base, { recursive: true, force: true }); }
 });
 
 test('R1: varias frentes - o painel diz o que e frente e como ligar a sessao a uma delas', () => {
   const t = planoLib.painelVariasFrentes([{ frente: 'fa', arquivo: 'a.md' }, { frente: 'fb', arquivo: 'b.md' }], null);
-  assert.ok(ASCII.test(t), JSON.stringify(t));
-  assert.ok(t.indexOf('nenhum plano ativo, e esta sessao nao esta ligada a nenhuma frente (frente = linha de trabalho com ' +
-    'arquivo proprio em .claude/esquadro/escopos/). Frentes com plano:') !== -1, t);
-  assert.ok(t.indexOf('Para escolher: edite o arquivo da frente que voce quer, .claude/esquadro/escopos/<frente>.md ' +
-    '(qualquer edicao liga esta sessao a ela), e rode /esquadro-plano de novo; ou abra um plano:') !== -1, t);
+  assert.ok(LIMPO.test(t) && semTagSolta(t), JSON.stringify(t));
+  assert.ok(t.indexOf('Nenhum plano ativo, e esta sessão não está ligada a nenhuma frente (frente = linha de trabalho com ' +
+    'arquivo próprio em .claude/esquadro/escopos/). Frentes com plano:\n\n- fa: a.md\n- fb: b.md\n\n') === 0, t);
+  assert.ok(t.indexOf('Para escolher, edite o arquivo da frente que você quer, `.claude/esquadro/escopos/<frente>.md` ' +
+    '(qualquer edição liga esta sessão a ela), e rode /esquadro-plano de novo. Ou abra um plano: `node ') !== -1, t);
 });
 
 // R2 da revisao cega D469 de scripts/lib/plano.js (sessao 101).
@@ -464,11 +498,11 @@ test('R2: "Plano:" com markdown, aspas simples, aspa sem fechar, valor vazio e q
 test('R2: com varios "Plano:", vale o ultimo que existe no disco; nenhum existe -> o ultimo, e o painel da a dica', () => {
   const r = projetoComFrentes({ frentes: { f1: 'X. Plano: plano.md. depois Plano: pendente' }, vinculo: 'f1' });
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.ok(r.stdout.indexOf('plano: plano.md (frente: f1)') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('\n\nfrente f1 · plano.md\n\n') !== -1, r.stdout);
   const s = projetoComFrentes({ frentes: { f1: 'X. Plano: docs/meu plano.md' }, vinculo: 'f1' });
   assert.strictEqual(s.status, 0, s.stderr);
-  assert.ok(s.stdout.indexOf('nao consegui ler docs/meu') !== -1, s.stdout);
-  assert.ok(s.stdout.indexOf('se o caminho tem espaco, ponha-o entre crases no Objetivo') !== -1, s.stdout);
+  assert.strictEqual(s.stdout, 'Não consegui ler o plano docs/meu. Confira se o arquivo existe; se o caminho tem ' +
+    'espaço, ponha-o entre crases no Objetivo: `` Plano: `meu plano.md` ``.\n');
 });
 
 test('R2: estimativa com trabalho pela frente nunca sai 0 sessoes', () => {
@@ -485,10 +519,10 @@ test('R2: sem vinculo, frente cujo arquivo nao se le aparece na lista (e sozinha
     const escopos = path.join(base, '.claude', 'esquadro', 'escopos');
     fs.mkdirSync(path.join(escopos, 'fa.md'), { recursive: true });
     const so = spawnSync(process.execPath, [SCRIPT, '--texto', '--sessao', 'nada'], { cwd: base, encoding: 'utf8', env: env });
-    assert.ok(/nao consegui ler o arquivo da frente fa/.test(so.stdout), so.stdout);
+    assert.ok(/^Não consegui ler o arquivo da frente fa/.test(so.stdout), so.stdout);
     fs.writeFileSync(path.join(escopos, 'fb.md'), '**Objetivo:** X. Plano: plano.md\n');
     const duas = spawnSync(process.execPath, [SCRIPT, '--texto', '--sessao', 'nada'], { cwd: base, encoding: 'utf8', env: env });
-    assert.ok(/fa: \(o arquivo da frente nao se le\)/.test(duas.stdout) && /fb: plano\.md/.test(duas.stdout), duas.stdout);
+    assert.ok(duas.stdout.indexOf('\n- fa: (o arquivo da frente não se lê)\n- fb: plano.md\n') !== -1, duas.stdout);
   } finally { fs.rmSync(base, { recursive: true, force: true }); }
 });
 
@@ -502,7 +536,9 @@ test('D476: plano.js --texto usa o leitor novo (plano no formato real, achado pe
     delete env.CLAUDE_CODE_SESSION_ID;
     const r = spawnSync(process.execPath, [SCRIPT, '--texto', '--sessao', 'nada'], { cwd: base, encoding: 'utf8', env: env });
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.ok(r.stdout.indexOf('tarefas: 3 de 7 concluidas') !== -1, r.stdout);
+    assert.ok(r.stdout.indexOf('**Plano real — 3 de 7 itens**') === 0, r.stdout);
+    // D532: o acento do plano chega inteiro na saida do script (o mod le em UTF-8)
+    assert.ok(r.stdout.indexOf('- [x] Item 2: calibrador (sessão 93)') !== -1, r.stdout);
   } finally { fs.rmSync(base, { recursive: true, force: true }); }
 });
 
@@ -585,16 +621,17 @@ test('D509: sem marca na tabela, deduz pela "ETAPA <id>" do Objetivo (anteriores
   const itens = planoLib.deduzirPeloEscopo(planoLib.parseItens(PLANO_TABELA), OBJETIVO_APP);
   assert.deepStrictEqual(itens.map(function (t) { return t.estado; }), ['feita', 'feita', 'feita', 'em curso', 'a fazer']);
   const t = planoLib.painelTexto({ arquivo: 'plano.md', escopo: '.claude/esquadro/escopo.md' }, itens);
-  assert.ok(ASCII.test(t), JSON.stringify(t));
-  assert.ok(t.indexOf('tarefas: 3 de 5 concluidas') !== -1, t);
-  assert.ok(t.indexOf('(em curso, pelo escopo)') !== -1, t);
-  assert.ok(t.indexOf('o Objetivo do escopo (o paragrafo "Objetivo:"), que diz ETAPA P3') !== -1, t);
-  assert.ok(t.indexOf('[x] Etapa P1: extensao: preparo (~1,75)') !== -1, t);
-  assert.ok(t.indexOf('[>] Etapa P3: app: telas + ponte (~2) (em curso, pelo escopo)') !== -1, t);
-  assert.ok(t.indexOf('[ ] Etapa P4: release do app (~0,5)') !== -1, t);
+  assert.ok(LIMPO.test(t), JSON.stringify(t));
+  assert.ok(t.indexOf('**Plano plano — 3 de 5 etapas**') === 0, t);
+  assert.ok(t.indexOf('\n\nEstado pelo escopo: a tabela não tem [FEITO], então o painel segue o Objetivo do escopo (o ' +
+    'parágrafo "Objetivo:"), que diz ETAPA P3. As etapas antes dela contam como feitas, e ela como em curso. Para não ' +
+    'depender disso, ponha [FEITO] na 1ª célula de cada etapa feita.\n\n**Ritmo**\n') !== -1, t);
+  assert.ok(t.indexOf('\n- [x] Etapa P1: extensão: preparo (~1,75)\n') !== -1, t);
+  assert.ok(t.indexOf('\n- [>] Etapa P3: app: telas + ponte (~2) (em curso, pelo escopo)\n') !== -1, t);
+  assert.ok(t.indexOf('\n- [ ] Etapa P4: release do app (~0,5)\n') !== -1, t);
   assert.ok(t.indexOf('[?]') === -1, t);
-  assert.ok(t.indexOf('proxima: Etapa P3 "app: telas + ponte (~2)" - em curso (pelo escopo)') !== -1, t);
-  assert.ok(t.indexOf('falta: 2 de 5 (Etapa P3, Etapa P4)') !== -1, t);
+  assert.ok(t.indexOf('\n- próxima: Etapa P3 — app: telas + ponte (~2) (em curso, pelo escopo)\n') !== -1, t);
+  assert.ok(t.indexOf('\n- falta: 2 de 5 (Etapa P3, Etapa P4)\n') !== -1, t);
   // caixa baixa vale; vale a ULTIMA etapa citada que existe na tabela
   const baixa = planoLib.deduzirPeloEscopo(planoLib.parseItens(PLANO_TABELA), 'etapa P1 feita (s1). agora etapa p2; ETAPA P9');
   assert.deepStrictEqual(baixa.map(function (x) { return x.estado; }), ['feita', 'feita', 'em curso', 'a fazer', 'a fazer']);
@@ -619,12 +656,12 @@ test('D509: com marca na tabela a marca manda; sem "ETAPA <id>" que exista na ta
 test('D509: plano.js --texto mostra a tabela do plano do escopo com a deducao; plano aberto por --abrir nao deduz', () => {
   const r = projetoComFrentes({ escopo: OBJETIVO_APP, plano: PLANO_TABELA });
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.ok(ASCII.test(r.stdout), JSON.stringify(r.stdout));
-  assert.ok(r.stdout.indexOf('plano: plano.md (anotado no escopo desta sessao, .claude/esquadro/escopo.md)') !== -1, r.stdout);
-  assert.ok(r.stdout.indexOf('tarefas: 3 de 5 concluidas') !== -1, r.stdout);
-  assert.ok(r.stdout.indexOf('[>] Etapa P3') !== -1, r.stdout);
+  assert.ok(LIMPO.test(r.stdout), JSON.stringify(r.stdout));
+  assert.ok(r.stdout.indexOf('\n\nanotado no escopo desta sessão (.claude/esquadro/escopo.md) · plano.md\n\n') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('3 de 5 etapas**') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('- [>] Etapa P3') !== -1, r.stdout);
   const aberto = projetoComFrentes({ escopo: OBJETIVO_APP, plano: PLANO_TABELA, ativo: 'plano.md' });
-  assert.ok(aberto.stdout.indexOf('tarefas: 0 de 5 concluidas') !== -1, aberto.stdout);
+  assert.ok(aberto.stdout.indexOf('0 de 5 etapas**') !== -1, aberto.stdout);
   assert.ok(aberto.stdout.indexOf('pelo escopo') === -1, aberto.stdout);
 });
 
@@ -632,11 +669,11 @@ test('D509: plano.js --texto mostra a tabela do plano do escopo com a deducao; p
 test('P2 #5: sessoesDoPlano em texto ("1") conta como numero, e o singular sai certo', () => {
   const t = planoLib.painelTexto({ arquivo: 'p.md', frente: 'f1', sessoesDoPlano: '1' },
     planoLib.parseItens('### Item 1: A\n- [x] a\n### Item 2: B\n- [ ] b'));
-  assert.ok(t.indexOf('sessoes gastas: 1 (marcas') !== -1, t);
-  assert.ok(t.indexOf('= 1 sessao / 1 feita)') !== -1, t);
+  assert.ok(t.indexOf('\n- 1 sessão gasta · ') !== -1, t);
+  assert.ok(t.indexOf('= 1 sessão / 1 feita)') !== -1, t);
   for (const torto of ['abc', '1.5', -2, null]) {
     const x = planoLib.painelTexto({ arquivo: 'p.md', frente: 'f1', sessoesDoPlano: torto }, planoLib.parseItens('### Item 1: A\n- [x] a'));
-    assert.ok(x.indexOf('sessoes gastas: nao contadas') !== -1, String(torto) + ' -> ' + x);
+    assert.ok(x.indexOf('sessões gastas não contadas') !== -1, String(torto) + ' -> ' + x);
   }
 });
 
@@ -656,9 +693,10 @@ test('P2 #6: plano do Objetivo fora da pasta do projeto nao e lido, e o painel d
     fs.writeFileSync(path.join(proj, '.claude', 'esquadro', 'escopo.md'), '**Objetivo:** X. Plano: ../fora.md\n');
     const r = spawnSync(process.execPath, [SCRIPT, '--texto', '--sessao', 'nada'], { cwd: proj, encoding: 'utf8', env: env });
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.ok(ASCII.test(r.stdout), JSON.stringify(r.stdout));
-    assert.ok(r.stdout.indexOf('tarefas:') === -1, r.stdout);
-    assert.ok(r.stdout.indexOf('o plano ../fora.md fica fora da pasta do projeto') !== -1, r.stdout);
+    assert.ok(LIMPO.test(r.stdout) && semTagSolta(r.stdout), JSON.stringify(r.stdout));
+    assert.ok(r.stdout.indexOf('tarefas') === -1, r.stdout);
+    assert.ok(r.stdout.indexOf('O plano ../fora.md fica fora da pasta do projeto, e o painel só lê plano anotado no ' +
+      'Objetivo dentro dela. Anote um caminho relativo à pasta do projeto, ou abra o plano: `node ') === 0, r.stdout);
   } finally { fs.rmSync(base, { recursive: true, force: true }); }
 });
 
@@ -683,11 +721,18 @@ test('P2 #8 e #15: erro ao montar o painel de um plano lido nao vira "nao conseg
   for (const funcao of ['sessoesDoPlano', 'parseItens', 'deduzirPeloEscopo']) {
     const r = painelQueLanca(funcao);
     assert.strictEqual(r.status, 0, funcao + ': ' + r.stderr);
-    assert.ok(r.stdout.indexOf('nao consegui ler') === -1, funcao + ' -> ' + r.stdout);
-    assert.ok(r.stdout.indexOf('li plano.md, mas o painel falhou ao montar a conta (quebrou)') !== -1, funcao + ' -> ' + r.stdout);
-    // R1 da s43: a mensagem diz o que fazer agora
-    assert.ok(r.stdout.indexOf('veja as tarefas direto no arquivo do plano e registre a mensagem') !== -1, funcao + ' -> ' + r.stdout);
+    assert.ok(r.stdout.indexOf('consegui ler') === -1, funcao + ' -> ' + r.stdout);
+    // R1 da s43: a mensagem diz o que fazer agora. p7-11 (mock D532, S5): e o que copiar e onde colar.
+    assert.strictEqual(r.stdout, 'Li o plano plano.md, mas o painel falhou ao contar as tarefas. Veja as tarefas direto ' +
+      'no arquivo do plano. Para avisar o defeito, copie a mensagem entre parênteses (`quebrou`) e cole no chat com o ' +
+      'pedido "registrar defeito do esquadro".\n', funcao);
   }
+});
+
+test('p7-11: a mensagem do erro vai num trecho de codigo que aguenta crase e quebra de linha', () => {
+  const t = planoLib.painelQueFalhou('p.md', new Error('x `y`\nz'));
+  assert.ok(t.indexOf('(`` x `y` z ``)') !== -1, t);
+  assert.ok(planoLib.painelQueFalhou('p.md', 'texto solto').indexOf('(`texto solto`)') !== -1);
 });
 
 test('P2 #9: "(s1, s2: ...)" conta as duas sessoes; numero sem "s" na lista nao e sessao', () => {
@@ -699,7 +744,7 @@ test('P2 #9: "(s1, s2: ...)" conta as duas sessoes; numero sem "s" na lista nao 
 test('P2 #12: Plano: que nao existe no disco perde para o plano citado que existe', () => {
   const r = projetoComFrentes({ frentes: { f1: 'X. Plano: sumiu.md e depois o plano `plano.md` citado' }, vinculo: 'f1' });
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.ok(r.stdout.indexOf('plano: plano.md (frente: f1)') !== -1, r.stdout);
+  assert.ok(r.stdout.indexOf('\n\nfrente f1 · plano.md\n\n') !== -1, r.stdout);
 });
 
 test('P2 #16: linha da tabela de etapas sem id fica fora da conta, e o painel avisa', () => {
@@ -707,19 +752,19 @@ test('P2 #16: linha da tabela de etapas sem id fica fora da conta, e o painel av
   assert.deepStrictEqual(itens.map(function (t) { return t.id; }), ['P0', 'P1']);
   assert.deepStrictEqual(itens.semId, [{ linha: 4, texto: 'Alfa' }]);
   const t = planoLib.painelTexto({ arquivo: 'p.md' }, planoLib.deduzirPeloEscopo(itens, 'ETAPA P1'));
-  assert.ok(ASCII.test(t), JSON.stringify(t));
-  assert.ok(t.indexOf('aviso: 1 linha da tabela de etapas sem id no comeco da 1a celula ficou fora da conta ' +
-    '(linha 4: "Alfa")') !== -1, t);
+  assert.ok(LIMPO.test(t), JSON.stringify(t));
+  assert.ok(t.indexOf('\n\nAviso: 1 linha da tabela de etapas sem id no começo da 1ª célula ficou fora da conta ' +
+    '(linha 4: "Alfa"); para contar, comece a 1ª célula pelo id (P0, 2a, 2b-0).\n\n') !== -1, t);
   // tabela que nao conta (sem nenhuma linha de id, ou plano com caixas) nao avisa
   const semId = '| Item | O que |\n|---|---|\n| Modelo | jina |\n\n| Fase | X |\n|---|---|\n| **0 — Enxergar** | a |';
   assert.strictEqual(planoLib.parseItens(semId).semId, undefined);
   assert.strictEqual(planoLib.parseItens('### Tarefa 1: A\n- [ ] a\n| Etapa | X |\n|---|---|\n| P0 | a |\n| Alfa | b |').semId, undefined);
-  assert.ok(planoLib.painelTexto({ arquivo: 'p.md' }, planoLib.parseItens(PLANO_TABELA)).indexOf('aviso:') === -1);
+  assert.ok(planoLib.painelTexto({ arquivo: 'p.md' }, planoLib.parseItens(PLANO_TABELA)).indexOf('Aviso:') === -1);
 });
 
-test('P2 #17: etapa sem titulo aparece com "(sem titulo)", nao com a linha cortada', () => {
+test('P2 #17: etapa sem titulo aparece com "(sem título)", nao com a linha cortada', () => {
   const t = planoLib.painelTexto({ arquivo: 'p.md' }, planoLib.parseItens('| Etapa | O que |\n|---|---|\n| P0 | |'));
-  assert.ok(t.indexOf('[?] Etapa P0: (sem titulo) (sem [FEITO]') !== -1, t);
+  assert.ok(t.indexOf('\n- [?] Etapa P0: (sem título) (sem [FEITO] na célula da etapa: o painel não sabe se está feita)\n') !== -1, t);
 });
 
 test('P2 #18: tipo da tabela no plural vira singular ("Etapas P0" -> "Etapa P0")', () => {
@@ -754,18 +799,24 @@ test('D513 #2: plano com BOM nao perde o cabecalho da 1a linha', () => {
     ['1 aberta']);
 });
 
-test('D513 #16: painel de plano-ativo.json com acento no caminho e no dono sai em ASCII (R5)', () => {
+// Plano 082 (D532): o acento passa (era ASCII pela R5, D513 #16); caractere de controle segue barrado.
+test('D513 #16: painel de plano-ativo.json com acento no caminho e no dono sai com o acento, sem caractere de controle', () => {
   const t = planoLib.painelTexto({ arquivo: 'docs/planó.md', sessionId: 'sessão' }, planoLib.parseItens('### Tarefa 1: A\n- [ ] a'));
-  assert.ok(ASCII.test(t), JSON.stringify(t));
-  assert.ok(t.indexOf('plano ativo: docs/plano.md (dono: sessao)') !== -1, t);
+  assert.ok(t.indexOf('\n\nplano ativo (dono: sessão) · docs/planó.md\n\n') !== -1, t);
+  const c = planoLib.painelTexto({ arquivo: 'p\u001b[31m.md', sessionId: 's\u0007' },
+    planoLib.parseItens('### Tarefa 1: A\u001bB\n- [ ] a'));
+  assert.ok(LIMPO.test(c), JSON.stringify(c));
+  assert.ok(c.indexOf('plano ativo (dono: s?) · p?[31m.md') !== -1 && c.indexOf('Tarefa 1: A?B') !== -1, c);
 });
 
 test('D513 #12 e #21: os avisos do painel dizem o que mudar no plano', () => {
   const t = planoLib.painelTexto({ arquivo: 'p.md' }, planoLib.parseItens('| Etapa | X |\n|---|---|\n| P0 | a |\n| Alfa | b |'));
-  assert.ok(t.indexOf('ficou fora da conta (linha 4: "Alfa"); para contar, comece a 1a celula pelo id (P0, 2a, 2b-0)') !== -1, t);
+  assert.ok(t.indexOf('ficou fora da conta (linha 4: "Alfa"); para contar, comece a 1ª célula pelo id (P0, 2a, 2b-0).') !== -1, t);
   const vazio = planoLib.painelTexto({ arquivo: 'p.md' }, []);
-  assert.ok(ASCII.test(vazio), JSON.stringify(vazio));
-  assert.ok(vazio.indexOf('o painel nao consegue contar as tarefas. Para contar, escreva as tarefas num desses formatos.') !== -1, vazio);
+  assert.ok(LIMPO.test(vazio), JSON.stringify(vazio));
+  assert.strictEqual(vazio, '**Plano p**\n\nplano ativo (dono: sem-sessao) · p.md\n\nO plano não tem cabeçalhos ' +
+    '`### Tarefa N: título` (nem Item/Etapa/Onda/Fase N) nem tabela de etapas (1ª coluna "Etapa"): o painel não ' +
+    'consegue contar as tarefas. Para contar, escreva as tarefas num desses formatos.');
 });
 
 test('R2 da s44: tabela colada na de etapas, sem linha em branco, e outra tabela (nao soma etapas nem vira "sem id")', () => {
@@ -784,7 +835,7 @@ test('D514 #1: linha vazia da tabela de etapas (espacador) nao vira "sem id" nem
   const itens = planoLib.parseItens('| Etapa | X |\n|---|---|\n| P0 | a |\n| | |\n|  |\n|\n| P1 | b |');
   assert.deepStrictEqual(itens.map(function (t) { return t.id; }), ['P0', 'P1']);
   assert.strictEqual(itens.semId, undefined);
-  assert.ok(planoLib.painelTexto({ arquivo: 'p.md' }, itens).indexOf('aviso:') === -1);
+  assert.ok(planoLib.painelTexto({ arquivo: 'p.md' }, itens).indexOf('Aviso:') === -1);
   // linha com texto e sem id segue avisada (a linha vazia antes dela nao conta)
   assert.deepStrictEqual(planoLib.parseItens('| Etapa | X |\n|---|---|\n| | |\n| Alfa | b |\n| P0 | a |').semId,
     [{ linha: 4, texto: 'Alfa' }]);
@@ -795,7 +846,7 @@ test('R1 da s45: tabela-resumo dos cabecalhos sem caixa nao conta cada item duas
   const itens = planoLib.parseItens(plano);
   assert.deepStrictEqual(itens.map(function (t) { return t.id + (t.tabela ? ' (tabela)' : '') + '=' + t.estado; }),
     ['1=feita', '2=sem marca', '3 (tabela)=sem marca']);
-  assert.ok(planoLib.painelTexto({ arquivo: 'p.md' }, itens).indexOf('tarefas: 1 de 3 concluidas') !== -1);
+  assert.ok(planoLib.painelTexto({ arquivo: 'p.md' }, itens).indexOf('**Plano p — 1 de 3 itens**') === 0);
   // o cabecalho guarda o id em minusculas, a tabela como esta escrito: "### Etapa 2A" e "| 2a |" numa tabela
   // "| ETAPAS |" sao o mesmo (o cabecalho so aceita id de numero, RE_ITEM; "### Etapa P1" nao e cabecalho)
   assert.deepStrictEqual(planoLib.parseItens('### Etapa 2A: x\n| ETAPAS | X |\n|---|---|\n| 2a | a |\n| 3 | b |')

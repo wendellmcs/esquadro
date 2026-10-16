@@ -1,14 +1,42 @@
 'use strict';
 
-// Bloco M / M1 (D435): o texto do medidor da sessao. Puro: recebe o que o motor mediu
-// ($.session.usage(), sem breakdown - nada abre rede, D148), as amostras por turno e os
-// gatilhos de saude.medir; devolve a linha de status, a resposta do comando e se a troca
-// de chat ja cruzou. Texto de gancho fica ASCII (R5). Campo que o motor nao deu e omitido:
-// numero inventado e pior que numero nenhum.
+// Bloco M / M1 (D435): o texto do medidor da sessao. Puro: nao le disco nem rede (D148). A entrada de linhaDaSessao,
+// montada pelo scripts/sessao.js:
+//   uso         - $.session.usage() sem breakdown: contexto, janelas (rateLimits) e cost.usd da sessao;
+//   amostras    - [{ tokens, cincoH }] por resposta, para a previsao em respostas;
+//   medidas     - os gatilhos de saude.medir (troca de chat); avisouSaude - o aviso de troca ja foi dado;
+//   historico   - por sessao, o % de cada janela no 1o e no ultimo momento (gasto.guardarSessao), para a previsao em
+//                 trocas de chat; sessao - o id da sessao atual, que fica fora dessa media;
+//   gasto       - o gasto do mes (gasto.gastoDoMes): { usd, real, estimado, pendentes, desde }.
+// Devolve a linha de status (curta), a resposta do comando (longa) e se a troca de chat ja cruzou. Texto de gancho
+// fica ASCII (R5); a barra e a resposta do comando sao excecao, com acento (D532: a sonda da Tarefa 1 do plano 082 viu
+// o acento inteiro nas duas). Campo que o motor nao deu e omitido: numero inventado e pior que numero nenhum.
 
 const NOME_DA_JANELA = { five_hour: '5h', seven_day: 'semana', spend_limit: 'gasto' };
+// Plano 082 (mock D532, S4): na resposta do comando, a janela por extenso - [nome, artigo, "usada"/"usado"].
+const JANELA_POR_EXTENSO = {
+  five_hour: ['janela de 5 horas', 'a', 'usada'],
+  seven_day: ['janela da semana', 'a', 'usada'],
+  spend_limit: ['limite de gasto', 'o', 'usado']
+};
 const MINIMO_DE_SUBIDAS = 2;   // previsao so com 2+ turnos que subiram
 const JANELA_DA_MEDIA = 5;     // media das ultimas 5 subidas
+// A previsao em trocas de chat (mediaPorSessao): o gasto medio de cada janela por sessao anterior.
+const SESSOES_DA_MEDIA = 5;    // media das ultimas 5 sessoes medidas
+const MINIMO_DE_SESSOES = 2;   // com menos de 2 sessoes medidas, nao ha media e a previsao se omite
+// Plano 082 (mock S4): o sinal ganha "perto do limite" a partir de 90% do limiar (o mock mostra 240.283 de 250.000).
+const PERTO_DO_LIMITE = 0.9;
+// Plano 082 (mock S4; p6-23): o sinal pelo nome que a pessoa entende ("turnos" vira "respostas"); o curto vai na
+// linha dos desligados pelo modo continuo. Chave de saude.medirTodos; chave desconhecida usa o nome que veio.
+const SINAL = {
+  turnosComTrabalho: ['respostas com trabalho real', 'respostas'],
+  revisoesFechadas: ['revisões independentes fechadas', 'revisões'],
+  bloqueios: ['bloqueios de portão', 'bloqueios'],
+  arquivosTocados: ['arquivos tocados', 'arquivos'],
+  decisoesDoDono: ['decisões do dono respondidas', 'decisões'],
+  commits: ['commits nesta sessão', 'commits'],
+  tokensDeContexto: ['tamanho do contexto', 'contexto']
+};
 
 function num(v) { return typeof v === 'number' && isFinite(v); }
 function dois(n) { return String(n).padStart(2, '0'); }
@@ -36,7 +64,10 @@ function janelas(uso) {
     const nome = NOME_DA_JANELA[j.kind] || String(j.kind);
     // a de 5h renova no mesmo dia (hora basta); as outras, pelo dia e hora
     const quando = j.resetsAt ? (j.kind === 'five_hour' ? hora(j.resetsAt) : [dia(j.resetsAt), hora(j.resetsAt)].filter(Boolean).join(' ')) : null;
-    return { kind: j.kind, nome: nome, pct: j.percentUsed, quando: quando || null };
+    // a resposta do comando diz "renova às 13:50" / "renova 22/10 às 04:00" (mock S4)
+    const h = j.resetsAt ? hora(j.resetsAt) : null;
+    const renova = h ? (j.kind === 'five_hour' ? 'às ' + h : dia(j.resetsAt) + ' às ' + h) : null;
+    return { kind: j.kind, nome: nome, pct: j.percentUsed, quando: quando || null, renova: renova };
   });
 }
 
@@ -60,41 +91,42 @@ function turnosAte(falta, porTurno) {
   return isFinite(n) ? n : null;
 }
 
+/** Respostas que faltam ate o fim do contexto e da janela de 5h, pela subida media por turno; null sem conta. */
 function previsao(uso, amostras) {
   const lista = Array.isArray(amostras) ? amostras : [];
-  const partes = [];
   const ctx = uso && uso.context;
   const porTurno = subidaMedia(lista, 'tokens');
   const nCtx = porTurno && ctx && num(ctx.tokens) && num(ctx.window) ? turnosAte(ctx.window - ctx.tokens, porTurno) : null;
-  if (nCtx !== null) {
-    partes.push({ curta: null, longa: 'contexto chega ao fim em ~' + nCtx + ' turnos' });
-  }
   const pct5h = subidaMedia(lista, 'cincoH');
   const j5 = janelas(uso).find(function (j) { return j.kind === 'five_hour'; });
-  const n = pct5h && j5 ? turnosAte(100 - j5.pct, pct5h) : null;
-  if (n !== null) {
-    partes.push({ curta: '5h acaba em ~' + n + ' turnos', longa: 'janela 5h acaba em ~' + n + ' turnos' });
-  }
-  return partes;
+  const n5 = pct5h && j5 ? turnosAte(100 - j5.pct, pct5h) : null;
+  return { contexto: nCtx, five_hour: n5 };
 }
 
-const SESSOES_DA_MEDIA = 5;    // pedido 31: media das ultimas 5 sessoes
-const MINIMO_DE_SESSOES = 2;
+function texto(v) { return typeof v === 'string' && v !== ''; }
 
 /**
- * Pedido 31: quanto cada sessao anterior gastou de cada janela (historico que o mod guarda no $.store, ver
- * gasto.guardarSessao). Entra a sessao que nao e a atual, teve 2+ medidas e nao cruzou a renovacao; as 5 mais
- * recentes. Devolve { kind: { media, k } } so com 2+ sessoes.
+ * Quanto cada sessao anterior gastou de cada janela (o historico de gasto.guardarSessao). Entra a sessao que nao e a
+ * atual, teve 2+ medidas e nao cruzou a renovacao; as 5 mais recentes. As janelas sao as que o historico tem.
+ * Devolve { kind: { media, k } } so com 2+ sessoes; sem saber qual e a atual, nada (ela entraria na propria media).
  */
 function mediaPorSessao(historico, atual) {
   const h = historico && typeof historico === 'object' ? historico : {};
   const r = {};
-  for (const kind of ['five_hour', 'seven_day']) {
-    const deltas = Object.keys(h).filter(function (id) { return id !== atual; }).map(function (id) {
+  if (!texto(atual)) return r;
+  const anteriores = Object.keys(h).filter(function (id) { return id !== atual; });
+  const kinds = new Set();
+  for (const id of anteriores) {
+    const s = h[id];
+    if (s && s.janelas && typeof s.janelas === 'object') Object.keys(s.janelas).forEach(function (k) { kinds.add(k); });
+  }
+  for (const kind of kinds) {
+    const deltas = anteriores.map(function (id) {
       const s = h[id];
       const j = s && s.janelas && typeof s.janelas === 'object' ? s.janelas[kind] : null;
       if (!j || !num(s.t) || !(s.medidas >= 2) || !num(j.ini) || !num(j.fim) || j.fim < j.ini) return null;
-      if (j.resetIni !== j.resetFim) return null;
+      // renovacao desconhecida numa ponta: nao da para saber se a sessao a cruzou, entao fica fora
+      if (!texto(j.resetIni) || j.resetIni !== j.resetFim) return null;
       return { t: s.t, d: j.fim - j.ini };
     }).filter(Boolean).sort(function (a, b) { return b.t - a.t; }).slice(0, SESSOES_DA_MEDIA);
     if (deltas.length < MINIMO_DE_SESSOES) continue;
@@ -104,9 +136,151 @@ function mediaPorSessao(historico, atual) {
   return r;
 }
 
-/** Pedido 31 (D520): o gasto do mes vem pronto do sessao.js (gasto.gastoDoMes); torto = sem gasto. */
+// O total do mes e a soma das duas fontes; a diferenca tolerada e o meio centavo (a tela mostra centavos).
+const TOLERANCIA_DA_SOMA = 0.005;
+
+/** O gasto do mes (gasto.gastoDoMes): partes nao negativas e total igual a real + estimado; torto = sem gasto. */
 function gastoValido(g) {
-  return g && typeof g === 'object' && num(g.usd) && num(g.real) && num(g.estimado) ? g : null;
+  if (!g || typeof g !== 'object' || !num(g.usd) || !num(g.real) || !num(g.estimado)) return null;
+  if (g.real < 0 || g.estimado < 0) return null;
+  return Math.abs(g.usd - (g.real + g.estimado)) <= TOLERANCIA_DA_SOMA ? g : null;
+}
+
+// Plano 082 (mock D532): dinheiro da barra como se le no Brasil - ponto no milhar, virgula nos centavos.
+function milhar(inteiro) { return String(inteiro).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+function centavos(v) { const p = v.toFixed(2).split('.'); return milhar(p[0]) + ',' + p[1]; }
+// O mes arredonda, mas abaixo de US$ 1 o arredondado diria "US$ 0"; ai vai com centavos.
+function mes(v) { return v < 1 ? centavos(v) : milhar(Math.round(v)); }
+// Plano 082 (mock S4): contagem com ponto no milhar ("240.283"); numero quebrado sai como veio.
+function inteiro(v) { return Number.isInteger(v) ? milhar(v) : String(v); }
+function vezes(n, um, varios) { return '~' + n + ' ' + (n === 1 ? um : varios); }
+
+function extenso(j) { return JANELA_POR_EXTENSO[j.kind] || ['janela ' + j.nome, 'a', 'usada']; }
+
+/** O gasto do mes ja conferido, com `desde` e `pendentes` limpos (torto = ausente: o total vale sem eles). */
+function gastoDoMes(g) {
+  const gasto = gastoValido(g);
+  if (!gasto) return null;
+  return {
+    usd: gasto.usd, real: gasto.real, estimado: gasto.estimado,
+    desde: typeof gasto.desde === 'string' && gasto.desde.trim() !== '' ? gasto.desde.trim() : null,
+    pendentes: num(gasto.pendentes) && gasto.pendentes > 0 ? Math.ceil(gasto.pendentes) : 0
+  };
+}
+
+/**
+ * A previsao em trocas de chat de uma janela: quantas sessoes como as anteriores cabem no que falta dela. A media vem
+ * de mediaPorSessao; sem media (ou com media zero), null.
+ */
+function trocasAte(j, porSessao) {
+  const m = porSessao[j.kind];
+  const n = m ? turnosAte(100 - j.pct, m.media) : null;
+  if (n === null) return null;
+  // media abaixo de 1% com uma casa: "0%" diria que a sessao nao gasta nada
+  const media = m.media >= 1 ? pct(m.media) : m.media.toFixed(1).replace('.', ',') + '%';
+  return vezes(n, 'troca de chat', 'trocas de chat') + ' (média de ' + media + ' por chat, nos últimos ' + m.k +
+    ' que deu para medir)';
+}
+
+// A barra (mock D532, S3): contexto · 5h ate HH:MM · semana · mes · sessao · troca. Sem "esquadro" na frente (o VS Code
+// ja escreve "esquadro plugin") e sem o plano (esta na faixa logo acima). A previsao saiu da barra: sem espaco para
+// dizer a unidade, fica so na resposta do comando.
+function barra(uso, gasto, js, cruzados, podem, avisou) {
+  const curta = [];
+  const ctx = uso && uso.context;
+  if (ctx && num(ctx.percent)) curta.push('contexto ' + pct(ctx.percent));
+  for (const j of js) curta.push(j.nome + ' ' + pct(j.pct) + (j.quando && j.kind === 'five_hour' ? ' até ' + j.quando : ''));
+  // o mes ao lado do semanal, a sessao depois; "+ (somando)" enquanto a leitura das conversas salvas segue (o numero
+  // ainda cresce; o quanto falta, a resposta do comando diz)
+  if (gasto) curta.push('mês US$ ' + mes(gasto.usd) + (gasto.pendentes > 0 ? '+ (somando)' : ''));
+  if (uso && uso.cost && num(uso.cost.usd)) curta.push('sessão US$ ' + centavos(uso.cost.usd));
+  if (avisou) curta.push('troca já avisada → /esquadro:handoff');
+  else if (cruzados.length) curta.push('troca ' + cruzados.length + ' de ' + podem + ' cruzou → /esquadro:handoff');
+  else curta.push('troca 0 de ' + podem);
+  return curta.join(' · ');
+}
+
+function linhasDosLimites(uso, js) {
+  const limites = [];
+  const ctx = uso && uso.context;
+  if (ctx && num(ctx.percent)) {
+    // token negativo (ou janela zero) desenhava "(-5 de 1000000 tokens)"; sem conta valida, so o %
+    const conta = num(ctx.tokens) && num(ctx.window) && ctx.tokens >= 0 && ctx.window > 0;
+    limites.push('- contexto: ' + pct(ctx.percent) + (conta ? ' (' + inteiro(ctx.tokens) + ' de ' + inteiro(ctx.window) + ' tokens)' : ''));
+  } else {
+    limites.push('- contexto: ainda sem leitura — aparece depois da 1ª resposta');
+  }
+  for (const j of js) {
+    const x = extenso(j);
+    limites.push('- ' + x[0] + ': ' + pct(j.pct) + ' ' + x[2] + (j.renova ? ', renova ' + j.renova : ''));
+  }
+  if (!js.length) limites.push('- limites de 5 horas e da semana: ainda sem leitura — aparecem depois da 1ª resposta, só na assinatura');
+  return limites;
+}
+
+// O gasto sem jargao ("transcricao", "estimado", "valor equivalente de API"), o mes com centavos, e o plural certo
+// dizendo que nao ha nada a fazer enquanto soma.
+function linhasDoGasto(uso, gasto) {
+  const gastos = [];
+  if (uso && uso.cost && num(uso.cost.usd)) gastos.push('- esta sessão: US$ ' + centavos(uso.cost.usd));
+  if (gasto) {
+    gastos.push('- mês' + (gasto.desde ? ' (desde ' + gasto.desde + ')' : '') + ': US$ ' + centavos(gasto.usd) + ' — US$ ' +
+      centavos(gasto.real) + ' medidos nas sessões com o esquadro + US$ ' + centavos(gasto.estimado) +
+      ' calculados pelas conversas salvas');
+    if (gasto.pendentes > 0) {
+      gastos.push('- ainda somando: ' + (gasto.pendentes === 1 ? 'falta 1 conversa salva' : 'faltam ' + gasto.pendentes + ' conversas salvas') +
+        ' para ler; o total se completa sozinho nas próximas respostas, sem você fazer nada');
+    }
+    gastos.push('- na assinatura é o valor que a API cobraria, não uma cobrança');
+  }
+  return gastos;
+}
+
+// A previsao: em respostas (subida media por turno) e em trocas de chat (trocasAte), na mesma linha da janela. Sem
+// nenhuma, a tela diz o que falta: 2 subidas para a de respostas, 2 sessoes anteriores para a de trocas de chat.
+function linhasDaPrevisao(prev, js, porSessao) {
+  const previsoes = [];
+  if (prev.contexto !== null) previsoes.push('- o contexto enche em ' + vezes(prev.contexto, 'resposta', 'respostas'));
+  for (const j of js) {
+    const respostas = j.kind === 'five_hour' ? prev.five_hour : null;
+    const partes = [];
+    if (respostas !== null) partes.push(vezes(respostas, 'resposta', 'respostas'));
+    const trocas = trocasAte(j, porSessao);
+    if (trocas !== null) partes.push(trocas);
+    if (!partes.length) continue;
+    const x = extenso(j);
+    previsoes.push('- ' + x[1] + ' ' + x[0] + ' acaba em ' + partes.join(', ou '));
+  }
+  if (!previsoes.length) {
+    previsoes.push('- aparece depois de ' + MINIMO_DE_SUBIDAS + ' respostas com consumo (em trocas de chat, depois de ' +
+      MINIMO_DE_SESSOES + ' chats anteriores medidos)');
+  }
+  return previsoes;
+}
+
+// Os sinais que valem primeiro, do mais perto do limite ao mais longe; os desligados pelo modo continuo (D468) numa
+// linha so, no fim, sem "disparou".
+function linhasDosSinais(medidas, avisou) {
+  const nomeDe = function (g) { return SINAL[g.chave] || [g.nome, g.nome]; };
+  const perto = function (g) { return g.limiar > 0 ? g.valor / g.limiar : 0; };
+  const valem = medidas.filter(function (g) { return g.calado !== true; })
+    .map(function (g, i) { return { g: g, i: i }; })
+    .sort(function (a, b) { return perto(b.g) - perto(a.g) || a.i - b.i; })
+    .map(function (x) { return x.g; });
+  const calados = medidas.filter(function (g) { return g.calado === true; });
+  const sinais = valem.map(function (g) {
+    const tokens = g.chave === 'tokensDeContexto' ? ' tokens' : '';
+    return '- ' + nomeDe(g)[0] + ': ' + inteiro(g.valor) + ' de ' + inteiro(g.limiar) + tokens +
+      (g.cruzou ? ' ← disparou' : g.limiar > 0 && g.valor >= g.limiar * PERTO_DO_LIMITE ? ' ← perto do limite' : '');
+  });
+  if (calados.length) {
+    sinais.push('- desligados pelo modo contínuo: ' + calados.map(function (g) {
+      return nomeDe(g)[1] + ' ' + inteiro(g.valor) + '/' + inteiro(g.limiar);
+    }).join(' · '));
+  }
+  if (avisou) sinais.push('- o aviso de troca já foi dado nesta sessão; os contadores recomeçam depois dele');
+  if (!sinais.length) sinais.push('- nenhum sinal medido ainda');
+  return sinais;
 }
 
 function linhaDaSessao(entrada) {
@@ -116,82 +290,23 @@ function linhaDaSessao(entrada) {
   const cruzados = medidas.filter(function (g) { return g.cruzou; });
   const avisou = e.avisouSaude === true;
   const cruzou = avisou || cruzados.length > 0;
-  const prev = previsao(uso, e.amostras);
-  const porSessao = mediaPorSessao(e.historico, e.sessao);
-  const handoffs = function (j) {
-    const m = porSessao[j.kind];
-    return m ? turnosAte(100 - j.pct, m.media) : null;
-  };
-  const gasto = gastoValido(e.gasto);
-
-  // Pedido 32: a barra na ordem esquadro | plano | contexto | 5h | semana | mes | sessao | troca.
-  const curta = ['esquadro'];
-  if (typeof e.planoCurto === 'string' && e.planoCurto) curta.push(e.planoCurto);
-  const ctx = uso && uso.context;
-  if (ctx && num(ctx.percent)) curta.push('contexto ' + pct(ctx.percent));
-  for (const j of janelas(uso)) {
-    const extra = [j.quando && j.kind === 'five_hour' ? 'renova ' + j.quando : null,
-      handoffs(j) !== null ? '~' + handoffs(j) + ' handoffs' : null].filter(Boolean);
-    curta.push(j.nome + ' ' + pct(j.pct) + (extra.length ? ' (' + extra.join(', ') + ')' : ''));
-  }
-  // Pedido 31: o mes ao lado do semanal, a sessao depois; "+" e "(contando)" enquanto a leitura das transcricoes segue.
-  if (gasto) curta.push('mes US$ ' + Math.round(gasto.usd) + (gasto.pendentes > 0 ? '+ (contando)' : ''));
-  if (uso && uso.cost && num(uso.cost.usd)) curta.push('sessao US$ ' + uso.cost.usd.toFixed(2));
-  for (const p of prev) if (p.curta) curta.push(p.curta);
   // D468/D490 (M2): o gatilho calado pelo modo continuo nao pode disparar, entao nao entra no "de N".
   const podem = medidas.filter(function (g) { return g.calado !== true; }).length;
-  if (avisou) curta.push('troca: aviso ja dado -> /esquadro:handoff');
-  else if (cruzados.length) curta.push('troca: ' + cruzados.length + ' de ' + podem + ' cruzou -> /esquadro:handoff');
-  else curta.push('troca: 0 de ' + podem + ' gatilhos');
-
-  const longa = ['medidor da sessao'];
-  if (ctx && num(ctx.percent)) {
-    longa.push('contexto: ' + pct(ctx.percent) + (num(ctx.tokens) && num(ctx.window) ? ' (' + ctx.tokens + ' de ' + ctx.window + ' tokens)' : ''));
-  } else {
-    longa.push('contexto: sem leitura ainda (o motor mede depois da 1a resposta)');
-  }
+  const gasto = gastoDoMes(e.gasto);
   const js = janelas(uso);
-  if (js.length) {
-    for (const j of js) longa.push('janela ' + j.nome + ': ' + pct(j.pct) + ' usada' + (j.quando ? ', renova ' + j.quando : ''));
-  } else {
-    longa.push('janelas de limite: sem leitura (fora de assinatura, ou antes da 1a resposta)');
-  }
-  if (uso && uso.cost && num(uso.cost.usd)) longa.push('custo da sessao: US$ ' + uso.cost.usd.toFixed(2));
-  if (gasto) {
-    longa.push('gasto do mes (desde ' + gasto.desde + '): US$ ' + gasto.usd.toFixed(2) + ' = US$ ' + gasto.real.toFixed(2) +
-      ' real das sessoes medidas + US$ ' + gasto.estimado.toFixed(2) + ' estimado das transcricoes' +
-      (gasto.pendentes > 0 ? ' (contando: faltam ' + gasto.pendentes + ' arquivos de transcricao; o total completa sozinho nas proximas medidas)' : '') +
-      '; em assinatura e valor equivalente de API, nao cobranca');
-  }
-  // A previsao da longa: a dos turnos (previsao) e a das sessoes anteriores (handoffs), numa lista so dela.
-  const previsoes = prev.map(function (p) { return p.longa; });
-  for (const j of js) {
-    const n = handoffs(j);
-    if (n === null) continue;
-    const m = porSessao[j.kind];
-    // media abaixo de 1% com uma casa: "0%" diria que a sessao nao gasta nada
-    previsoes.push('janela ' + j.nome + ' acaba em ~' + n + ' handoffs (media de ' +
-      (m.media >= 1 ? pct(m.media) : m.media.toFixed(1) + '%') +
-      ' por sessao, nas ultimas ' + m.k + ' sessoes)');
-  }
-  longa.push(previsoes.length
-    ? 'previsao: ' + previsoes.join('; ')
-    : 'previsao: sem dado ainda (precisa de ' + MINIMO_DE_SUBIDAS + ' turnos com consumo)');
-  longa.push('troca de chat (basta 1 gatilho):');
-  for (const g of medidas) {
-    // D468: o gatilho calado pelo modo continuo aparece, mas sem "cruzou".
-    longa.push('  - ' + g.nome + ': ' + g.valor + ' de ' + g.limiar +
-      (g.calado === true ? '  (modo continuo: nao dispara)' : g.cruzou ? '  <- cruzou' : ''));
-  }
-  if (avisou) longa.push('  (o aviso de troca ja foi dado nesta sessao; os contadores recomecam depois dele)');
-  // D442/2: o painel do VS Code le a longa como Markdown; sem a linha em branco, o "o que fazer" emendava
-  // no ultimo item da lista.
-  longa.push('');
-  longa.push(cruzou
-    ? 'o que fazer: rode /esquadro:handoff e cole o prompt pronto num chat novo.'
-    : 'o que fazer: nada por ora.');
 
-  return { curta: curta.join(' | '), longa: longa.join('\n'), cruzou: cruzou };
+  // A resposta do comando em 5 blocos com titulo (mock D532, S4). O painel do VS Code a le como Markdown (D442/2):
+  // titulo em negrito, itens em lista e linha em branco entre os blocos - sem ela, o titulo emendava no ultimo item
+  // de cima. Bloco sem nada a dizer (o Gasto sem leitura) fica de fora.
+  const blocos = [];
+  const bloco = function (titulo, linhas) { if (linhas.length) blocos.push(['**' + titulo + '**'].concat(linhas).join('\n')); };
+  bloco('Contexto e limites', linhasDosLimites(uso, js));
+  bloco('Gasto', linhasDoGasto(uso, gasto));
+  bloco('Previsão', linhasDaPrevisao(previsao(uso, e.amostras), js, mediaPorSessao(e.historico, e.sessao)));
+  bloco('Troca de chat — ' + cruzados.length + ' de ' + podem + ' sinais disparou (basta 1)', linhasDosSinais(medidas, avisou));
+  bloco('O que fazer', [cruzou ? 'Rode /esquadro:handoff e cole o prompt pronto num chat novo.' : 'Nada por ora.']);
+
+  return { curta: barra(uso, gasto, js, cruzados, podem, avisou), longa: blocos.join('\n\n'), cruzou: cruzou };
 }
 
 module.exports = { linhaDaSessao };

@@ -130,27 +130,31 @@ function problemasDaTabela(plataforma, ferramenta) {
 
 function motivo(comando, problemas, tentativa) {
   const c = String(comando);
+  // Plano 082, Tarefa 5 (mock S10): a forma unica dos avisos.
   const linhas = [
-    'esquadro - idioma de shell errado para esta plataforma.',
+    'esquadro - comando escrito no idioma de shell errado para esta plataforma.',
     '',
     'Comando: ' + (c.length > 120 ? c.slice(0, 120) + '...(' + c.length + ' caracteres)' : c),
-    '',
     'Achado                 Use no lugar'
   ];
   for (const p of problemas) {
     linhas.push('  ' + String(p.achado || '(sem achado)').padEnd(20) + ' ' + (p.sugestao || '(sem sugestao)'));
     if (p.motivo) linhas.push('      por que: ' + p.motivo);
   }
-  linhas.push('');
   if (tentativa >= 2) {
     // O agravante da F16: o reflexo e tentar outra variacao do MESMO idioma.
-    linhas.push('Troque de idioma, nao de variacao.');
-    linhas.push('Esta e a tentativa ' + tentativa + ' com sintaxe da plataforma errada.');
-    linhas.push('Nao tente outra forma de bash. Escreva o comando em PowerShell,');
-    linhas.push('ou use uma ferramenta multiplataforma (Node, o proprio harness).');
+    linhas.push('Esta e a tentativa ' + tentativa + ' com sintaxe da plataforma errada. Troque de idioma, nao de variacao.');
+    linhas.push('');
+    linhas.push('Faca uma destas:');
+    linhas.push('  1. escreva o comando em PowerShell, sem outra forma de bash;');
+    linhas.push('  2. ou use uma ferramenta multiplataforma (Node, o proprio harness).');
   } else {
-    linhas.push('A plataforma deste projeto esta em .claude/esquadro/projeto.json,');
-    linhas.push('campo plataforma. Leia de la; nao infira a cada comando.');
+    linhas.push('A plataforma deste projeto esta no campo "plataforma" de .claude/esquadro/projeto.json:');
+    linhas.push('leia de la, nao infira a cada comando.');
+    linhas.push('');
+    linhas.push('Faca uma destas:');
+    linhas.push('  1. reescreva o comando com o que esta em "Use no lugar";');
+    linhas.push('  2. ou use uma ferramenta multiplataforma (Node, o proprio harness).');
   }
   return linhas.join('\n');
 }
@@ -160,18 +164,19 @@ function motivo(comando, problemas, tentativa) {
  * que a trava de idioma esta desligada - por inteiro (arquivo) ou so naquelas regras - ate consertar.
  */
 function avisoTabela(problemas) {
-  const linhas = ['esquadro - a tabela de idioma do PowerShell nao esta valendo. O comando rodou normalmente.', ''];
+  // Plano 082, Tarefa 5 (mock S10): a forma unica dos avisos.
+  const linhas = ['esquadro - a tabela de idioma do PowerShell nao esta valendo; o comando rodou normalmente.', ''];
   for (const p of problemas) {
     linhas.push(p.tipo === 'arquivo'
-      ? '  arquivo ' + p.onde + ' do plugin nao se leu: ' + p.causa
-      : '  regra "' + p.achado + '" (' + p.onde + ' em ' + ARQUIVO_TABELA + ') tem padrao invalido: ' + p.causa);
+      ? '  - "' + p.onde + '" do plugin nao se leu: ' + p.causa
+      : '  - regra "' + p.achado + '" (' + p.onde + ' em "' + ARQUIVO_TABELA + '") tem padrao invalido: ' + p.causa);
   }
-  linhas.push('');
   linhas.push(problemas.some((p) => p.tipo === 'arquivo')
     ? 'A trava de idioma de shell esta DESLIGADA ate consertar esse arquivo (nada e negado por ele).'
     : 'A trava de idioma esta DESLIGADA so para as regras acima; as outras seguem valendo.');
-  linhas.push('Conserte o arquivo no plugin esquadro; o comando seguinte ja usa a tabela consertada.');
   linhas.push('Este aviso sai uma vez por sessao.');
+  linhas.push('');
+  linhas.push('Faca assim: conserte o arquivo no plugin esquadro; o comando seguinte ja usa a tabela consertada.');
   return linhas.join('\n');
 }
 
@@ -532,37 +537,39 @@ function cdSolto(comando, ferramenta, plataforma) {
 /** A mensagem da negacao: o que aconteceu, o porque, e a forma certa para a ferramenta. */
 function motivoCdSolto(comando, achado) {
   const ps = !!achado && achado.forma === 'powershell';
+  // Plano 082, Tarefa 5 (mock S10): a forma unica dos avisos. A liberacao fica por ultimo, como acao do dono.
   const linhas = [
-    'esquadro - cd solto: a pasta atual persiste entre as chamadas desta ferramenta.',
+    'esquadro - cd solto: a pasta mudada ficaria valendo para os comandos seguintes.',
     '',
-    'Comando: ' + String(comando).slice(0, 300),
-    ''
+    'Comando: ' + String(comando).slice(0, 300)
   ];
   if (achado && achado.teto) { // T1/F3-06
     linhas.push('O comando passa de 100 niveis de aninhamento e nao foi lido inteiro: um cd la dentro');
-    linhas.push('nao se veria, e a pasta mudada ficaria valendo no comando seguinte. Divida o comando.');
+    linhas.push('nao se veria, e a pasta mudada ficaria valendo no comando seguinte.');
   } else {
-    linhas.push('O que o ' + (achado ? achado.achado : 'cd') + ' muda fica valendo no comando seguinte, e um git ou npm');
+    linhas.push('O que o ' + (achado ? achado.achado : 'cd') + ' muda persiste no comando seguinte, e um git ou npm');
     linhas.push('sem caminho passa a agir em outra pasta.');
   }
+  linhas.push('');
+  linhas.push('Faca uma destas:');
+  if (achado && achado.teto) linhas.push('  1. divida o comando em comandos menores, e use uma das formas abaixo para mudar de pasta;');
   if (ps) {
-    linhas.push('Use no lugar, e a pasta volta mesmo se o comando falhar:');
-    linhas.push("  Push-Location -LiteralPath '<pasta>' -ErrorAction Stop; try { <comando> } finally { Pop-Location }");
-    linhas.push('O bloco & { Set-Location X } NAO isola a pasta (medido no PowerShell 5.1).');
-    linhas.push('Sem o -ErrorAction Stop, uma pasta errada deixa o comando rodar na pasta de antes e o');
-    linhas.push('Pop-Location desempilha a pasta errada (medido).');
-    linhas.push('Ou nao mude de pasta:');
-    linhas.push("  git -C '<pasta>' <comando do git>");
-    linhas.push("  npm --prefix '<pasta>' <comando do npm>");
+    linhas.push('  ' + (achado && achado.teto ? '2' : '1') + '. mude de pasta so dentro do bloco, e a pasta volta mesmo se o comando falhar:');
+    linhas.push("       Push-Location -LiteralPath '<pasta>' -ErrorAction Stop; try { <comando> } finally { Pop-Location }");
+    linhas.push('     O bloco & { Set-Location X } NAO isola a pasta (medido no PowerShell 5.1). Sem o -ErrorAction Stop,');
+    linhas.push('     uma pasta errada deixa o comando rodar na pasta de antes e o Pop-Location desempilha a pasta errada (medido);');
+    linhas.push('  ' + (achado && achado.teto ? '3' : '2') + '. ou nao mude de pasta:');
+    linhas.push("       git -C '<pasta>' <comando do git>");
+    linhas.push("       npm --prefix '<pasta>' <comando do npm>");
   } else {
-    linhas.push('Use no lugar, em subshell (os parenteses abrem um shell filho: o cd vale so dentro dele e a pasta volta sozinha):');
-    linhas.push('  ( cd "<pasta>" && <comando> )');
-    linhas.push('Ou nao mude de pasta:');
-    linhas.push('  git -C "<pasta>" <comando do git>');
-    linhas.push('  npm --prefix "<pasta>" <comando do npm>');
+    linhas.push('  ' + (achado && achado.teto ? '2' : '1') + '. rode em subshell (os parenteses abrem um shell filho: o cd vale so dentro dele e a pasta volta sozinha):');
+    linhas.push('       ( cd "<pasta>" && <comando> )');
+    linhas.push('  ' + (achado && achado.teto ? '3' : '2') + '. ou nao mude de pasta:');
+    linhas.push('       git -C "<pasta>" <comando do git>');
+    linhas.push('       npm --prefix "<pasta>" <comando do npm>');
   }
   linhas.push('');
-  linhas.push('Escape declarado pelo dono: comandosLiberados em .claude/esquadro/projeto.json.');
+  linhas.push('So o dono libera: ele acrescenta o padrao em "comandosLiberados" de .claude/esquadro/projeto.json.');
   return linhas.join('\n');
 }
 
@@ -579,10 +586,14 @@ function envolverEmSubshell(comando, achado) {
 }
 
 /** D486: o que o agente fica sabendo quando o comando foi corrigido em vez de negado. */
+// Plano 082, Tarefa 5 (mock S10): a forma unica dos avisos. Nada falta (o comando ja rodou): sem "Faca uma destas".
 function avisoCdCorrigido(achado) {
-  return 'esquadro - cd solto corrigido: o ' + (achado ? achado.achado : 'cd') + ' mudaria a pasta para os comandos ' +
-    'seguintes, entao o comando rodou dentro de um subshell, ( ... ), e a pasta volta sozinha. Escreva assim da ' +
-    'proxima vez: ( cd "<pasta>" && <comando> ), ou git -C "<pasta>" sem mudar de pasta.';
+  return [
+    'esquadro - cd solto corrigido: o comando rodou dentro de um subshell, ( ... ).',
+    '',
+    'O ' + (achado ? achado.achado : 'cd') + ' mudaria a pasta para os comandos seguintes; no subshell a pasta volta sozinha.',
+    'Da proxima vez, escreva assim: ( cd "<pasta>" && <comando> ), ou git -C "<pasta>" sem mudar de pasta.'
+  ].join('\n');
 }
 
 module.exports = { TABELA, semLiterais, conferir, problemasDaTabela, avisoTabela, motivo, cdSolto, motivoCdSolto,

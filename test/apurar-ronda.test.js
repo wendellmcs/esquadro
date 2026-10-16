@@ -1368,8 +1368,34 @@ test('D503: pelo CLI, ronda com referencia sem a 2a passada para com o caminho d
     const r = rodar(['--sessao', 'ref4'], cwd, tmp);
     assert.strictEqual(r.status, 1, r.stdout);
     assert.match(r.stdout, /invertida\/vereditos/);
-    assert.match(r.stdout, /2a passada/);
+    // Plano 082, Tarefa 5 (p2-32): sem a giria "2a passada" nem "metade do voto"; diz a lente e o pacote.
+    assert.doesNotMatch(r.stdout, /2a passada|metade do voto/, r.stdout);
+    assert.match(r.stdout, /com A e B trocados/, r.stdout);
+    assert.match(r.stdout, /Lentes que faltam com os lados trocados: correcao\./, r.stdout);
+    assert.match(r.stdout, /invertida\/A\.txt e invertida\/B\.txt/, r.stdout);
   }));
+});
+
+// Plano 082, Tarefa 5 (p2-2, p2-33): sem sessao, o aviso diz o efeito pratico e, com referencia, que ela tambem ficou de fora.
+test('082 T5: fecho sem sessao diz o efeito pratico; com referencia, diz que a comparacao tambem nao entrou', () => {
+  comTmp((tmp) => comTmp((cwd) => {
+    const m = { A: 'trabalho', B: 'HEAD' };
+    gravarRondaRef(cwd, 1, m, [vdRef('correcao', 'vence', 'perde')], [vdRef('correcao', 'perde', 'empata')]);
+    gravarRondaRef(cwd, 2, m, [vdRef('correcao', 'vence', 'perde')], [vdRef('correcao', 'perde', 'vence')]);
+    const r = rodar([], cwd, tmp);
+    assert.strictEqual(r.status, 0, r.stdout);
+    const aviso = r.json.revisaoFechadaContada.aviso;
+    assert.match(aviso, /nenhuma sessao le/, aviso);
+    assert.match(aviso, /comparacao com a referencia tambem nao entrou/, aviso);
+    assert.match(aviso, /portao de fecho/, aviso);
+    assert.ok(!/de novo|outra vez|repita|rode/i.test(aviso), aviso);
+  }));
+  comRepo((cwd, tmp) => {
+    baseFechada(cwd);
+    const aviso = rodar([], cwd, tmp).json.revisaoFechadaContada.aviso;
+    assert.match(aviso, /nenhuma sessao le/, aviso);
+    assert.doesNotMatch(aviso, /referencia/, 'sem referencia, nao fala dela: ' + aviso);
+  });
 });
 
 test('D503 (revisao s49): mapa.json com `invertida` que nao e objeto esta corrompido, nao vira ronda sem referencia', () => {
@@ -1386,6 +1412,44 @@ test('D503 (revisao s49): mapa.json com `invertida` que nao e objeto esta corrom
       assert.ok(r.stdout.includes('1/mapa.json esta corrompido ("invertida" nao e um objeto)'), r.stdout);
     }));
   }
+});
+
+// Plano 082, Tarefa 6 (p2-34): `invertida {}` passava no lerMapaJson e virava excecao do apurar, sem o arquivo nem o que fazer.
+test('082 T6 (p2-34): `invertida` sem o lado de A e de B esta corrompido, com o arquivo e o que fazer', () => {
+  for (const torta of [{}, { A: 'trabalho' }, { A: 'HEAD', B: 'HEAD' }, { A: 'x', B: 'trabalho' }]) {
+    comTmp((tmp) => comTmp((cwd) => {
+      gravarRondaRef(cwd, 1, { A: 'trabalho', B: 'HEAD' }, [vdRef('correcao', 'vence', 'perde')],
+        [vdRef('correcao', 'perde', 'vence')]);
+      const arq = path.join(cwd, '.claude', 'esquadro', 'revisao', '1', 'mapa.json');
+      const mj = JSON.parse(fs.readFileSync(arq, 'utf8'));
+      mj.invertida = torta;
+      fs.writeFileSync(arq, JSON.stringify(mj), 'utf8');
+      const r = rodar(['--sessao', 'ref4c'], cwd, tmp);
+      assert.strictEqual(r.status, 1, JSON.stringify(torta) + ': ' + r.stdout);
+      assert.ok(r.stdout.includes('1/mapa.json esta corrompido ("invertida" nao diz o lado de A e de B'), r.stdout);
+      assert.ok(r.stdout.includes('prepare a ronda de novo'), r.stdout);
+      assert.ok(r.stdout.indexOf('sem o mapa que diz') === -1, 'virou a excecao do apurar: ' + r.stdout);
+    }));
+  }
+});
+
+// p2-28: sem `invertida` no mapa.json, a pasta invertida/vereditos/ nunca se lia e o voto dela sumia calado.
+test('082 T6 (p2-28): vereditos com A e B trocados numa ronda sem `invertida` no mapa.json param com o que fazer', () => {
+  comTmp((tmp) => comTmp((cwd) => {
+    gravarMapa(cwd, 1, { A: 'trabalho', B: 'HEAD' });
+    gravarRonda(cwd, 1, [{ lente: 'correcao', melhor: 'A', achados: [] }]);
+    const inv = path.join(cwd, '.claude', 'esquadro', 'revisao', '1', 'invertida', 'vereditos');
+    fs.mkdirSync(inv, { recursive: true });
+    const r0 = rodar(['--sessao', 'ref9'], cwd, tmp);
+    assert.strictEqual(r0.status, 0, 'pasta vazia nao perde voto: ' + r0.stdout);
+    fs.writeFileSync(path.join(inv, 'correcao.json'), JSON.stringify(vdRef('correcao', 'vence', 'perde')), 'utf8');
+    const r = rodar(['--sessao', 'ref9'], cwd, tmp);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.ok(r.stdout.includes('ERRO: a ronda 1 tem vereditos com A e B trocados em .claude/esquadro/revisao/1/invertida/vereditos/, ' +
+      'mas o mapa.json dela nao tem "invertida"'), r.stdout);
+    assert.match(r.stdout, /prepare a ronda de novo/, r.stdout);
+    assert.match(r.stdout, /apague a pasta \.claude\/esquadro\/revisao\/1\/invertida\//, r.stdout);
+  }));
 });
 
 test('D503: pelo CLI, veredito sem vsReferencia na ronda com referencia e veredito invalido, nas duas passadas', () => {

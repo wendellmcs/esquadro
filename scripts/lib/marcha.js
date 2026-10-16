@@ -4,6 +4,9 @@ const glob = require('./glob.js');
 const NIVEL = { rapida: 1, padrao: 2, aaa: 3 };
 // AAA primeiro: caminho que casa em duas listas fica na mais rigorosa.
 const ORDEM = ['aaa', 'padrao', 'rapida'];
+// Plano 082 (p8-25): disco que nao distingue caixa - o Windows, como o CAIXA_PADRAO do glob.js (o macOS conta como o
+// Linux no plugin inteiro).
+const CAIXA_IGUAL = process.platform === 'win32';
 
 /** D8: o rigor sai do caminho do arquivo, nunca da classificacao que o agente fez. */
 function resolverMarcha(caminho, projeto) {
@@ -49,10 +52,17 @@ function aaaComReferencia(arquivos, projeto, raiz) {
       lista.every(function (e) { return typeof e === 'string' && e.trim() !== ''; });
   };
   const achados = [];
+  // Plano 082 (p8-25): no Windows o disco nao distingue caixa - Src/A.css e src/a.css sao um arquivo so, e vale a 1a
+  // grafia vista. Fora dele sao dois.
+  const chave = CAIXA_IGUAL ? function (r) { return r.toLowerCase(); } : function (r) { return r; };
+  const vistos = new Set();
   for (const arquivo of arquivos) {
     const rel = caminhoLib.relativoAoProjeto(arquivo, raiz);
-    if (!rel || achados.indexOf(rel) !== -1 || resolverMarcha(rel, projeto) !== 'aaa') continue;
-    if (comLista(cegar.tipoDaReferencia(rel, design.ehArquivoDeEstilo(rel, projeto)))) achados.push(rel);
+    if (!rel || vistos.has(chave(rel)) || resolverMarcha(rel, projeto) !== 'aaa') continue;
+    if (comLista(cegar.tipoDaReferencia(rel, design.ehArquivoDeEstilo(rel, projeto)))) {
+      achados.push(rel);
+      vistos.add(chave(rel));
+    }
   }
   return achados;
 }

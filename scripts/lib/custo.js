@@ -47,20 +47,19 @@ function permitido(tipo, marchaMax, projeto) {
 
   return {
     ok: false,
+    // Plano 082, Tarefa 5 (mock S10): a forma unica dos avisos. "topo" era meia verdade: barra a metade cara.
     motivo: [
-      'esquadro - roteamento por custo.',
+      'esquadro - agente caro demais para um trabalho simples.',
       '',
-      'Voce despachou "' + tipo + '", que esta no topo da escada deste projeto,',
-      'para um trabalho cujo escopo declarado so toca caminho de marcha rapida.',
-      '',
-      'Na duvida entre dois modelos, o mais barato. Os agentes escalam sozinhos',
-      'quando a tarefa excede o escopo deles.',
-      '',
+      'Voce despachou "' + tipo + '", da metade mais cara da escada deste projeto, mas o escopo',
+      'declarado so toca caminho de marcha rapida (o nivel de rigor mais leve do projeto.json).',
       'Escada deste projeto, do mais barato ao mais caro:',
-      lista.map(function (a, i) { return '  ' + (i + 1) + '. ' + a; }).join('\n'),
+      lista.map(function (a) { return '  - "' + a + '"'; }).join('\n'),
       '',
-      'Se o trabalho realmente exige este agente, acrescente ao escopo o caminho',
-      'de marcha padrao ou AAA que justifica a escolha - e a escolha fica visivel.'
+      'Faca uma destas:',
+      '  1. despache um agente mais barato da escada: ele escala sozinho se a tarefa passar do alcance dele;',
+      '  2. se o trabalho exige mesmo este agente, acrescente ao escopo o caminho de marcha padrao ou AAA',
+      '     que justifica a escolha - e a escolha fica visivel.'
     ].join('\n')
   };
 }

@@ -682,7 +682,8 @@ test('0.3.3/item 25: as mensagens dos portoes dizem o que guardam, sem jargao ne
   const intocavel = escopo.motivoIntocavel('.env');
   assert.ok(intocavel.includes('lista "intocaveis" de .claude/esquadro/projeto.json'), intocavel);
   assert.ok(!intocavel.includes('intocaveis de projeto.json'), intocavel);
-  assert.ok(intocavel.startsWith('esquadro - intocavel.'), 'o cabecalho fica: ' + intocavel);
+  // Plano 082, Tarefa 5: a 1a linha diz o que falta (era "esquadro - intocavel.").
+  assert.ok(intocavel.startsWith('esquadro - arquivo intocavel: mexer nele e decisao do dono.'), 'o cabecalho: ' + intocavel);
 
   const outra = escopo.motivoOutraFrente('src/a.js', '.claude/esquadro/escopo.md');
   assert.ok(!/rascunho abandonado/.test(outra) && !/convite/.test(outra), 'tom: ' + outra);
@@ -816,4 +817,16 @@ test('F2-18: linha de regua horizontal (--- e - ---) nao vira item de Dentro/For
   assert.deepStrictEqual(e.fora, ['src/b.js']);
   // Controle: hifen em caminho de verdade continua sendo item, e `--` com texto tambem.
   assert.deepStrictEqual(escopo.parse('## Dentro\n- -x.js\n- a---b.js\n- --flag.js\n').dentro, ['-x.js', 'a---b.js', '--flag.js']);
+});
+
+// Plano 082, Tarefa 2 (p8-11, p8-12): o filtro ASCII (R5) trocava quebra de linha e tab por "?", cada metade de um
+// emoji por um "?" (dois por emoji), e so U+2012-2015 viravam hifen.
+test('ascii: hifens e menos viram hifen; quebra e tab viram espaco; emoji vira UM "?"', () => {
+  assert.strictEqual(escopo.ascii('a‐b‑c−d‒e–f—g―h'), 'a-b-c-d-e-f-g-h');
+  assert.strictEqual(escopo.ascii('linha 1\nlinha 2\r\nlinha 3\tfim'), 'linha 1 linha 2 linha 3 fim');
+  assert.strictEqual(escopo.ascii('ok 🚀 foi'), 'ok ? foi');
+  // controle: acento sai sem acento, ASCII fica igual, e o que nao tem troca segue "?"
+  assert.strictEqual(escopo.ascii('sessão próxima'), 'sessao proxima');
+  assert.strictEqual(escopo.ascii('a-b c'), 'a-b c');
+  assert.strictEqual(escopo.ascii('中'), '?');
 });

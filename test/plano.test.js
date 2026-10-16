@@ -201,11 +201,33 @@ test('plano.js --proxima-decisao: arquivo ausente avisa no stderr; pasta sai 1 (
 // o status do VS Code desenha uma linha so). Nome curto do arquivo, feitas de total, a proxima.
 const D503 = { arquivo: '.context/plans/2026-10-13-esquadro-pendencias-d503-plano.md', frente: 'esquadro-pendencias' };
 
-test('pedido 30: linhaDoPlano - nome curto, feitas de total e a proxima, numa linha', () => {
-  assert.strictEqual(plano.linhaDoPlano(D503, plano.parseItens(PLANO)), 'plano d503 | 1 de 2 | proxima: Tarefa 2 marcha');
+// Plano 082, Tarefa 2 (mock D532, S1): separador " · ", a unidade depois da conta (p7-9), "—" entre o id e o titulo, e
+// acento (D532: a faixa e excecao a R5).
+test('pedido 30: linhaDoPlano - nome curto, feitas de total com a unidade e a proxima, numa linha', () => {
+  assert.strictEqual(plano.linhaDoPlano(D503, plano.parseItens(PLANO)), 'plano d503 · 1 de 2 tarefas · próxima: Tarefa 2 — marcha');
   // Sem frente (plano-ativo.json), o nome sai so sem a data e sem o "-plano".
   assert.strictEqual(plano.linhaDoPlano({ arquivo: 'p/2026-01-01-x-plano.md' }, plano.parseItens(PLANO)),
-    'plano x | 1 de 2 | proxima: Tarefa 2 marcha');
+    'plano x · 1 de 2 tarefas · próxima: Tarefa 2 — marcha');
+});
+
+test('plano 082 (p7-9): a unidade segue o tipo das linhas que contam (singular no total 1); misturados viram "itens"', () => {
+  const casos = [['### Etapa 1: a\n- [x] p\n### Etapa 2: b\n- [ ] p', '1 de 2 etapas'],
+    ['### Fase 1: a\n- [ ] p\n### Fase 2: b\n- [ ] p', '0 de 2 fases'], ['### Onda 1: a\n- [ ] p', '0 de 1 onda'],
+    ['### Item 1: a\n- [ ] p\n### Item 2: b\n- [ ] p', '0 de 2 itens'], ['### Tarefa 1: a\n- [ ] p', '0 de 1 tarefa'],
+    ['### Tarefa 1: a\n- [x] p\n### Etapa 2: b\n- [ ] p', '1 de 2 itens']];
+  for (const [texto, conta] of casos) {
+    const l = plano.linhaDoPlano(D503, plano.parseItens(texto));
+    assert.ok(l.indexOf('plano d503 · ' + conta + ' · ') === 0, l);
+  }
+});
+
+test('plano 082 (p7-7): linha da tabela sem id fica fora da conta, e a faixa diz quantas', () => {
+  const um = plano.parseItens('| Etapa | X |\n|---|---|\n| P0 | a |\n| Alfa | b |\n| P1 | c |');
+  assert.strictEqual(um.semId.length, 1, 'controle: a tabela tem 1 linha sem id');
+  assert.ok(/ · 1 linha da tabela fora da conta$/.test(plano.linhaDoPlano(D503, um)), plano.linhaDoPlano(D503, um));
+  const dois = plano.parseItens('| Etapa | X |\n|---|---|\n| P0 | a |\n| Alfa | b |\n| Beta | c |');
+  assert.ok(/ · 2 linhas da tabela fora da conta$/.test(plano.linhaDoPlano(D503, dois)), plano.linhaDoPlano(D503, dois));
+  assert.ok(plano.linhaDoPlano(D503, plano.parseItens(PLANO)).indexOf('fora da conta') === -1);
 });
 
 test('pedido 30: linhaDoPlano - sem plano, ou plano sem tarefa contavel, e vazia (a faixa nao mostra nada)', () => {
@@ -215,31 +237,32 @@ test('pedido 30: linhaDoPlano - sem plano, ou plano sem tarefa contavel, e vazia
   assert.strictEqual(plano.linhaDoPlano(D503, null), '');
 });
 
-test('pedido 30: linhaDoPlano - tudo feito diz que nada esta aberto', () => {
+test('pedido 30: linhaDoPlano - tudo feito diz "concluído" com a conta (plano 082, p7-9; mock S1)', () => {
   const feito = '### Tarefa 1: a\n- [x] p\n### Tarefa 2: b\n- [x] p';
-  assert.strictEqual(plano.linhaDoPlano(D503, plano.parseItens(feito)), 'plano d503 | 2 de 2 | nada aberto');
+  assert.strictEqual(plano.linhaDoPlano(D503, plano.parseItens(feito)), 'plano d503 · concluído (2 de 2 tarefas)');
 });
 
-test('pedido 30: linhaDoPlano - tarefa sem caixa sobrando nao e "nada aberto" (D436, como o painel)', () => {
+test('pedido 30: linhaDoPlano - tarefa sem caixa sobrando nao e "concluído" (D436, como o painel)', () => {
   const semCaixa = '### Tarefa 1: a\n- [x] p\n### Tarefa 2: b\ntexto sem caixa\n### Tarefa 3: c\noutro texto';
-  assert.strictEqual(plano.linhaDoPlano(D503, plano.parseItens(semCaixa)), 'plano d503 | 1 de 3 | 2 sem caixas, confira a mao');
+  assert.strictEqual(plano.linhaDoPlano(D503, plano.parseItens(semCaixa)),
+    'plano d503 · 1 de 3 tarefas · 2 sem caixas, confira à mão');
 });
 
-test('pedido 30: linhaDoPlano - ASCII, travessao vira hifen (nao "?") e titulo longo e cortado', () => {
+test('pedido 30: linhaDoPlano - acento e travessao inteiros (D532), uma linha, titulo longo cortado', () => {
   const longo = '### Tarefa 1: a\n- [x] p\n### Tarefa 2: pacote com referência (0.8.0) — depende da decisão ' +
     'acima e de mais coisa ainda\n- [ ] p';
   const l = plano.linhaDoPlano(D503, plano.parseItens(longo));
-  assert.ok(/^[\x20-\x7E]*$/.test(l), l);
-  assert.ok(l.indexOf('?') === -1, l);
-  assert.ok(l.indexOf('pacote com referencia (0.8.0) - depende') !== -1, l);
+  assert.ok(l.indexOf('?') === -1 && l.indexOf('\n') === -1, l);
+  assert.ok(l.indexOf('próxima: Tarefa 2 — pacote com referência (0.8.0) — depende') !== -1, l);
   assert.ok(/\.\.\.$/.test(l), 'cortado com reticencias: ' + l);
-  assert.ok(l.length <= 100, l.length + ': ' + l);
+  assert.ok(l.length <= 110, l.length + ': ' + l);
 });
 
-test('s131 par.5: o painel do plano tambem troca o travessao por hifen, nao por "?"', () => {
+// Plano 082 (D532, S5): o painel sai com acento, e o travessao do titulo fica (era trocado por hifen pela R5, s131).
+test('s131 par.5: o travessao do titulo chega ao painel do plano inteiro, nem hifen nem "?"', () => {
   const t = plano.parseItens('### Tarefa 1: a — b\n- [ ] p');
   const painel = plano.painelTexto({ arquivo: 'p.md' }, t, 'plano.js');
-  assert.ok(painel.indexOf('Tarefa 1: a - b') !== -1, painel);
+  assert.ok(painel.indexOf('- [ ] Tarefa 1: a — b (1 de 1 passos abertos)') !== -1, painel);
 });
 
 test('pedido 30: linhaDoPlanoDaSessao - pelo plano-ativo.json, pela frente, e vazia sem plano', () => {
@@ -253,8 +276,8 @@ test('pedido 30: linhaDoPlanoDaSessao - pelo plano-ativo.json, pela frente, e va
   });
   const vazio = tmp({});
   try {
-    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, null), 'plano x | 1 de 2 | proxima: Tarefa 2 marcha');
-    assert.strictEqual(plano.linhaDoPlanoDaSessao(frente, 'fr'), 'plano y | 1 de 2 | proxima: Tarefa 2 marcha');
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, null), 'plano x · 1 de 2 tarefas · próxima: Tarefa 2 — marcha');
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(frente, 'fr'), 'plano y · 1 de 2 tarefas · próxima: Tarefa 2 — marcha');
     assert.strictEqual(plano.linhaDoPlanoDaSessao(vazio, null), '');
     assert.strictEqual(plano.linhaDoPlanoDaSessao(path.join(vazio, 'nao-existe'), 'fr'), '');
   } finally {
@@ -272,7 +295,7 @@ test('pedido 30: linhaDoPlanoDaSessao - a frente vinculada escolhe entre varias;
     escrever('docs/2026-01-02-b-plano.md', '### Tarefa 1: so\n- [ ] p\n');
     escrever('.claude/esquadro/escopos/a.md', frente('a', 'docs/2026-01-02-a-plano.md'));
     escrever('.claude/esquadro/escopos/b.md', frente('b', 'docs/2026-01-02-b-plano.md'));
-    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, 'b'), 'plano b | 0 de 1 | proxima: Tarefa 1 so');
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, 'b'), 'plano b · 0 de 1 tarefa · próxima: Tarefa 1 — so');
     assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, null), '', 'duas frentes sem vinculo: o painel pede para escolher');
     // Plano fora do projeto: o painel diz que nao le; a linha fica vazia.
     fs.writeFileSync(path.join(base, '2026-01-02-fora-plano.md'), PLANO);
@@ -282,4 +305,56 @@ test('pedido 30: linhaDoPlanoDaSessao - a frente vinculada escolhe entre varias;
     escrever('.claude/esquadro/plano-ativo.json', '{ quebrado');
     assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, 'a'), '');
   } finally { fs.rmSync(base, { recursive: true, force: true }); }
+});
+
+// Plano 082, Tarefa 6 (p7-5): o --abrir aceita caminho absoluto, e o path.join o colava no cwd (ENOENT, faixa vazia).
+test('082 T6 (p7-5): plano-ativo.json com caminho absoluto se le na faixa, no painel e no JSON', () => {
+  const dir = tmp({ 'p/2026-01-01-x-plano.md': PLANO });
+  try {
+    const abs = path.join(dir, 'p', '2026-01-01-x-plano.md');
+    plano.abrir(dir, abs, 's');
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, null), 'plano x · 1 de 2 tarefas · próxima: Tarefa 2 — marcha');
+    const script = path.join(RAIZ_PLUGIN, 'scripts', 'plano.js');
+    const painel = spawnSync(process.execPath, [script, '--texto'], { cwd: dir, encoding: 'utf8' });
+    assert.ok(painel.stdout.indexOf('1 de 2 tarefas') !== -1 && painel.stdout.indexOf('Não consegui ler') === -1, painel.stdout);
+    const json = spawnSync(process.execPath, [script], { cwd: dir, encoding: 'utf8' });
+    assert.strictEqual(json.status, 0, json.stdout);
+    assert.strictEqual(JSON.parse(json.stdout).tarefas, 2);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// p7-2: a faixa le o plano a cada medida; acima do teto (bytes no disco) ela fica vazia em vez de ler o arquivo.
+test('082 T6 (p7-2): plano no teto se le na faixa; um byte acima, a faixa fica vazia', () => {
+  const dir = tmp({});
+  try {
+    const rel = 'p/2026-01-01-x-plano.md';
+    const alvo = path.join(dir, rel);
+    fs.mkdirSync(path.dirname(alvo), { recursive: true });
+    const enche = (n) => PLANO + '\n' + 'x'.repeat(n - Buffer.byteLength(PLANO + '\n', 'utf8'));
+    plano.abrir(dir, rel, 's');
+    assert.strictEqual(plano.TETO_DO_PLANO, 1024 * 1024);
+    fs.writeFileSync(alvo, enche(plano.TETO_DO_PLANO), 'utf8');
+    assert.strictEqual(fs.statSync(alvo).size, plano.TETO_DO_PLANO);
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, null), 'plano x · 1 de 2 tarefas · próxima: Tarefa 2 — marcha');
+    fs.writeFileSync(alvo, enche(plano.TETO_DO_PLANO + 1), 'utf8');
+    assert.strictEqual(fs.statSync(alvo).size, plano.TETO_DO_PLANO + 1);
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, null), '');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// p7-16: o abrir() gravava sem try e o erro do disco (EACCES, ENOSPC) subia cru, com stack trace.
+test('082 T6 (p7-16): abrir que nao grava diz o arquivo, a causa e o que fazer, sem stack trace', () => {
+  const dir = tmp({ 'docs/p.md': PLANO, '.claude': 'um arquivo onde devia haver pasta' });
+  try {
+    assert.throws(() => plano.abrir(dir, 'docs/p.md', 's'), (e) => {
+      assert.ok(/^esquadro: nao consegui gravar .*plano-ativo\.json \(E[A-Z]+\); confira a permissao da pasta e o espaco em disco/.test(e.message), e.message);
+      assert.ok(e.message.indexOf('O plano nao foi aberto.') !== -1, e.message);
+      return true;
+    });
+    const r = spawnSync(process.execPath, [path.join(RAIZ_PLUGIN, 'scripts', 'plano.js'), '--abrir', 'docs/p.md'],
+      { cwd: dir, encoding: 'utf8' });
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.ok(r.stderr.indexOf('esquadro: nao consegui gravar ') === 0, r.stderr);
+    assert.ok(!/\n\s+at /.test(r.stderr), 'stack trace no stderr: ' + r.stderr);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

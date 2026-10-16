@@ -30,6 +30,14 @@ test('identidade: cor do acento por tela - cru no vscode (D522), chave de tema n
   }
 });
 
+// Plano 082, Tarefa 6 (p8-15): so 'vscode' exato pintava cru; outra grafia do mesmo editor caia na chave calada.
+test('082 T6 (p8-15): a tela do VS Code em outra grafia (caixa, espaco) tambem pinta cru', () => {
+  for (const tela of ['VSCode', ' vscode ', 'VS Code', 'vs code']) {
+    assert.strictEqual(identidade.corDoAcento(tela), '#F59E0B', JSON.stringify(tela));
+  }
+  assert.strictEqual(identidade.corDoAcento('vscodex'), 'warning');
+});
+
 test('identidade: o mod repete as duas cores da lib (fonte unica conferida)', () => {
   const mod = ler('hooks/mods.tsx');
   assert.ok(mod.indexOf("const ACENTO_CRU = '" + identidade.ACENTO.escuro + "'") !== -1, 'ACENTO_CRU no mods.tsx');

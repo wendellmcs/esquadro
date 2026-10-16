@@ -258,27 +258,32 @@ function conferir(texto, sistema) {
   return { ok: fora.length === 0, fora: fora };
 }
 
+// Plano 082, Tarefa 5 (mock S10): a forma unica dos avisos - o que falta, o arquivo entre aspas, "Faca uma destas".
 function motivo(alvo, fora, sistema) {
   const linhas = [
-    'esquadro - fora do design system.',
+    'esquadro - valor fora do design system deste projeto.',
     '',
-    'Em ' + alvo + ', estes valores nao estao no sistema declarado:'
+    'Estes valores nao estao no sistema declarado (.claude/esquadro/design.json):',
+    '  - "' + alvo + '"'
   ];
   for (const f of fora.slice(0, 12)) {
-    linhas.push('  linha ' + f.linha + ': ' + f.valor + ' (' + f.tipo + ')');
+    linhas.push('      linha ' + f.linha + ': ' + f.valor + ' (' + f.tipo + ')');
   }
-  if (fora.length > 12) linhas.push('  ... e mais ' + (fora.length - 12));
-  linhas.push('');
+  if (fora.length > 12) linhas.push('      ... e mais ' + (fora.length - 12));
   linhas.push('O que existe no sistema:');
   linhas.push('  cores:   ' + (sistema.cores || []).slice(0, 10).join(' '));
   linhas.push('  raios:   ' + (sistema.raios || []).join(' '));
   linhas.push('  espacos: ' + (sistema.espacos || []).join(' '));
   linhas.push('');
-  linhas.push('Para cor e medida: use o token do sistema, ou var(--nome). Se o valor novo e mesmo necessario,');
-  linhas.push('acrescenta-lo ao sistema e decisao do dono, nao julgamento seu:');
-  linhas.push('leve com 3 opcoes e a recomendada marcada.');
+  linhas.push('Faca uma destas:');
+  linhas.push('  1. troque cor e medida pelo token do sistema, ou por var(--nome);');
   if (fora.some(function (f) { return f.tipo === 'anti-referencia'; })) {
-    linhas.push('Para (anti-referencia): e um termo que o sistema proibe (ex.: gradiente); nao existe token para ele, tire o termo.');
+    linhas.push('  2. se o valor novo e mesmo necessario, leve ao dono 3 opcoes com a recomendada marcada:');
+    linhas.push('     acrescenta-lo ao sistema e decisao dele, nao julgamento seu;');
+    linhas.push('  3. na (anti-referencia), tire o termo: o sistema o proibe (ex.: gradiente) e nao ha token para ele.');
+  } else {
+    linhas.push('  2. se o valor novo e mesmo necessario, leve ao dono 3 opcoes com a recomendada marcada:');
+    linhas.push('     acrescenta-lo ao sistema e decisao dele, nao julgamento seu.');
   }
   linhas.push('');
   linhas.push('Nao suba o limite da checagem (a catraca) so para esta edicao passar: tire o valor cru, que e o caminho certo.');
@@ -831,19 +836,21 @@ function alvosDeEstiloNoShell(comando, projeto, opcoes) {
 
 /** Mensagem de remedio: o que o esquadro confere e onde, e o que fazer. Nao ensina desvio. */
 function motivoShell(alvos) {
+  // Plano 082, Tarefa 5 (mock S10): a forma unica dos avisos.
   const linhas = [
-    'esquadro - arquivo de estilo escrito por comando de shell.',
+    'esquadro - arquivo de estilo escrito por comando de shell fica sem a conferencia do design.',
     '',
     'Arquivo' + (alvos.length > 1 ? 's' : '') + ':'
   ];
-  for (const a of alvos.slice(0, 12)) linhas.push('  ' + a);
-  if (alvos.length > 12) linhas.push('  ... e mais ' + (alvos.length - 12));
-  linhas.push('');
+  for (const a of alvos.slice(0, 12)) linhas.push('  - "' + a + '"');
+  if (alvos.length > 12) linhas.push('  - ... e mais ' + (alvos.length - 12));
   // D396 n. 14: o porque da negacao, sem ensinar desvio
-  linhas.push('Por que: o esquadro nao le o conteudo que um comando de shell vai gravar,');
-  linhas.push('entao nao tem como conferir os valores dele antes de rodar.');
-  linhas.push('O esquadro confere os tokens do design.json quando o arquivo de estilo e escrito');
-  linhas.push('pela ferramenta Write ou Edit. Escreva este arquivo com Write ou Edit.');
+  linhas.push('Por que: o esquadro nao le o conteudo que um comando de shell vai gravar, entao nao confere os tokens');
+  linhas.push('do design.json antes de rodar. Com a ferramenta Write ou Edit, ele confere.');
+  linhas.push('');
+  linhas.push('Faca uma destas:');
+  linhas.push('  1. escreva este arquivo com a ferramenta Write ou Edit;');
+  linhas.push('  2. se o comando nao grava estilo nenhum, diga ao usuario: e leitura errada do esquadro, para registrar.');
   return linhas.join('\n');
 }
 

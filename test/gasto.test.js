@@ -136,6 +136,39 @@ test('guardarSessao: poda o historico nas 40 mais recentes e o real nos 2 ultimo
   assert.strictEqual(semCusto.historico.s.medidas, 1);
 });
 
+// Plano 082, Tarefa 6 (p6-1): o id undefined da 1a mensagem sem id entrava no Set e descartava as seguintes sem id.
+test('082 T6 (p6-1): mensagens sem id contam cada uma; o id que existe segue contando uma vez', () => {
+  const texto = [linha(undefined, 'claude-opus-5-5', U, OUT), linha(undefined, 'claude-opus-5-5', U, OUT),
+    linha('', 'claude-opus-5-5', U, OUT), linha('', 'claude-opus-5-5', U, OUT),
+    linha('a', 'claude-opus-5-5', U, OUT), linha('a', 'claude-opus-5-5', U, OUT)].join('\n');
+  // 4 sem id (undefined, undefined, '', '') x US$ 4 + o "a" uma vez
+  assert.strictEqual(Math.round(gasto.custoDoTexto(texto, Date.UTC(2026, 9, 1)).usd), 20);
+});
+
+// p6-2: a transcricao que nao se le valia zero calada; agora conta em `ilegiveis`, fora do cache (a proxima medida tenta).
+// p6-3: o `semPreco` chega ao gastoDoMes e fica no cache (o arquivo do cache seguia somando o seu).
+test('082 T6 (p6-2, p6-3): ilegiveis e semPreco saem do estimarMes, do cache e do gastoDoMes', () => {
+  const raiz = arvore();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-gasto-cache-'));
+  try {
+    const proj = path.join(raiz, 'c--proj');
+    fs.mkdirSync(path.join(proj, 's2', 'subagents', 'agent-y.jsonl'));
+    fs.writeFileSync(path.join(proj, 's3.jsonl'), linha('m4', 'modelo-sem-preco', U, OUT));
+    const mes = { ms: Date.UTC(2026, 9, 1), chave: '2026-10' };
+    const a = gasto.estimarMes({ raiz: raiz, mes: mes, cache: {}, excluir: [], prazoMs: 5000 });
+    assert.deepStrictEqual([a.ilegiveis, a.semPreco, a.pendentes], [1, 1, 0], JSON.stringify(a));
+    assert.ok(!Object.keys(a.cache).some(function (k) { return path.basename(k) === 'agent-y.jsonl'; }), 'ilegivel fora do cache');
+    const b = gasto.estimarMes({ raiz: raiz, mes: mes, cache: a.cache, excluir: [], prazoMs: 5000 });
+    assert.deepStrictEqual([b.ilegiveis, b.semPreco], [1, 1], 'do cache: ' + JSON.stringify(b));
+    const agora = new Date(2026, 9, 10, 12).getTime();
+    const g = gasto.gastoDoMes({ raiz: raiz, agora: agora, real: {}, arquivoDoCache: path.join(tmp, 'c.json'), prazoMs: 5000 });
+    assert.deepStrictEqual([g.ilegiveis, g.semPreco], [1, 1], JSON.stringify(g));
+  } finally {
+    fs.rmSync(raiz, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('estimarMes: raiz que nao existe da zero, sem lancar', () => {
   const r = gasto.estimarMes({ raiz: path.join(os.tmpdir(), 'nao-existe-esquadro-gasto'), mes: { ms: 0, chave: 'x' },
     cache: {}, excluir: [], prazoMs: 100 });

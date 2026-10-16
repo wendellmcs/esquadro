@@ -69,6 +69,10 @@ function lerMapaJson(base, ronda, naListagem) {
   if ('invertida' in mj && (!mj.invertida || typeof mj.invertida !== 'object' || Array.isArray(mj.invertida))) {
     corrompido('"invertida" nao e um objeto');
   }
+  // Plano 082 (p2-34): `invertida {}` (ou sem o lado de A e de B) passava aqui e virava excecao do apurar, sem o arquivo.
+  if ('invertida' in mj && !veredito.mapaDoTrabalho(mj.invertida)) {
+    corrompido('"invertida" nao diz o lado de A e de B: cada um "trabalho" ou "HEAD", e ao menos um "trabalho"');
+  }
   return mj;
 }
 
@@ -233,7 +237,7 @@ const invertidas = [];
  * Os vereditos de uma pasta da ronda: `partes` e o caminho dela a partir da base (['1', 'vereditos'] ou
  * ['1', 'invertida', 'vereditos']). O que falta, nao se le ou nao e veredito vai para as listas de erro.
  */
-function lerVereditos(nomeRonda, partes, comReferencia) {
+function lerVereditos(nomeRonda, partes, comReferencia, lentesDaOrdemNormal) {
   const dir = path.join.apply(path, [base].concat(partes));
   // 0.3.3, item 1: ronda sem nenhum veredito (pasta ausente, ou sem .json) nao e ronda seca, e voto
   // que falta - e o readdir nao zera mais em qualquer erro: a causa vai na mensagem.
@@ -246,10 +250,17 @@ function lerVereditos(nomeRonda, partes, comReferencia) {
   }
   if (arquivos === null) return [];
   if (arquivos.length === 0) {
-    semVeredito.push(partes.length > 2
-      ? 'ERRO: a 2a passada da ronda ' + Number(nomeRonda) + ' nao tem nenhum veredito: ' + dirRel + ' nao existe ou nao ' +
-        'tem nenhum .json. A ronda tem referencia (R.txt), e a ordem A/B trocada e metade do voto: grave os vereditos ' +
-        'da 2a passada (Passo 2 do /esquadro:revisar) e rode este comando de novo.'
+    // Plano 082, Tarefa 5 (p2-32): sem giria; diz o que e a ordem trocada, o pacote, as lentes que faltam e o efeito.
+    const lentes = (lentesDaOrdemNormal || []).filter(function (l) { return typeof l === 'string' && l; });
+    const pacote = [baseRel, nomeRonda].join('/') + '/';
+    // p2-29: as duas pastas que se leem aqui sao ['N', 'vereditos'] e ['N', 'invertida', 'vereditos'] (A e B trocados).
+    const daOrdemTrocada = partes[1] === 'invertida';
+    semVeredito.push(daOrdemTrocada
+      ? 'ERRO: a ronda ' + Number(nomeRonda) + ' nao tem nenhum veredito com A e B trocados: ' + dirRel + ' nao existe ou ' +
+        'nao tem nenhum .json. Esta ronda tem referencia (R.txt), e cada lente julga duas vezes: na ordem normal e com os ' +
+        'lados trocados (o pacote ' + pacote + 'invertida/A.txt e invertida/B.txt). Sem os dois julgamentos, esta ronda ' +
+        'nao se apura.' + (lentes.length ? ' Lentes que faltam com os lados trocados: ' + lentes.join(', ') + '.' : '') +
+        ' Grave o veredito de cada uma em ' + dirRel + ' (Passo 2 do /esquadro:revisar) e rode este comando de novo.'
       : 'ERRO: a ronda ' + Number(nomeRonda) + ' nao tem nenhum veredito: ' + dirRel + ' nao existe ou ' +
         'nao tem nenhum .json. Grave os vereditos dela (Passo 2 do /esquadro:revisar) ou, se a ronda foi preparada ' +
         'por engano, apague a pasta ' + [baseRel, nomeRonda].join('/') + '/, e rode este comando de novo.');
@@ -268,6 +279,11 @@ function lerVereditos(nomeRonda, partes, comReferencia) {
   });
 }
 
+/** p2-28: a pasta tem ao menos um .json (pasta ausente ou que nao se le: nao tem). */
+function temVeredito(dir) {
+  try { return fs.readdirSync(dir).some(function (f) { return f.endsWith('.json'); }); } catch (err) { return false; }
+}
+
 const rondas = pastas
   .map(function (e) {
     // D244/defeito 3: o mapa diz qual rotulo e o lado novo. Sem ele (pacote antigo), a ronda
@@ -281,9 +297,19 @@ const rondas = pastas
     if (mapa && mj.identico === true) mapa = { A: 'trabalho', B: 'trabalho' };
     if (mapaInv && mj.identico === true) mapaInv = { A: 'trabalho', B: 'trabalho' };
     if (!mapa) semMapa.push(Number(e.name));
+    // Plano 082 (p2-28): sem `invertida` no mapa.json a pasta invertida/vereditos/ nunca se le; o voto dela nao some calado.
+    if (!mapaInv && temVeredito(path.join(base, e.name, 'invertida', 'vereditos'))) {
+      const ronda = [baseRel, e.name].join('/') + '/';
+      semVeredito.push('ERRO: a ronda ' + Number(e.name) + ' tem vereditos com A e B trocados em ' + ronda +
+        'invertida/vereditos/, mas o mapa.json dela nao tem "invertida": eles nao entrariam na conta. Se a ronda tem ' +
+        'referencia (R.txt), o mapa.json perdeu a chave: apague a pasta ' + ronda + ', prepare a ronda de novo (Passo 1 ' +
+        'do /esquadro:revisar) e regrave os vereditos. Se nao tem, apague a pasta ' + ronda + 'invertida/. Depois rode ' +
+        'este comando de novo.');
+    }
     mapas.push(mapa);
     const pass1 = lerVereditos(e.name, [e.name, 'vereditos'], mapaInv !== null);
-    invertidas.push(mapaInv ? { mapa: mapaInv, vereditos: lerVereditos(e.name, [e.name, 'invertida', 'vereditos'], true) } : null);
+    invertidas.push(mapaInv ? { mapa: mapaInv, vereditos: lerVereditos(e.name, [e.name, 'invertida', 'vereditos'], true,
+      pass1.map(function (v) { return v && v.lente; })) } : null);
     return pass1;
   });
 
@@ -440,10 +466,14 @@ if (r.encerrar) {
     contada = { sessao: sessao, revisao_fechada: n };
     // 0.3.3, item 8: sem sessao o fecho cai em "sem-sessao", que nenhuma sessao le. O aviso nao manda rodar
     // de novo: o fechada.json ja registra o fecho e rodar de novo nao o recontaria.
+    // Plano 082, Tarefa 5 (p2-2, p2-33): o efeito pratico, e a comparacao com a referencia quando houve.
     if (!sessaoPedida.valor) {
-      contada.aviso = 'o fecho nao entrou no contador de nenhuma sessao: sem --sessao e sem CLAUDE_CODE_SESSION_ID ' +
-        'ele foi contado em "sem-sessao". Ele ja esta registrado em ' + baseRel + '/fechada.json e nao precisa ser ' +
-        'refeito; na proxima revisao, passe --sessao <id>.';
+      contada.aviso = 'esta revisao fechou, mas o fecho nao entrou no contador de nenhuma sessao: sem --sessao e sem ' +
+        'CLAUDE_CODE_SESSION_ID, ele foi contado em "sem-sessao", que nenhuma sessao le. ' +
+        (r.referencia ? 'A comparacao com a referencia tambem nao entrou: o portao de fecho desta sessao segue cobrando ' +
+          'essa comparacao; se ele cobrar, diga ao usuario que ela fechou aqui. ' : '') +
+        'Ela ja esta registrada em ' + baseRel + '/fechada.json e nao precisa ser refeita; na proxima revisao, passe ' +
+        '--sessao <id>.';
     }
   }
 }

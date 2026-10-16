@@ -31,9 +31,10 @@ try {
   const raiz = config.raizDoProjeto(process.cwd());
   const projeto = config.carregarProjeto(raiz);
   const conta = Object.assign({}, s, { contadores: saude.acumular(s) });
-  // D445: o contexto ao vivo do motor vale mais que o gravado no ultimo Stop.
+  // D445: o contexto ao vivo do motor vale mais que o gravado no ultimo Stop. Plano 082 (p8-36): so contagem de
+  // verdade (finita, nao negativa); o resto deixa valer o gravado.
   const ctx = entrada.uso && entrada.uso.context;
-  if (ctx && typeof ctx.tokens === 'number') conta.tokensDeContexto = ctx.tokens;
+  if (ctx && typeof ctx.tokens === 'number' && isFinite(ctx.tokens) && ctx.tokens >= 0) conta.tokensDeContexto = ctx.tokens;
   // Pedido 31 (D520): o que o mod guarda no $.store (real do mes e historico das janelas) volta em `guardar`; o mes
   // soma o real e a estimativa das transcricoes (cache na pasta do estado, fora dos arquivos de sessao).
   const guardar = gastoLib.guardarSessao({ historico: entrada.historico, gastoReal: entrada.gastoReal,
@@ -41,10 +42,9 @@ try {
   const pastaDoCache = path.join(path.dirname(estado.caminhoSessao('x')), 'cache');
   const gastoMes = gastoLib.gastoDoMes({ real: guardar.gastoReal, arquivoDoCache: path.join(pastaDoCache, 'gasto-mes.json') });
   // Pedido 30: a linha do plano da sessao, para a faixa do mod ('' sem plano). Mesma pasta do plano.js --texto.
-  // Pedido 32: a barra leva o comeco dela (nome e conta: "plano d503 5 de 6").
+  // Plano 082 (p6-24): a barra nao leva mais o plano; ele fica so na faixa.
   const linhaDoPlano = require('./lib/plano.js').linhaDoPlanoDaSessao(process.cwd(), s.frente);
   resposta = medidor.linhaDaSessao({
-    planoCurto: linhaDoPlano.split(' | ').slice(0, 2).join(' '),
     uso: entrada.uso,
     amostras: entrada.amostras,
     medidas: saude.medir(conta, projeto && projeto.limiares, require('./lib/continuo.js').ativo(projeto)),

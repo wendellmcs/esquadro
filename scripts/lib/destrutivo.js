@@ -1027,8 +1027,9 @@ function classificar(comando, projeto) {
 }
 
 function motivo(comando, r) {
+  // Plano 082, Tarefa 5 (mock S10): a forma unica dos avisos. A liberacao fica por ultimo, como acao do dono.
   return [
-    'esquadro - comando destrutivo (trava 5).',
+    'esquadro - comando destrutivo barrado (trava 5): falta o sim do dono.',
     '',
     'Comando: ' + escopo.ascii(String(comando).slice(0, 400)),
     // O MOTIVO tambem e higienizado (D64). Ate a ronda 7 so o comando era, e
@@ -1038,11 +1039,13 @@ function motivo(comando, r) {
     // caso normal, nao o exotico, e os dois testes de ASCII que ja existiam
     // eram cegos a este caminho porque so exercitavam motivo built-in.
     'Por que barrou: ' + escopo.ascii(String(r.motivo).slice(0, 400)) + '.',
-    '',
     'Nenhum comando destrutivo roda sem confirmacao humana.',
-    'Leve ao dono do projeto com 3 opcoes e a recomendada marcada, dizendo',
-    'o que acontece na pratica em cada uma. Se ele autorizar, ele mesmo roda,',
-    'ou acrescenta o padrao em .claude/esquadro/projeto.json:comandosLiberados.'
+    '',
+    'Faca uma destas:',
+    '  1. leve ao dono 3 opcoes com a recomendada marcada, dizendo o que acontece na pratica em cada uma;',
+    '  2. ou siga sem este comando, se o trabalho nao depende dele.',
+    '',
+    'So o dono libera: ele mesmo roda o comando, ou acrescenta o padrao em "comandosLiberados" de .claude/esquadro/projeto.json.'
   ].join('\n');
 }
 

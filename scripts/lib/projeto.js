@@ -23,6 +23,18 @@ const FUNDE_POR_CHAVE = ['travas', 'marchas', 'limiares', 'referencias'];
 
 function ehObjeto(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
 
+/**
+ * Plano 082 (p1-33): a fusao por chave de `a` com `b` (b vence), chave a chave como dado. O Object.assign tratava a
+ * chave propria "__proto__" que o JSON.parse cria como o setter: trocava o prototipo e a chave sumia.
+ */
+function fundir(a, b) {
+  const r = {};
+  for (const o of [a, b]) {
+    for (const k of Object.keys(o)) Object.defineProperty(r, k, { value: o[k], enumerable: true, writable: true, configurable: true });
+  }
+  return r;
+}
+
 // As listas que os portoes LEEM de verdade. O aviso de tipo e estreito de
 // proposito (D101): so campo que muda decisao de portao, e so quando o TIPO
 // esta errado. Chave faltando e assunto de validar(), nunca do aviso.
@@ -336,7 +348,7 @@ function atualizar(antigo, respostas, hoje) {
     // apagava as chaves que a entrevista nao repetiu (regra unica: o que nao se perguntou, preserva).
     let valor = novas[chave];
     if (FUNDE_POR_CHAVE.indexOf(chave) !== -1 && ehObjeto(valor) && ehObjeto(base[chave])) {
-      valor = Object.assign({}, base[chave], valor);
+      valor = fundir(base[chave], valor);
     }
     if (JSON.stringify(base[chave]) === JSON.stringify(valor)) continue;
     base[chave] = valor;

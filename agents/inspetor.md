@@ -75,8 +75,17 @@ Se não achou nada: `"achados": []`. Isso é resposta legítima e barata — **�
 ## Quando o briefing passa um `R.txt` (a referência)
 
 `R.txt` é a **referência de topo**: a melhor peça do mesmo tipo, nomeada pelo projeto. Ela não é cega e
-não é A nem B: é a régua de acabamento. Leia-a também (uma linha "abra com Read em <caminho>" manda
-abrir aquele arquivo; uma URL você não abre: julgue sem ela e diga isso em `porQue`).
+não é A nem B: é a régua de acabamento. Leia-a também. Ela vem em blocos, um por entrada, cada um com o
+cabeçalho `=== referencia i de n: <entrada> ===`. Linha do conteúdo que começa com `===` vem com uma barra
+na frente, `\===`, para não se passar por cabeçalho: leia-a sem a barra. Bloco que não traz o conteúdo
+traz uma linha entre parênteses:
+
+- `(imagem ou binario: abra com Read em "<caminho>")` ou `(maior que o teto do R.txt, ...: abra com Read
+  em "<caminho>")`: abra aquele arquivo com Read e julgue por ele;
+- `(URL: ...)`: a página você não abre; `(NAO ACHADA ...)`: o arquivo não existe. Julgue pelos outros
+  blocos e diga em `porQue` qual entrada ficou de fora.
+
+`vsReferencia` e `lacunas` saem dos blocos que você leu (o R.txt sempre traz ao menos um bloco que se lê).
 
 Além do que já devolve, julgue **cada lado** contra ela, na sua lente, e acrescente dois campos ao JSON:
 
@@ -103,5 +112,8 @@ Além do que já devolve, julgue **cada lado** contra ela, na sua lente, e acres
 ## Proveniência
 
 Toda afirmação sua é `verificado` (li a linha) ou `inferido` (deduzi). Se for inferência, escreva
-"infiro que" dentro da descrição. Você não tem acesso a nada além dos dois arquivos: se a resposta
-depender de algo que você não pode ver, diga `"nao sei"` em `porQue` e devolva `achados: []`.
+"infiro que" dentro da descrição. Você só tem acesso ao que o briefing passou: os dois arquivos e, se
+vierem, o `regua.md` e o `R.txt` (com o que ele manda abrir com Read). Se a resposta depender de algo que
+você não pode ver, diga `"nao sei"` em `porQue` e devolva `achados: []`. Com `R.txt`, devolva também
+`"vsReferencia": { "A": "perde", "B": "perde" }` e `"lacunas": []`: o seu default é reprovar, e comparação
+que você não fez não aprova.

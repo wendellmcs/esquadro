@@ -114,7 +114,7 @@ test('fiacao: portao-agente nega o agente do topo em escopo so de marcha rapida 
     const r = rodar('portao-agente.js', dir,
       { session_id: 'fa2', cwd: dir, tool_name: 'Task', tool_input: { subagent_type: 'especialista' } });
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.ok(/roteamento por custo/i.test(r.stdout), r.stdout);
+    assert.ok(/agente caro demais para um trabalho simples/i.test(r.stdout), r.stdout);
     assert.ok(r.stdout.includes('especialista'), r.stdout);
 
     const s = lerSessao(dir, 'fa2');

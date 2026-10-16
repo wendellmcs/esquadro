@@ -9,8 +9,10 @@
 const ACENTO = { escuro: '#F59E0B', claro: '#B45309' };
 const TEMA = 'warning';
 
+/** Plano 082 (p8-15): a tela do VS Code em qualquer caixa e com espaco ("VS Code") pinta cru; o resto, a chave. */
 function corDoAcento(tela) {
-  return tela === 'vscode' ? ACENTO.escuro : TEMA;
+  return String(tela === undefined || tela === null ? '' : tela).replace(/\s+/g, '').toLowerCase() === 'vscode'
+    ? ACENTO.escuro : TEMA;
 }
 
 module.exports = { ACENTO, TEMA, corDoAcento };

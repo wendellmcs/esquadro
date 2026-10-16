@@ -1136,3 +1136,78 @@ test('D503 T5: o portao da referencia tem chave propria - travas.fecho false nao
 test('D503 T5: a chave liga/desliga nova esta na lista do projeto.js', () => {
   assert.ok(require('../scripts/lib/projeto.js').CHAVES_LIGA_DESLIGA.indexOf('portaoReferencia') !== -1);
 });
+
+// Plano 082, Tarefa 5 (p7-18, p7-29, p7-30): o portao da referencia igual a cena S10 do mock parte 3. Diferenca
+// deliberada: "ate sair "aprovado"" (o mock diz "revisao fechada", frase que o apurar-ronda.js nao escreve; o motivo
+// dele no fecho e "duas rondas secas seguidas: aprovado").
+const CENA_S10 = [
+  'esquadro - falta comparar com a tela de referencia.',
+  '',
+  'Voce disse que entregou, e mudou arquivo que o projeto manda comparar com uma',
+  'tela de referencia (lista "referencias" em .claude/esquadro/projeto.json):',
+  '  - "scripts/a b.js"',
+  '  - "hooks/mods.tsx"',
+  'Nenhuma dessas comparacoes fechou nesta sessao.',
+  '',
+  'Faca uma destas:',
+  '  1. rode /esquadro:revisar "<arquivo>" para cada um, ate sair "aprovado";',
+  '  2. se chegar a 3 rondas sem fechar, pare e leve ao usuario 3 opcoes;',
+  '  3. ou diga ao usuario por que esta entrega fica sem a comparacao.',
+  '',
+  'Desligar neste projeto: "portaoReferencia": false em .claude/esquadro/projeto.json.'
+].join('\n');
+
+test('082 T5: o portao da referencia diz o que falta como a cena S10 do mock (caminhos entre aspas, 3 saidas)', () => {
+  comTmp((tmp) => {
+    const dir = projetoCom(tmp, 's10', { marchas: { aaa: ['scripts/**', 'hooks/**'] }, referencias: { codigo: ['ref/topo.js'] } });
+    gravar(tmp, 's10', dir, 'Edit', path.join('scripts', 'a b.js'));
+    gravar(tmp, 's10', dir, 'Edit', path.join('hooks', 'mods.tsx'));
+    const r = fecho(tmp, 's10', dir, ENTREGA);
+    assert.ok(r.json && r.json.decision === 'block', 'tinha de barrar: ' + r.stdout);
+    assert.strictEqual(r.json.reason, CENA_S10);
+  });
+});
+
+// Plano 082, Tarefa 6 (p7-25): o motivo da referencia entra por um caminho so e sempre depois dos outros (subitem,
+// plano ilegivel, evidencia); antes, no caminho da evidencia, ele vinha antes dela.
+test('082 T6 (p7-25): o motivo da referencia vem depois do da evidencia, como vem depois do subitem', () => {
+  comTmp((tmp) => {
+    const dir = projetoCom(tmp, 'ordem', COM_REF);
+    gravar(tmp, 'ordem', dir, 'Edit', path.join('src', 'a.js'));
+    const r = fecho(tmp, 'ordem', dir, 'Pronto.');
+    assert.ok(r.json && r.json.decision === 'block', r.stdout);
+    const ev = r.json.reason.indexOf('portao de fecho (trava 3)');
+    const ref = r.json.reason.indexOf('falta comparar com a tela de referencia');
+    assert.ok(ev !== -1 && ref !== -1 && ev < ref, 'evidencia e depois a referencia: ' + r.json.reason);
+  });
+});
+
+// p7-5 no portao: o plano-ativo.json com caminho absoluto virava "nao pode ser lido" e a alegacao passava sem conferir.
+test('082 T6 (p7-5): plano ativo com caminho absoluto se le no portao e o subitem aberto barra', () => {
+  comTmp((tmp) => {
+    const texto = '## Tarefa 1: primeira\n- [x] a\n- [ ] b\n\n## Tarefa 2: segunda\n- [ ] c\n';
+    const dir = planoComTarefas(tmp, 'abs', texto);
+    const ativo = path.join(dir, '.claude', 'esquadro', 'plano-ativo.json');
+    fs.writeFileSync(ativo, JSON.stringify({ arquivo: path.join(dir, 'plano.md'), sessionId: 'abs', tarefa: null }), 'utf8');
+    const r = fecho(tmp, 'abs', dir, 'A Tarefa 1 esta concluida.' + SAIDA);
+    assert.ok(r.json && r.json.decision === 'block', r.stdout);
+    assert.ok(/Tarefa 1 \("primeira"\)/.test(r.json.reason), r.json.reason);
+  });
+});
+
+test('082 T5: com mais de 5 arquivos o resto vira "e mais N" na lista; caminho com acento sai sem ele (R5)', () => {
+  comTmp((tmp) => {
+    const dir = projetoCom(tmp, 's10-n', COM_REF);
+    for (const n of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) gravar(tmp, 's10-n', dir, 'Edit', path.join('src', n + '.js'));
+    gravar(tmp, 's10-n', dir, 'Edit', path.join('src', 'ação.js'));
+    const r = fecho(tmp, 's10-n', dir, ENTREGA);
+    assert.ok(r.json && r.json.decision === 'block', r.stdout);
+    const linhas = r.json.reason.split('\n');
+    assert.deepStrictEqual(linhas.filter((l) => /^ {2}- /.test(l)),
+      ['  - "src/a.js"', '  - "src/b.js"', '  - "src/c.js"', '  - "src/d.js"', '  - "src/e.js"', '  - e mais 3']);
+    assert.ok(/^[\n\x20-\x7E]*$/.test(r.json.reason), 'ASCII (R5)');
+    const so = projetoCom(tmp, 's10-a', COM_REF);
+    gravar(tmp, 's10-a', so, 'Edit', path.join('src', 'ação.js'));
+    assert.ok(fecho(tmp, 's10-a', so, ENTREGA).json.reason.indexOf('  - "src/acao.js"') !== -1, 'o acento sai (escopo.ascii)');
+  });
+});
