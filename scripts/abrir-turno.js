@@ -5,6 +5,7 @@ const estado = require('./lib/estado.js');
 const saude = require('./lib/saude.js');
 const correcao = require('./lib/correcao.js');
 const config = require('./lib/config.js');
+const volta = require('./lib/volta.js');
 
 // UserPromptSubmit: zera as marcas do turno anterior (trabalhoReal, bloqueouNesteTurno,
 // buscouNesteTurno, gravouHandoff) e preserva todo o resto do estado da sessao (contadores, e as chaves
@@ -12,6 +13,23 @@ const config = require('./lib/config.js');
 // apagaria, e sem ela aqui o turno seguinte criava arquivo sem procurar (ronda 1 do 8b).
 io.blindar(function () {
   io.lerEntrada(function (e) {
+    // Plano 084 (D549): volta a chat de 200 mil ou mais depois de mais de 1 h parado segura a 1a mensagem da
+    // pausa com a conta (volta.js). A marca da pausa fica no estado; a mensagem seguinte passa. Falha de leitura
+    // nunca segura: o turno segue como antes.
+    let aviso = null;
+    try {
+      if (volta.ligada(config.carregarProjeto(config.raizDoProjeto(e.cwd || process.cwd())))) {
+        const chamada = saude.ultimaChamadaDoTranscript(e.transcript_path);
+        if (chamada) {
+          estado.alterar(e.session_id, function (s) {
+            const r = volta.avaliar(chamada, Date.now(), s.avisouVolta);
+            if (r) { s.avisouVolta = r.marca; aviso = volta.motivo(r); }
+            return s;
+          });
+        }
+      }
+    } catch (err) { aviso = null; }
+    if (aviso) return io.segurarMensagem(aviso);
     // A1 (D426): a chave sugerirAprender (padrao ligado) vem do projeto.json; ilegivel ou ausente = ligado.
     const parece = correcao.pareceCorrecao(e.prompt) &&
       correcao.ligada(config.carregarProjeto(config.raizDoProjeto(e.cwd || process.cwd())));

@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.8.4 — aviso antes de gastar ao voltar a um chat grande parado
+
+**Novo** (pedido do dono; aviso aprovado por imagem antes do código)
+
+- **Voltar a um chat de 200 mil tokens ou mais, parado há mais de 1 hora, mostra a conta antes de gastar.** O cache
+  da conversa dura 1 hora; depois disso, continuar regrava a conversa inteira. Nas conversas do autor, 64 de 64 voltas
+  com mais de 1 hora parado perderam o cache, e as de 200 mil ou mais custaram US$ 119 em 44 dias, contra uns US$ 23
+  se fossem chat novo. Agora a 1ª mensagem depois da pausa é segurada: ela não chega ao Claude, e o aviso diz o tempo
+  parado, quanto custa continuar ali e quanto custa abrir um chat novo com o handoff. O texto digitado aparece no fim
+  do aviso ("Original prompt:"). Mandada de novo, a mensagem passa; o aviso sai uma vez por pausa. Modelo fora da
+  tabela de preços: avisa sem o valor em US$. Se o registro da sessão não puder ser lido, a mensagem passa. Desliga
+  com `"avisoDeVolta": false` no `projeto.json`.
+
+**Escolhas técnicas** (feitas dentro do escopo, ditas aqui para você poder discordar)
+
+- A conta mora num arquivo próprio (`scripts/lib/volta.js`), e não no da saúde do contexto, porque a tabela de preços
+  já depende dele e o caminho inverso fecharia um ciclo.
+- A leitura do registro da sessão passou a trazer também o horário e o modelo da última resposta; a leitura do tamanho
+  do contexto usa essa mesma.
+- A mensagem segurada não conta como turno: não gasta a espera da sugestão de `/esquadro:aprender`.
+- O custo do chat novo usa a 1ª chamada típica de um chat novo (68.723 tokens, a mediana medida): é o piso, porque o
+  chat novo ainda relê arquivos depois.
+
 ## 0.8.3 — a linha de status diz quanto falta para trocar de chat; faixa vazia em chat sem plano; 51 correções
 
 **Mudado** (pedidos do dono; desenho aprovado por imagem antes do código)

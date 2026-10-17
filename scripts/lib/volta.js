@@ -1,0 +1,74 @@
+'use strict';
+const { PRECOS } = require('./calibracao.js');
+const { milhar, centavos } = require('./medidor.js');
+
+// Plano 084 (pedido 73, D547, D549; mock D550): voltar a um chat grande depois de mais de 1 hora parado. O cache
+// e de 1 h (D547: 100% da escrita medida e de 1 h; 64 de 64 voltas com mais de 1 h parado perderam o cache), e
+// continuar regrava a conversa inteira. O gancho de entrada segura a 1a mensagem da pausa e mostra a conta.
+// Mensagem de gancho: ASCII (D532), na forma unica dos avisos (test/forma-aviso.test.js).
+
+const CHAVE = 'avisoDeVolta';
+const PARADO_MS = 60 * 60 * 1000;   // mais que isto: o cache de 1 h venceu
+const CONTEXTO_MINIMO = 200000;     // D549: 200 mil ou mais
+// D547: mediana da 1a chamada de chat novo (68.723 tokens). E o piso: o chat novo ainda rele arquivos depois.
+const RECOMECO = 68723;
+// indice da escrita de 1 h na tabela de precos (calibracao.js: entrada, saida, leitura, escrita 5 min, escrita 1 h)
+const ESCRITA_1H = 4;
+
+/** Ligado por padrao. So o booleano `false` desliga (D388, D415). */
+function ligada(projeto) {
+  return !(projeto && typeof projeto === 'object' && projeto[CHAVE] === false);
+}
+
+/**
+ * `chamada` = saude.ultimaChamadaDoTranscript. Devolve null quando nao avisa: sem leitura, sem horario, parado
+ * ate 1 h, contexto abaixo de 200 mil, ou a mesma pausa ja avisada (`jaAvisado` = a marca gravada no estado).
+ * `marca` = o horario da ultima chamada: a mensagem segurada nao chega ao Claude, entao a marca so muda numa
+ * pausa nova.
+ */
+function avaliar(chamada, agora, jaAvisado) {
+  if (!chamada || typeof chamada.contexto !== 'number' || typeof chamada.horario !== 'number') return null;
+  const parado = agora - chamada.horario;
+  if (!(parado > PARADO_MS) || !(chamada.contexto >= CONTEXTO_MINIMO)) return null;
+  if (jaAvisado === chamada.horario) return null;
+  // so a chave propria da tabela: "constructor" ou "toString" herdados nao sao preco (dariam US$ NaN)
+  const preco = chamada.modelo && Object.prototype.hasOwnProperty.call(PRECOS, chamada.modelo) ? PRECOS[chamada.modelo] : null;
+  const porToken = preco && typeof preco[ESCRITA_1H] === 'number' && isFinite(preco[ESCRITA_1H]) ? preco[ESCRITA_1H] / 1e6 : null;
+  return {
+    marca: chamada.horario, parado: parado, contexto: chamada.contexto, modelo: chamada.modelo,
+    continuar: porToken === null ? null : chamada.contexto * porToken,
+    novo: porToken === null ? null : RECOMECO * porToken
+  };
+}
+
+/** "claude-opus-5-5" -> "Opus 5.5". */
+function nomeDoModelo(id) {
+  const m = /^claude-([a-z]+)-(\d+(?:-\d+)*)$/.exec(id);
+  if (!m) return id;
+  return m[1].charAt(0).toUpperCase() + m[1].slice(1) + ' ' + m[2].replace(/-/g, '.');
+}
+
+function duracao(ms) {
+  const min = Math.floor(ms / 60000);
+  return Math.floor(min / 60) + ' h ' + String(min % 60).padStart(2, '0') + ' min';
+}
+
+/** O texto do aviso (D550). ASCII: o id do modelo que vier torto sai com "?" no lugar. */
+function motivo(r) {
+  const linhas = ['esquadro - este chat ficou ' + duracao(r.parado) + ' parado e o cache venceu: continuar aqui regrava ' +
+    milhar(Math.floor(r.contexto / 1000)) + ' mil tokens.', ''];
+  if (r.continuar !== null) {
+    linhas.push('Continuar neste chat: cerca de US$ ' + centavos(r.continuar) + ' (' + nomeDoModelo(r.modelo) + ').');
+    linhas.push('Abrir um chat novo: cerca de US$ ' + centavos(r.novo) + '.');
+  } else {
+    const id = r.modelo ? '"' + String(r.modelo).replace(/[^\x20-\x7E]/g, '?') + '"' : 'deste chat';
+    linhas.push('Sem o valor em US$: o modelo ' + id + ' nao esta na tabela de precos do esquadro.');
+  }
+  linhas.push('', 'Faca uma destas:',
+    '  1. abra um chat novo e cole o prompt do ultimo handoff, se ele estiver em dia;',
+    '  2. para seguir neste chat, mande a mensagem de novo: este aviso nao volta nesta pausa.',
+    '', 'Desligar neste projeto: "' + CHAVE + '": false em .claude/esquadro/projeto.json.');
+  return linhas.join('\n');
+}
+
+module.exports = { CHAVE, PARADO_MS, CONTEXTO_MINIMO, RECOMECO, ligada, avaliar, motivo, nomeDoModelo };

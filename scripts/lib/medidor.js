@@ -353,4 +353,4 @@ function linhaDaSessao(entrada) {
   return { curta: curta, longa: blocos.join('\n\n'), cruzou: cruzou };
 }
 
-module.exports = { linhaDaSessao };
+module.exports = { linhaDaSessao, milhar, centavos };

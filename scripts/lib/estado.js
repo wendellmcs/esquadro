@@ -173,7 +173,7 @@ function limparVelhos(sessionIdAtual, agoraMs, opcoes) {
  * CAMPOS_DO_TURNO: morrem no fecho, de proposito.
  */
 const CAMPOS_DA_SESSAO = ['avisouSemConfig', 'avisouTipoErrado', 'avisouApelido', 'gatilho3', 'abertoEm',
-  'frente', 'avisouTabelaShell', 'decisoesDoDono', 'commitsFeitos', 'esperaAprender', 'auditoriaAvisou'];
+  'frente', 'avisouTabelaShell', 'decisoesDoDono', 'commitsFeitos', 'esperaAprender', 'auditoriaAvisou', 'avisouVolta'];
 const CAMPOS_DO_TURNO = ['trabalhoReal', 'bloqueouNesteTurno', 'buscouNesteTurno', 'contadores', 'gravouHandoff'];
 
 /** Os campos da sessao que este estado tem, para o fecho carregar adiante. */

@@ -32,6 +32,15 @@ const CAUDA_DO_TRANSCRIPT = 256 * 1024;
  * O transcript e escrito de forma assincrona: a leitura pode vir um turno atrasada.
  */
 function contextoDoTranscript(caminho) {
+  const c = ultimaChamadaDoTranscript(caminho);
+  return c ? c.contexto : null;
+}
+
+/**
+ * Plano 084 (D549): a mesma leitura do contextoDoTranscript, com o horario (ms, do `timestamp` da linha) e o
+ * `model` da ultima chamada. Horario ilegivel ou modelo ausente vem null; o contexto vem igual.
+ */
+function ultimaChamadaDoTranscript(caminho) {
   if (typeof caminho !== 'string' || !caminho) return null;
   let texto;
   try {
@@ -54,7 +63,12 @@ function contextoDoTranscript(caminho) {
     const u = o.message && o.message.usage;
     if (!u) continue;
     const total = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
-    if (total > 0) return total;
+    if (total > 0) {
+      const horario = typeof o.timestamp === 'string' ? Date.parse(o.timestamp) : NaN;
+      const modelo = o.message.model;
+      return { contexto: total, horario: isFinite(horario) ? horario : null,
+        modelo: typeof modelo === 'string' && modelo ? modelo : null };
+    }
   }
   return null;
 }
@@ -409,5 +423,5 @@ const MOTIVO_HANDOFF_SEM_PROMPT = [
   'Desligar neste projeto: "portaoHandoff": false em .claude/esquadro/projeto.json.'
 ].join('\n');
 
-module.exports = { LIMIARES_PADRAO, BALDES_DE_BLOQUEIO, contextoDoTranscript, limiaresValidos, medir, acumular, avaliar, avisoDeSaude, instrucaoAoModelo, perguntaSobreSaude,
+module.exports = { LIMIARES_PADRAO, BALDES_DE_BLOQUEIO, contextoDoTranscript, ultimaChamadaDoTranscript, limiaresValidos, medir, acumular, avaliar, avisoDeSaude, instrucaoAoModelo, perguntaSobreSaude,
   INSTRUCAO_DA_PERGUNTA, ehArquivoDeHandoff, temBlocoDeCodigo, MOTIVO_HANDOFF_SEM_PROMPT };

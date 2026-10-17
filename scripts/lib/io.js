@@ -48,6 +48,15 @@ function bloquearFecho(motivo, aviso) {
 }
 
 /**
+ * UserPromptSubmit (plano 084): segura a mensagem. Ela nao chega ao Claude; o `motivo` aparece so ao usuario,
+ * seguido de "Original prompt:" e o texto dele.
+ */
+function segurarMensagem(motivo) {
+  process.stdout.write(JSON.stringify({ decision: 'block', reason: motivo }));
+  process.exit(0);
+}
+
+/**
  * Corpo comum da recuperacao: mesma mensagem, mesma saida, para o caminho
  * sincrono (catch) e o caminho assincrono (uncaughtException). Existe para
  * nao duplicar o bloco entre os dois pontos de captura de blindar().
@@ -75,4 +84,4 @@ function blindar(fn) {
   }
 }
 
-module.exports = { lerEntrada, permitir, negarFerramenta, bloquearFecho, blindar };
+module.exports = { lerEntrada, permitir, negarFerramenta, bloquearFecho, segurarMensagem, blindar };

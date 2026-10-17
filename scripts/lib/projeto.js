@@ -50,7 +50,8 @@ const LISTAS_LIDAS = ['comandosLiberados', 'comandosBloqueados', 'intocaveis'];
 // torto e avisado na abertura (abertura.js), reprovado em validar() e aceito pelo re-init.
 // D468 (0.7.0): `modoContinuo` e opt-in como o vigia (so `=== true` liga, continuo.js).
 // D503 (0.8.1): `portaoReferencia` liga por padrao (so `=== false` desliga, portao-fecho.js), como o portaoHandoff.
-const CHAVES_LIGA_DESLIGA = ['sugerirAprender', 'auditarNaAbertura', 'qualidadeDeResposta', 'portaoDecisao', 'portaoHandoff', 'vigia', 'paralelismo', 'modoContinuo', 'portaoReferencia'];
+// D549 (0.8.4): `avisoDeVolta` liga por padrao (so `=== false` desliga, volta.js).
+const CHAVES_LIGA_DESLIGA = ['sugerirAprender', 'auditarNaAbertura', 'qualidadeDeResposta', 'portaoDecisao', 'portaoHandoff', 'vigia', 'paralelismo', 'modoContinuo', 'portaoReferencia', 'avisoDeVolta'];
 
 // Padrao que NUNCA casa um alvo relativo: letra de unidade (C: ou C:\) ou esquema
 // (file://). O alvo que chega aos portoes e sempre relativo a raiz do projeto

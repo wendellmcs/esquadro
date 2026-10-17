@@ -146,3 +146,12 @@ test('T5: os tres relatorios de comando abrem com a 1a linha na forma (o que e o
     assert.ok(linhas.some((l) => /^ +- ".*contadores\.json"$/.test(l)), 'o arquivo lido entre aspas: ' + u.stdout);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('084: aviso de volta a chat parado na forma unica, com e sem preco', () => {
+  const volta = require('../scripts/lib/volta.js');
+  const agora = Date.parse('2026-10-17T12:00:00.000Z');
+  for (const modelo of ['claude-opus-5-5', 'claude-novo-9', null]) {
+    const r = volta.avaliar({ contexto: 318000, horario: agora - 188 * 60000, modelo: modelo }, agora);
+    confereForma('volta ' + modelo, volta.motivo(r), { acao: 'destas', ultima: DESLIGAR });
+  }
+});

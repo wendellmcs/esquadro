@@ -396,6 +396,19 @@ diz o aviso e o alarme com os números em vigor: o `limiares.tokensDeContexto` g
 disparar, sem os cinco que a chave cala. Sem a chave
 `modoContinuo`, nada disso muda.
 
+**Voltar a um chat grande parado** (desde a 0.8.4). O Claude Code guarda a conversa em cache por 1 hora; depois disso,
+a mensagem seguinte regrava a conversa inteira, a preço de escrita de cache (o dobro da entrada). Nas conversas do
+autor, 64 de 64 voltas com mais de 1 hora parado perderam o cache; nas de 200 mil tokens ou mais, a volta custou US$
+119 em 44 dias, contra uns US$ 23 se cada uma tivesse sido um chat novo. Por isso, quando você manda mensagem num
+chat de **200 mil tokens ou mais** que ficou **mais de 1 hora parado**, o esquadro segura essa mensagem: ela não chega
+ao Claude, e você vê quanto custa continuar ali contra abrir um chat novo, com o handoff em dia. O seu texto não se
+perde: o aviso termina com "Original prompt:" e o que você digitou. Para seguir no mesmo chat, mande de novo: o aviso
+sai uma vez por pausa. O custo de continuar é o contexto vezes a escrita de 1 hora do modelo; o do chat novo, a
+primeira chamada típica de um chat novo (68.723 tokens, a mediana medida), que é o piso, porque o chat novo ainda
+relê arquivos depois. Os valores são preço de API (a tabela do plugin); no plano por assinatura, viram consumo do
+limite. Modelo fora da tabela: o aviso sai sem o valor em US$. Se o plugin não conseguir ler o registro da sessão, a
+mensagem passa. Desliga com `"avisoDeVolta": false` no `projeto.json`.
+
 **O que não dispara:** erro de medição (contagem errada, número lido do lugar errado). Hook não o
 enxerga — ele dispara em ferramenta —, então o plugin não finge contá-lo. Para esse, vale a sua
 pergunta acima.
@@ -1519,6 +1532,7 @@ propósito, para não invalidar o `projeto.json` de quem já tem um.
 | `portaoHandoff` | o portão do prompt do handoff no chat | ligado; `false` desliga |
 | `portaoReferencia` | o portão da referência de topo: barra a entrega AAA sem revisão contra a `referencias` na sessão | ligado; `false` desliga |
 | `paralelismo` | as regras de trabalho em paralelo que a abertura injeta | ligado; `false` desliga |
+| `avisoDeVolta` | o aviso antes de gastar: a 1ª mensagem num chat de 200 mil tokens ou mais, parado há mais de 1 hora, é segurada com a conta de continuar contra abrir um chat novo; mandada de novo, passa | ligado; `false` desliga |
 | `vigia` | a novidade da semana na abertura (só para quem mantém o plugin) | desligado; só `true` liga |
 | `modoContinuo` | o modo contínuo: troca de chat só por tamanho, decisão técnica sem parar | desligado; só `true` liga |
 
