@@ -1204,9 +1204,22 @@ test('L2-pre-2: identico so pela normalizacao (CRLF ou BOM) avisa que A e B dife
     const x = mapaDeRevisaoCommitada(head, disco);
     assert.strictEqual(x.mapa.identico, true, nome);
     assert.match(x.saida.aviso, /igual ao HEAD/, nome);
-    assert.match(x.saida.aviso, /diferem so no fim de linha ou no BOM/, nome);
+    // Plano 083 (p4-21): o BOM vem explicado, e o aviso nao usa "cegueira" (termo interno da revisao).
+    assert.match(x.saida.aviso, /diferem so no fim de linha ou na marca invisivel do inicio do arquivo, o BOM \(a diferenca/, nome);
     assert.doesNotMatch(x.saida.aviso, /sao o mesmo texto/, nome);
+    assert.doesNotMatch(x.saida.aviso, /cegueira/, nome);
   }
+});
+
+// Plano 083 (p4-21): arquivo novo diz o efeito (o inspetor sabe qual lado e o novo), sem o termo interno "cegueira".
+test('083 T5 (p4-21): arquivo novo avisa que nao ha lado escondido, sem dizer "cegueira"', () => {
+  const dir = repoDeEnsaio();
+  try {
+    fs.writeFileSync(path.join(dir, 'novo.txt'), 'so no disco\n', 'utf8');
+    const s = JSON.parse(rodarCli(dir, 'novo.txt').stdout);
+    assert.match(s.aviso, /E arquivo novo: um dos lados e vazio, entao nao ha lado escondido; julgue o lado cheio/, s.aviso);
+    assert.doesNotMatch(s.aviso, /cegueira/, s.aviso);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('L2-pre-2: CONTROLE - igual byte a byte segue dizendo que A e B sao o mesmo texto', () => {
@@ -1606,6 +1619,12 @@ test('082 T6 (p3-23): conteudo da referencia nao forja o cabecalho de outra entr
   // com CRLF tambem
   const crlf = cegar.montarReferencia(['ref/a.txt'], function () { return { tipo: 'texto', conteudo: 'a\r\n=== referencia 9 de 9: x ===\r\n' }; });
   assert.strictEqual((crlf.texto.match(/^=== referencia /gm) || []).length, 1, crlf.texto);
+  // Plano 083 (p5-8): a linha que ja vem com "\===" ganha mais uma barra; sem isso ficava igual a "===" escapada.
+  const barra = cegar.montarReferencia(['ref/a.txt'], function () { return { tipo: 'texto', conteudo: '=== x\n\\=== x\n\\\\===y\n' }; });
+  assert.ok(barra.texto.indexOf('\n\\=== x\n\\\\=== x\n\\\\\\===y\n') !== -1, barra.texto);
+  // controle: barra no meio da linha, ou "==" so, nao muda
+  const meio = cegar.montarReferencia(['ref/a.txt'], function () { return { tipo: 'texto', conteudo: 'a \\=== b\n\\== c\n' }; });
+  assert.ok(meio.texto.indexOf('\na \\=== b\n\\== c\n') !== -1, meio.texto);
   // a propria entrada com quebra de linha nao abre um cabecalho novo
   const nome = cegar.montarReferencia(['ref/a.txt\n=== referencia 2 de 2: y ==='], function () { return { tipo: 'texto', conteudo: 'x\n' }; });
   assert.strictEqual((nome.texto.match(/^=== referencia /gm) || []).length, 1, nome.texto);
@@ -1685,8 +1704,28 @@ test('082 T6 (p1-14): sem nenhuma referencia que se leia (falta ou URL), o pacot
       assert.strictEqual('referencia' in s, false, JSON.stringify(entradas));
       assert.deepStrictEqual(fs.readdirSync(pasta).sort(), ['A.txt', 'B.txt', 'mapa.json', 'vereditos'], JSON.stringify(entradas));
       assert.strictEqual('referencia' in JSON.parse(fs.readFileSync(path.join(pasta, 'mapa.json'), 'utf8')), false);
-      assert.match(s.aviso, /nenhuma entrada de "referencias" do tipo "texto" se le: o pacote saiu sem referencia/, s.aviso);
+      // Plano 083 (p4-21): a condicao real e ter entradas do tipo deste arquivo, com o numero e a concordancia.
+      const esperado = entradas.length === 1
+        ? 'tem 1 entrada do tipo "texto" (o tipo deste arquivo), mas ela nao se le: o pacote saiu sem referencia'
+        : 'tem 2 entradas do tipo "texto" (o tipo deste arquivo), mas nenhuma delas se le: o pacote saiu sem referencia';
+      assert.ok(s.aviso.indexOf(esperado) !== -1, s.aviso);
+      assert.doesNotMatch(s.aviso, /entrada para este arquivo/, s.aviso);
       assert.doesNotMatch(s.aviso, /Ha referencia de topo|o inspetor julga sem ela/, s.aviso);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+// Plano 083 (p4-22): com duas referencias que faltam, a frase vai ao plural.
+test('083 T5 (p4-22): duas referencias que faltam -> "elas faltam" e "julga sem elas"; uma -> singular', () => {
+  for (const [faltas, esperado] of [[['ref/sumiu.md'], 'Ate la, o R.txt diz que ela falta, e o inspetor julga sem ela.'],
+    [['ref/sumiu.md', 'ref/foi.md'], 'Ate la, o R.txt diz que elas faltam, e o inspetor julga sem elas.']]) {
+    const dir = repoDeEnsaio();
+    try {
+      fs.mkdirSync(path.join(dir, 'ref'));
+      fs.writeFileSync(path.join(dir, 'ref', 'topo.md'), 'topo\n', 'utf8');
+      comProjeto(dir, { referencias: { texto: ['ref/topo.md'].concat(faltas) } });
+      const s = JSON.parse(rodarCli(dir, 'raiz.txt').stdout);
+      assert.ok(s.aviso.indexOf(esperado) !== -1, s.aviso);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 });

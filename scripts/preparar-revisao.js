@@ -220,38 +220,38 @@ if (projetoCfg && 'referencias' in projetoCfg) {
     refTorta = true;
   }
 }
-// O caminho da referencia e relativo a raiz do projeto, como os do projeto.json. Imagem ou binario (byte 0) vai pelo
-// caminho, para o inspetor abrir com Read; o que nao se le como arquivo e "falta", e a causa fica para o aviso, para o
-// mapa.json e para a saida (p1-31). Plano 082 (p1-8, D531): so se le de dentro da raiz do projeto, pelo caminho real
-// (o link que aponta para fora tambem fica fora): o R.txt vai a cada inspetor, e uma entrada "../" ou absoluta
-// levaria qualquer arquivo do disco ate ele. (p1-7) Acima do teto do R.txt, nem se le: vai pelo caminho.
-const causaDaFalta = {};
+// Cada entrada de "referencias" e um caminho relativo a raiz do projeto, como os do projeto.json. A que nao se le
+// vira "falta", e a causa fica guardada num lugar so (faltaPorEntrada), de onde saem o aviso, o mapa.json e a saida
+// JSON: as tres dizem a mesma coisa porque leem a mesma estrutura.
+const faltaPorEntrada = {};
+function falta(e, causa, codigo, abs) {
+  faltaPorEntrada[e] = { entrada: e, causa: causa, codigo: codigo, caminho: abs };
+  return { tipo: 'falta' };
+}
 const montada = entradasRef.length === 0 ? null : cegar.montarReferencia(entradasRef, function (e) {
   const abs = path.resolve(raizProjeto, e);
-  if (!caminho.dentroPeloCaminhoReal(e, raizProjeto)) {
-    causaDaFalta[e] = { causa: 'fora da raiz do projeto', codigo: 'FORA_DA_RAIZ', caminho: abs };
-    return { tipo: 'falta' };
-  }
+  // So se le de dentro da raiz do projeto, pelo caminho real (o link que aponta para fora tambem fica fora): o R.txt
+  // vai a cada inspetor, e uma entrada "../" ou absoluta levaria qualquer arquivo do disco ate ele.
+  if (!caminho.dentroPeloCaminhoReal(e, raizProjeto)) return falta(e, 'fora da raiz do projeto', 'FORA_DA_RAIZ', abs);
   try {
-    // Plano 082, Tarefa 8: o stat vem antes da extensao, para a imagem que nao existe (ou e pasta) ser "falta", como era.
+    // O stat vem antes da extensao: a imagem que nao existe (ou e pasta) e "falta", e nao "binario".
     const st = fs.statSync(abs);
+    // Imagem ou binario (byte 0) vai pelo caminho, para o inspetor abrir com Read.
     if (st.isFile() && /\.(png|jpe?g|gif|webp|bmp|ico|pdf)$/i.test(e)) return { tipo: 'binario', caminho: abs };
+    // Acima do teto do R.txt, nem se le: vai pelo caminho.
     if (st.isFile() && st.size > cegar.TETO_DA_REFERENCIA) return { tipo: 'grande', caminho: abs, tamanho: st.size };
     const buf = fs.readFileSync(abs);
     if (buf.includes(0)) return { tipo: 'binario', caminho: abs };
-    // p1-10: o BOM (do PowerShell 5.1, por exemplo) nao vai ao R.txt
+    // O BOM (do PowerShell 5.1, por exemplo) nao vai ao R.txt.
     return { tipo: 'texto', conteudo: textoLib.semBom(buf.toString('utf8')), caminho: abs };
   } catch (err) {
-    causaDaFalta[e] = { causa: textoLib.causaDoErro(err), codigo: err && err.code, caminho: abs };
-    return { tipo: 'falta' };
+    return falta(e, textoLib.causaDoErro(err), err && err.code, abs);
   }
 });
 // p1-14: sem nenhuma entrada que se leia (todas faltam ou sao URL), o R.txt nao teria nada para comparar: o pacote sai
 // sem referencia, e o aviso diz por que.
 const referencia = montada && montada.faltam.length + montada.urls.length < entradasRef.length ? montada : null;
-const faltasDaReferencia = Object.keys(causaDaFalta).map(function (e) {
-  return { entrada: e, causa: causaDaFalta[e].causa, codigo: causaDaFalta[e].codigo, caminho: causaDaFalta[e].caminho };
-});
+const faltasDaReferencia = Object.values(faltaPorEntrada);
 
 /** Plano 082, Tarefa 5 (p1-30): o que fazer com a referencia que nao se leu, conforme a causa. */
 function oQueFazerComAFalta(codigo) {
@@ -260,6 +260,15 @@ function oQueFazerComAFalta(codigo) {
   if (codigo === 'EISDIR') return 'aponte um arquivo, nao uma pasta';
   if (codigo === 'EACCES' || codigo === 'EPERM' || codigo === 'EBUSY') return 'libere a leitura do arquivo';
   return 'corrija a entrada em "referencias" do projeto.json ou libere a leitura do arquivo';
+}
+
+// A leitura passada ao montarReferencia (acima) devolve "falta" para qualquer erro; o aviso diz, por entrada, a causa,
+// o caminho absoluto tentado e o que fazer conforme a causa (p1-30).
+function quaisFaltam(faltam) {
+  return 'Referencia que nao consegui ler: ' + faltam.map(function (e) {
+    const f = faltaPorEntrada[e];
+    return e + ' (causa: ' + f.causa + '; caminho tentado: "' + f.caminho + '"; ' + oQueFazerComAFalta(f.codigo) + ')';
+  }).join(', ') + '.';
 }
 
 // D257 secao 11, item 11: uma base por arquivo (revisao/<id>/<n>/). Revisao em andamento no formato
@@ -451,14 +460,18 @@ if (recorte) {
     'Diga isso no briefing de cada inspetor.';
 }
 if (novo) {
-  aviso += ' E arquivo novo: um dos lados e vazio, a cegueira nao existe; julgue o lado cheio pelo que ele e, ' +
+  aviso += ' E arquivo novo: um dos lados e vazio, entao nao ha lado escondido; julgue o lado cheio pelo que ele e, ' +
     'e diga isso no fecho.';
 }
 if (referencia) {
   // D503/D508: o texto do aviso nomeia R.txt e invertida/; o brief do inspetor (Tarefa 3) diz o que fazer com eles.
   aviso += ' Ha referencia de topo (' + tipoRef + '): R.txt, nomeado, vai a cada inspetor junto de A e B. A 2a passada ' +
     'de cada lente julga invertida/A.txt e invertida/B.txt (os lados trocados) e grava em invertida/vereditos/.';
-  if (referencia.faltam.length) aviso += ' ' + quaisFaltam(referencia.faltam) + ' Ate la, o R.txt diz que ela falta, e o inspetor julga sem ela.';
+  if (referencia.faltam.length) {
+    aviso += ' ' + quaisFaltam(referencia.faltam) + (referencia.faltam.length === 1
+      ? ' Ate la, o R.txt diz que ela falta, e o inspetor julga sem ela.'
+      : ' Ate la, o R.txt diz que elas faltam, e o inspetor julga sem elas.');
+  }
   if (referencia.urls.length) aviso += ' Referencia que e URL, que o inspetor nao abre: ' + referencia.urls.join(', ') + '.';
   if (referencia.grandes.length) {
     aviso += ' Referencia maior que o teto do R.txt (' + cegar.TETO_DA_REFERENCIA + ' bytes), que vai pelo caminho e o ' +
@@ -466,20 +479,13 @@ if (referencia) {
   }
 } else if (montada) {
   // p1-14: havia entradas para o tipo, mas nenhuma se leu.
-  aviso += ' A chave "referencias" do projeto.json tem entrada para este arquivo, mas nenhuma entrada de "referencias" do ' +
-    'tipo "' + tipoRef + '" se le: o pacote saiu sem referencia (sem R.txt e sem invertida/), e a revisao compara so A ' +
-    'com B.' + (montada.faltam.length ? ' ' + quaisFaltam(montada.faltam) : '') +
+  aviso += ' A chave "referencias" do projeto.json tem ' + (entradasRef.length === 1
+    ? '1 entrada do tipo "' + tipoRef + '" (o tipo deste arquivo), mas ela nao se le'
+    : entradasRef.length + ' entradas do tipo "' + tipoRef + '" (o tipo deste arquivo), mas nenhuma delas se le') +
+    ': o pacote saiu sem referencia (sem R.txt e sem invertida/), e a revisao compara so A com B.' + (montada.faltam.length ? ' ' + quaisFaltam(montada.faltam) : '') +
     (montada.urls.length ? ' Referencia que e URL, que o inspetor nao abre: ' + montada.urls.join(', ') + '.' : '');
 }
 
-// Revisao s49/s50: o `ler` acima devolve "falta" para qualquer erro de leitura; o aviso diz a causa de cada uma.
-// Plano 082, Tarefa 5 (p1-30): por entrada, a causa, o caminho absoluto tentado e o que fazer conforme a causa.
-function quaisFaltam(faltam) {
-  return 'Referencia que nao consegui ler: ' + faltam.map(function (e) {
-    const f = causaDaFalta[e];
-    return e + ' (causa: ' + f.causa + '; caminho tentado: "' + f.caminho + '"; ' + oQueFazerComAFalta(f.codigo) + ')';
-  }).join(', ') + '.';
-}
 // Plano 082, Tarefa 5 (p1-19): sem giria; o formato esperado, o efeito e o validar.
 if (refTorta) {
   aviso += ' A chave "referencias" do projeto.json nao tem o formato esperado para o tipo "' + tipoRef + '": tem de ' +
@@ -497,10 +503,10 @@ if (identico) {
   // diferem em fim de linha ou BOM, "o mesmo texto" seria falso e o inspetor ainda distingue os lados por esse resto.
   const mesmoTexto = anterior === atual
     ? 'A e B sao o mesmo texto'
-    : 'A e B tem o mesmo texto, mas diferem so no fim de linha ou no BOM (a diferenca nao e do codigo e pode ' +
-      'denunciar qual lado e o do disco: ignore-a)';
+    : 'A e B tem o mesmo texto, mas diferem so no fim de linha ou na marca invisivel do inicio do arquivo, o BOM ' +
+      '(a diferenca nao e do codigo e pode denunciar qual lado e o do disco: ignore-a)';
   aviso += ' O arquivo esta igual ao HEAD (revisar depois de commitar): nao ha lado antigo, ' + mesmoTexto +
-    ' e a cegueira nao existe; o inspetor so pode julgar o arquivo pelo que ele e. O mapa.json leva ' +
+    ' e nao ha lado escondido; o inspetor so pode julgar o arquivo pelo que ele e. O mapa.json leva ' +
     'identico:true e o apurar conta os achados dos dois rotulos como do lado atual.';
 }
 if (formatoAntigo) {

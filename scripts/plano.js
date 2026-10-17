@@ -108,9 +108,16 @@ if (!ativo) {
   process.exit(0);
 }
 
+// Plano 083 (p3-23): leitura e contagem com erro proprio, e a causa dita (era o mesmo "nao consegui ler" para tudo).
+let textoDoPlano;
+try { textoDoPlano = fs.readFileSync(planoLib.caminhoDoPlano(cwd, ativo.arquivo), 'utf8'); }
+catch (e) { process.stdout.write('ERRO: não consegui ler ' + ativo.arquivo + ': ' + planoLib.causaDoDisco(e) + '.\n'); process.exit(1); }
 let tarefas = [];
-try { tarefas = planoLib.parseTarefas(fs.readFileSync(planoLib.caminhoDoPlano(cwd, ativo.arquivo), 'utf8')); }
-catch (e) { process.stdout.write('ERRO: nao consegui ler ' + ativo.arquivo + '\n'); process.exit(1); }
+try { tarefas = planoLib.parseTarefas(textoDoPlano); }
+catch (e) {
+  process.stdout.write('ERRO: li ' + ativo.arquivo + ', mas não consegui contar as tarefas: ' + planoLib.causaDoDisco(e) + '.\n');
+  process.exit(1);
+}
 
 const abertas = tarefas.filter(function (t) { return t.abertos > 0; });
 // D442/9 (M-23/M-24): tarefa sem nenhuma caixa nao e concluida - o painel em texto ja dizia isso (D436).

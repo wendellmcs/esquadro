@@ -178,6 +178,34 @@ test('082 T6 (p5-37): arquivo com espaco vai entre aspas no comando do revisar (
   assert.strictEqual(b[0].comando, '/esquadro:revisar "src/meu arquivo.js"');
 });
 
+// Plano 083 (p1-32): a barra antes da aspa que fecha nao pode escapar a aspa. O leitor abaixo segue a regra padrao
+// de linha de comando (2n barras + aspa = n barras e a aspa abre/fecha; 2n+1 = n barras e uma aspa literal).
+function lerArgumento(t) {
+  let out = '';
+  let dentro = false;
+  for (let i = 0; i < t.length; i++) {
+    let barras = 0;
+    while (t[i] === '\\') { barras++; i++; }
+    if (t[i] === '"') {
+      out += '\\'.repeat(Math.floor(barras / 2));
+      if (barras % 2) out += '"'; else dentro = !dentro;
+    } else {
+      out += '\\'.repeat(barras);
+      if (i < t.length) out += t[i];
+    }
+  }
+  assert.strictEqual(dentro, false, 'aspa aberta no fim: ' + t);
+  return out;
+}
+
+test('083 T5 (p1-32): argumento com barra no fim ou antes de aspa volta inteiro pela regra de linha de comando', () => {
+  assert.strictEqual(botoes.argumento('C:\\a b\\'), '"C:\\a b\\\\"');
+  assert.strictEqual(botoes.argumento('C:\\sem-espaco\\'), 'C:\\sem-espaco\\', 'sem espaco nem aspa, cru');
+  for (const p of ['C:\\a b\\', 'C:\\a b\\\\', 'a b\\"c', 'meu "arquivo".js', 'x y\\z', 'src/meu arquivo.js', 'C:\\a\\b c\\d.js']) {
+    assert.strictEqual(lerArgumento(botoes.argumento(p)), p, p + ' -> ' + botoes.argumento(p));
+  }
+});
+
 test('conversasDoProjeto: conta os .jsonl da pasta uma vez por dia (marca no cache)', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-botoes-'));
   try {

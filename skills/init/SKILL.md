@@ -385,9 +385,10 @@ para você, não entra na opção):
    `"referencias": {}`, e o aviso da abertura não sai.
 
 No re-init, mostre a `referencias` atual e pergunte só se o dono quer mudar. A resposta se junta à que existe,
-tipo a tipo: o tipo que o dono responder troca a lista dele, e o tipo que ele não citar fica como estava. Por isso
-`{}` no re-init não apaga nada; para tirar um tipo, grave a lista dele vazia (`"tela": []`), que vale como sem
-referência; para tirar todos, um `[]` por tipo, ou o dono apaga a chave à mão no `projeto.json`.
+tipo a tipo: o tipo que o dono responder troca a lista dele, e o tipo que ele não citar fica como estava. A exceção
+é a opção 3: **"nunca" no re-init grava `"referencias": {}` no lugar da chave inteira**, e os tipos que estavam
+gravados saem (é o único objeto em que `{}` apaga; nos outros, `{}` não muda nada). Para tirar um tipo só, grave a
+lista dele vazia (`"tela": []`), que vale como sem referência.
 
 ## Passo 5 — o mapa de marchas
 
@@ -526,8 +527,9 @@ código é o que vale. Seis valores exigidos lá **não saem de pergunta nenhuma
 
 Fora de `CHAVES`, a opcional `referencias` (lista `CHAVES_OPCIONAIS`) entra só pela resposta do fim do Passo 4b:
 os caminhos por tipo, ou `{}` para "nunca"; com "deixar para depois", não grave a chave. **No re-init, parta da
-`referencias` do `projeto.json` atual**: o tipo que o dono não mudou fica como está (a fusão por tipo do Passo 4b), e
-"deixar para depois" mantém a chave atual — o `Write` reescreve o arquivo inteiro e apagaria o que já estava gravado.
+`referencias` do `projeto.json` atual**: o tipo que o dono não mudou fica como está (a fusão por tipo do Passo 4b),
+"nunca" grava `{}` no lugar dela, e "deixar para depois" mantém a chave atual — o `Write` reescreve o arquivo inteiro
+e apagaria o que já estava gravado.
 
 **Onde gravar.** `<raiz absoluta>/.claude/esquadro/projeto.json` — a raiz do Passo 0, nunca a pasta
 atual. Esta linha é a mais importante deste passo; o parágrafo seguinte é sobre outra coisa.

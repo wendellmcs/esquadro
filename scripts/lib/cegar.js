@@ -133,8 +133,10 @@ const RE_URL = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
 const TETO_DA_REFERENCIA = 100 * 1024;
 
 // Plano 082 (p3-23): so o cabecalho escrito aqui comeca uma linha com "===". Linha do conteudo que comeca assim ganha
-// "\" na frente, para o conteudo nao forjar o comeco de outra referencia; a entrada vai numa linha so.
-function semCabecalho(texto) { return String(texto).replace(/^(?====)/gm, '\\'); }
+// "\" na frente, para o conteudo nao forjar o comeco de outra referencia; a entrada vai numa linha so. A linha que ja
+// comeca com barras e depois "===" tambem ganha uma (p5-8): "\===" vira "\\===" e nao se confunde com "===" escapada;
+// quem le tira sempre uma barra so.
+function semCabecalho(texto) { return String(texto).replace(/^(?=\\*===)/gm, '\\'); }
 function numaLinha(texto) { return String(texto).replace(/[\r\n]+/g, ' '); }
 
 /**

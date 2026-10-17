@@ -92,7 +92,8 @@ function estimarMes(opcoes) {
     for (const f of arquivosDoProjeto(path.join(o.raiz, p.name))) {
       if (fora.has(f.sessao)) continue;
       let st;
-      try { st = fs.statSync(f.arquivo); } catch (e) { continue; }
+      // p2-7: o arquivo que some entre o readdir e o stat tambem e "nao se leu" (saia calado).
+      try { st = fs.statSync(f.arquivo); } catch (e) { ilegiveis++; continue; }
       if (st.mtimeMs < mes.ms) continue;
       const c = velho[f.arquivo];
       if (c && c.mes === mes.chave && c.tamanho === st.size && c.data === st.mtimeMs && num(c.usd)) {

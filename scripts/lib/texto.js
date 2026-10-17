@@ -42,4 +42,12 @@ function veioDeSubagente(prompt) {
   return /^(?:another claude session sent a message[a-z ]*: )?<(?:agent-message|task-notification)\b/.test(t);
 }
 
-module.exports = { semBom, causaDoErro, veioDeSubagente };
+/**
+ * O valor entre aspas, numa linha so, para um aviso: a aspa de dentro vira \" e a quebra de linha vira espaco, para o
+ * nome que traz uma ou outra nao deformar a mensagem. A barra fica como esta (o caminho do Windows se le igual).
+ */
+function entreAspas(valor) {
+  return '"' + String(valor).replace(/[\r\n]+/g, ' ').replace(/"/g, '\\"') + '"';
+}
+
+module.exports = { semBom, causaDoErro, veioDeSubagente, entreAspas };

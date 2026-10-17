@@ -307,6 +307,60 @@ test('pedido 30: linhaDoPlanoDaSessao - a frente vinculada escolhe entre varias;
   } finally { fs.rmSync(base, { recursive: true, force: true }); }
 });
 
+// Pedido 70 (D541): chat sem frente vinculada e sem plano no escopo.md nao mostra o plano da unica frente com plano.
+test('pedido 70 (D541): a faixa fica vazia sem vinculo; o plano do escopo.md da raiz segue na faixa', () => {
+  const dir = tmp({
+    'docs/2026-01-02-fr-y-plano.md': PLANO,
+    '.claude/esquadro/escopos/fr.md': '# Escopo\n**Objetivo:** algo. Plano: `docs/2026-01-02-fr-y-plano.md`\n## Dentro\n- x/**\n'
+  });
+  try {
+    assert.strictEqual(plano.acharPlanoDaFrente(dir, null).semVinculo, true, 'o painel segue achando a frente unica');
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, null), '', 'chat sem plano nao mostra o plano de outra frente');
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, 'fr'), 'plano y · 1 de 2 tarefas · próxima: Tarefa 2 — marcha');
+    fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'escopo.md'),
+      '# Escopo\n**Objetivo:** raiz. Plano: `docs/2026-01-02-fr-y-plano.md`\n## Dentro\n- x/**\n');
+    // Sem frente nao ha prefixo a tirar do nome (nomeCurto): "fr-y".
+    assert.strictEqual(plano.linhaDoPlanoDaSessao(dir, null), 'plano fr-y · 1 de 2 tarefas · próxima: Tarefa 2 — marcha');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Plano 083 Tarefa 4: p3-2 (corte sem surrogate orfao), p3-4 (Markdown do plano escapado no painel), p3-13 (o
+// motivo sem bronca, ASCII pela R5), p3-23 (o modo JSON separa leitura de contagem e diz a causa).
+test('083 T4 (p3-2): titulo cortado na faixa nunca parte um emoji ao meio', () => {
+  const titulo = 'a'.repeat(44) + '\u{1F600}' + 'b'.repeat(6);
+  assert.strictEqual(titulo.charCodeAt(44) >= 0xD800 && titulo.charCodeAt(44) <= 0xDBFF, true, 'controle: o par comeca no corte');
+  const l = plano.linhaDoPlano({ arquivo: 'p.md' }, plano.parseItens('### Tarefa 1: ' + titulo + '\n- [ ] p'));
+  assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(l), 'surrogate orfao: ' + JSON.stringify(l));
+  assert.ok(/a\.\.\.$/.test(l), 'cortado antes do emoji: ' + l);
+});
+
+test('083 T4 (p3-4): titulo e id do plano com Markdown chegam ao painel escapados', () => {
+  const t = plano.parseItens('### Tarefa 1: ajustar <config> e *x* e `a_b <c>`_z\n- [ ] p');
+  const painel = plano.painelTexto({ arquivo: 'p.md' }, t, 'plano.js');
+  // o trecho entre crases fica como veio (codigo de proposito, mock S5); fora dele, escapado
+  assert.ok(painel.indexOf('Tarefa 1: ajustar \\<config\\> e \\*x\\* e `a_b <c>`\\_z (1 de 1 passos abertos)') !== -1, painel);
+});
+
+test('083 T4 (p3-13): o motivo do subitem aberto diz o que falta sem bronca, em ASCII', () => {
+  const m = plano.motivoSubitemAberto(plano.parseTarefas(PLANO)[1]);
+  assert.ok(!/ressalva|Ou esta completa|Voce disse/.test(m), m);
+  assert.ok(/^esquadro - subitem pendente = etapa aberta\.\n\n/.test(m) && /\nFaca uma destas:\n {2}1\. /.test(m), m);
+  assert.ok(/^[\x20-\x7E\n]+$/.test(m), 'ASCII (R5)');
+});
+
+test('083 T4 (p3-23): o modo JSON diz a causa de nao ler o plano', () => {
+  const pasta = tmp({ 'p/uma-pasta/x.md': PLANO, '.claude/esquadro/plano-ativo.json': JSON.stringify({ arquivo: 'p/uma-pasta' }) });
+  const falta = tmp({ '.claude/esquadro/plano-ativo.json': JSON.stringify({ arquivo: 'p/nao-existe.md' }) });
+  try {
+    const script = path.join(RAIZ_PLUGIN, 'scripts', 'plano.js');
+    const a = spawnSync(process.execPath, [script], { cwd: pasta, encoding: 'utf8' });
+    assert.strictEqual(a.status, 1, a.stdout);
+    assert.strictEqual(a.stdout, 'ERRO: não consegui ler p/uma-pasta: o caminho é uma pasta, não um arquivo (EISDIR).\n');
+    const b = spawnSync(process.execPath, [script], { cwd: falta, encoding: 'utf8' });
+    assert.strictEqual(b.stdout, 'ERRO: não consegui ler p/nao-existe.md: o arquivo ou a pasta não existe (ENOENT).\n');
+  } finally { for (const d of [pasta, falta]) fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 // Plano 082, Tarefa 6 (p7-5): o --abrir aceita caminho absoluto, e o path.join o colava no cwd (ENOENT, faixa vazia).
 test('082 T6 (p7-5): plano-ativo.json com caminho absoluto se le na faixa, no painel e no JSON', () => {
   const dir = tmp({ 'p/2026-01-01-x-plano.md': PLANO });
@@ -347,14 +401,16 @@ test('082 T6 (p7-16): abrir que nao grava diz o arquivo, a causa e o que fazer, 
   const dir = tmp({ 'docs/p.md': PLANO, '.claude': 'um arquivo onde devia haver pasta' });
   try {
     assert.throws(() => plano.abrir(dir, 'docs/p.md', 's'), (e) => {
-      assert.ok(/^esquadro: nao consegui gravar .*plano-ativo\.json \(E[A-Z]+\); confira a permissao da pasta e o espaco em disco/.test(e.message), e.message);
-      assert.ok(e.message.indexOf('O plano nao foi aberto.') !== -1, e.message);
+      // Plano 083 (p3-14): com acento, sem "esquadro:" e com a causa em palavras antes do codigo.
+      assert.ok(/^Não consegui gravar .*plano-ativo\.json: um arquivo ocupa o lugar de uma pasta no caminho \(E[A-Z]+\)\./
+        .test(e.message), e.message);
+      assert.ok(e.message.indexOf('o plano não foi aberto.') !== -1, e.message);
       return true;
     });
     const r = spawnSync(process.execPath, [path.join(RAIZ_PLUGIN, 'scripts', 'plano.js'), '--abrir', 'docs/p.md'],
       { cwd: dir, encoding: 'utf8' });
     assert.strictEqual(r.status, 1, r.stdout);
-    assert.ok(r.stderr.indexOf('esquadro: nao consegui gravar ') === 0, r.stderr);
+    assert.ok(r.stderr.indexOf('Não consegui gravar ') === 0, r.stderr);
     assert.ok(!/\n\s+at /.test(r.stderr), 'stack trace no stderr: ' + r.stderr);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

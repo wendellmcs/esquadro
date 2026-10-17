@@ -260,6 +260,15 @@ test('D464: acima do alarme sem aviso anterior, sai um aviso so - o de alarme, c
   assert.ok(!/ALARME/.test(comum.aviso), comum.aviso);
 });
 
+// Plano 083 (p7-21): avisoDeSaude e exportada; sem lista de gatilhos (nula, ausente ou vazia) nao ha aviso, como no
+// avaliar - antes a nula lancava TypeError e a vazia saia um ALARME sem motivo.
+test('083 T6 (p7-21): avisoDeSaude sem gatilho devolve null, sem lancar; com gatilho segue igual', () => {
+  for (const g of [null, undefined, [], 'x']) {
+    for (const alarme of [false, true]) assert.strictEqual(saude.avisoDeSaude(g, alarme), null, JSON.stringify(g) + ' ' + alarme);
+  }
+  assert.match(saude.avisoDeSaude(['3 decisoes'], false), /^esquadro - hora de abrir chat novo\.\n/);
+});
+
 test('D464: o alarme respeita o limiar do projeto', () => {
   assert.strictEqual(saude.avaliar({ avisouSaude: true, tokensDeContexto: 310000 }, { tokensAlarme: 300000 }).alarme, true);
   assert.strictEqual(saude.avaliar({ avisouSaude: true, tokensDeContexto: 310000 }).disparou, false);

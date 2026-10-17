@@ -101,6 +101,14 @@ test('apelidos: o motivo cita os dois lados e as duas direcoes de conserto', () 
   assert.ok(!/arquiteto/.test(m), 'agente que nao divergiu nao entra na mensagem');
 });
 
+// Plano 083 (p6-4): correcao() nao tinha chamador (o motivo mostra os dois lados por agente e as duas direcoes); saiu.
+test('083 T6 (p6-4): a correcao() morta saiu da lib; o motivo segue com os dois valores de cada agente', () => {
+  assert.strictEqual(apelidos.correcao, undefined);
+  const r = apelidos.conferir(MAPA_DOIS, lidos([ag('busca', 'caro')]));
+  const m = apelidos.motivo(r);
+  assert.ok(m.includes('      o arquivo diz: caro') && m.includes('      o mapa diz:    barato'), m);
+});
+
 test('apelidos: o motivo diz que nada foi bloqueado', () => {
   const r = apelidos.conferir(MAPA_DOIS, lidos([ag('busca', 'caro'), ag('arquiteto', 'caro')]));
   assert.ok(/nada foi bloqueado/i.test(apelidos.motivo(r)));

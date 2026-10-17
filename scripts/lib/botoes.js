@@ -92,10 +92,15 @@ function daSessao(entrada) {
   return lista.sort(function (a, b) { return ORDEM.indexOf(a.nome) - ORDEM.indexOf(b.nome); });
 }
 
-/** p5-37: caminho com espaco ou aspa vai entre aspas no comando; sem isso, viraria dois argumentos. */
+/**
+ * p5-37: caminho com espaco ou aspa vai entre aspas no comando; sem isso, viraria dois argumentos. p1-32: pela regra
+ * padrao de linha de comando, as barras logo antes de uma aspa (ou do fim, onde entra a aspa que fecha) dobram, e a
+ * aspa do caminho vira \"; sem isso, "C:\a b\" leria a aspa final como escapada.
+ */
 function argumento(p) {
   const s = String(p);
-  return /[\s"]/.test(s) ? '"' + s.replace(/"/g, '\\"') + '"' : s;
+  if (!/[\s"]/.test(s)) return s;
+  return '"' + s.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1') + '"';
 }
 
 /** Dia local AAAA-MM-DD de `agoraMs`. */
@@ -127,4 +132,4 @@ function conversasDoProjeto(pasta, arquivoDoCache, agoraMs) {
   return n;
 }
 
-module.exports = { ORDEM, daSessao, conversasDoProjeto };
+module.exports = { ORDEM, daSessao, argumento, conversasDoProjeto };

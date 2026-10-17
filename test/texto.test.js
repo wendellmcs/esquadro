@@ -130,3 +130,13 @@ test('D484: saude.js e correcao.js usam o filtro de texto.js, sem copia propria 
     assert.strictEqual(fonte.indexOf('<(?:agent-message'), -1, nome + ' ainda tem a propria copia da regex');
   });
 });
+
+// Plano 083 (p7-5, p2-1): o valor que vai entre aspas num aviso nao deforma a mensagem - a aspa de dentro vira \" e a
+// quebra de linha vira espaco (o valor fica numa linha so).
+test('083 T6: entreAspas escapa a aspa e junta as quebras de linha; o resto fica como esta', () => {
+  assert.strictEqual(texto.entreAspas('src/a.css'), '"src/a.css"');
+  assert.strictEqual(texto.entreAspas('a"b.css'), '"a\\"b.css"');
+  assert.strictEqual(texto.entreAspas('a\r\nb\nc'), '"a b c"');
+  assert.strictEqual(texto.entreAspas('C:\\pasta\\a.css'), '"C:\\pasta\\a.css"', 'a barra do Windows fica');
+  assert.strictEqual(texto.entreAspas(undefined), '"undefined"');
+});

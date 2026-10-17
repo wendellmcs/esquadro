@@ -125,17 +125,10 @@ function trocarModel(bruto, apelido) {
   return { ok: true, texto: bom + copia.join(''), motivo: null };
 }
 
-/** As DUAS direcoes possiveis. O hook nao tem como saber qual lado envelheceu:
- *  quem sabe e o dono, e por isso a correcao se oferece, nunca se aplica so. */
-function correcao(d) {
-  return {
-    agente: d.agente,
-    paraArquivo: 'o arquivo passa a dizer "' + d.gravado + '", como o mapa ja diz',
-    paraMapa: 'o mapa passa a dizer "' + d.declarado + '", como o arquivo ja diz'
-  };
-}
-
 // Plano 082, Tarefa 5 (mock S10): a forma unica dos avisos. "gatilho 3" e nome interno: a 1a linha diz o que falta.
+// As DUAS direcoes possiveis: o hook nao tem como saber qual lado envelheceu; quem sabe e o dono, e por isso a
+// correcao se oferece, nunca se aplica so. Plano 083 (p6-4): a correcao() que montava as duas frases nao tinha
+// chamador; os valores de cada lado saem por agente, logo abaixo.
 function motivo(r) {
   const linhas = [
     'esquadro - o modelo de alguns agentes nao bate com o mapa deste projeto.',
@@ -260,6 +253,6 @@ function motivoReprovado(c) {
 }
 
 module.exports = {
-  RE_LINHA, CERCA, RE_MODEL, mapaDeDegraus, conferir, trocarModel, correcao, motivo,
+  RE_LINHA, CERCA, RE_MODEL, mapaDeDegraus, conferir, trocarModel, motivo,
   agentesDoPlugin, cobertura, motivoReprovado
 };

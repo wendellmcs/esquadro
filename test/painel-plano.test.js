@@ -399,8 +399,11 @@ test('D502: plano sem marca de sessao (com ou sem frente) diz como anotar e nao 
   const t = planoLib.painelTexto({ arquivo: 'p.md', sessionId: 's1' }, planoLib.parseItens(PLANO));
   assert.ok(LIMPO.test(t), JSON.stringify(t));
   assert.ok(t.indexOf('\n- falta: 2 de 3 (Tarefa 2, Tarefa 3)\n') !== -1, t);
-  assert.ok(t.indexOf('\n- sessões gastas: não contadas — o plano não tem marca de sessão; ao marcar uma caixa, anote ' +
-    '"(sN: o que fez)", com N o número da sessão. Sem elas, não há base para estimar.') !== -1, t);
+  // Plano 083 (p3-15): a orientacao numa linha propria, com exemplo concreto no lugar do "(sN: o que fez)".
+  assert.ok(t.indexOf('\n- sessões gastas: não contadas (o plano não tem marca de sessão)\n- para contar: ao marcar uma ' +
+    'caixa, anote a sessão entre parênteses, por exemplo "(s3: ajustei o painel)" na 3ª sessão. Sem as marcas, não há ' +
+    'base para estimar.') !== -1, t);
+  assert.ok(t.indexOf('(sN') === -1, t);
   assert.ok(t.indexOf('estimativa') === -1, t);
   // D502: aberto por --abrir tambem conta, se o plano tem marca
   const a = planoLib.painelTexto({ arquivo: 'p.md', sessionId: 's1', sessoesDoPlano: 2 }, planoLib.parseItens(PLANO));
@@ -452,7 +455,7 @@ test('R1: plano sem marca de sessao e com tarefa feita nao estima 0 sessoes', ()
   const t = planoLib.painelTexto({ arquivo: 'p.md', frente: 'f1', sessoesDoPlano: 0 },
     planoLib.parseItens('### Item 1: A\n- [x] a\n### Item 2: B\n- [ ] b'));
   assert.ok(t.indexOf('- sessões gastas: não contadas') !== -1, t);
-  assert.ok(t.indexOf('Sem elas, não há base para estimar.') !== -1 && t.indexOf('0 sess') === -1, t);
+  assert.ok(t.indexOf('Sem as marcas, não há base para estimar.') !== -1 && t.indexOf('0 sess') === -1, t);
 });
 
 test('R1: arquivo da frente vinculada que nao se le nao vira "nao tem Plano:"', () => {

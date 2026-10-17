@@ -147,12 +147,16 @@ test('continuo: a linha curta do medidor conta so os gatilhos que podem disparar
   const podem = m.filter((g) => g.calado !== true).length;
   assert.strictEqual(m.length - podem, c.CALADOS.length, 'controle: os cinco calados estao na lista');
   const r = medidor.linhaDaSessao({ uso: null, amostras: [], medidas: m, avisouSaude: false });
-  assert.strictEqual(r.curta, 'troca 0 de ' + podem);
+  // Pedido 71 (D544): a barra diz quanto falta pelo sinal mais perto; os 99 turnos calados nao contam (bloqueios 0
+  // de 6 e contexto 0 empatam; vale o 1o, como no bloco "Troca de chat").
+  assert.strictEqual(r.curta, 'troca de chat em 6 bloqueios de portão');
   const cruzou = medidor.linhaDaSessao({ uso: null, amostras: [], medidas: saude.medir({ tokensDeContexto: 260000 }, null, true), avisouSaude: false });
-  assert.ok(new RegExp('^troca 1 de ' + podem + ' cruzou').test(cruzou.curta), cruzou.curta);
-  // sem a chave, nada se cala: o denominador segue todos
-  const sem = medidor.linhaDaSessao({ uso: null, amostras: [], medidas: saude.medir({}, null), avisouSaude: false });
-  assert.strictEqual(sem.curta, 'troca 0 de ' + m.length);
+  assert.strictEqual(cruzou.curta, 'troque de chat → /esquadro:handoff');
+  // sem a chave, nada se cala: os 99 turnos disparam
+  const sem = medidor.linhaDaSessao({ uso: null, amostras: [], medidas: saude.medir({ turnosComTrabalho: 99 }, null), avisouSaude: false });
+  assert.strictEqual(sem.curta, 'troque de chat → /esquadro:handoff');
+  const zero = medidor.linhaDaSessao({ uso: null, amostras: [], medidas: saude.medir({}, null), avisouSaude: false });
+  assert.strictEqual(zero.curta, 'troca de chat em 15 respostas com trabalho real');
 });
 
 test('continuo: a esquadro:padrao e o README falam da chave e da validacao pelo proprio agente', () => {

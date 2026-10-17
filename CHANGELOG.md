@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.8.3 — a linha de status diz quanto falta para trocar de chat; faixa vazia em chat sem plano; 51 correções
+
+**Mudado** (pedidos do dono; desenho aprovado por imagem antes do código)
+
+- **A linha de status diz quanto falta para o aviso de troca de chat**, pelo sinal mais perto: `troca de chat em 38
+  mil tokens` (ou em N commits, N decisões do dono, N bloqueios de portão, conforme o sinal). Quando um sinal dispara, ela diz `troque de chat →
+  /esquadro:handoff`. Sem nenhum sinal medido, não diz nada. Sai o "troca 0 de 2", que nunca mudava enquanto nada
+  disparava. No `/esquadro-sessao`, o bloco "Troca de chat" diz "N de M sinais dispararam", com o verbo concordando.
+- **A faixa acima do prompt fica vazia num chat que não tem plano.** Antes, um chat sem frente ligada mostrava o plano
+  da única frente do projeto, mesmo sendo de outro assunto. O `/esquadro-plano` segue mostrando essa frente, e diz
+  que esta sessão não está ligada a ela. Um plano aberto com `--abrir` continua aparecendo: é escolha explícita do
+  projeto.
+- **Dois pedidos fechados sem mudança**, depois do print: a linha "SessionStart hook" não aparece no chat do VS Code;
+  e a faixa e a linha de status, no painel estreito, só quebram de linha, sem cortar nem se sobrepor.
+
+**Corrigido** (os 51 que a revisão da 0.8.2 deixou abertos, conferidos um a um no código: 23 de aparência, 18 de
+estilo, 7 falhas, 2 de teste e 1 de segurança)
+
+- **Segurança.** Uma resposta ao `/esquadro:init` com a chave especial `__proto__` conseguia pôr agentes que ninguém
+  escolheu na escada do projeto (o teste montou o ataque e viu a lista virar a do atacante). Agora a resposta entra
+  por cópia chave a chave e o ataque não passa.
+- **Falhas.** Arquivo de conversa que não se consegue medir conta como ilegível, em vez de derrubar a conta do gasto;
+  valor que não é número no relatório de uso sai por último como "?" e fica fora da soma; o aviso de saúde sem
+  gatilho não sai; caminho terminado em `\` no comando que o botão escreve não quebra mais as aspas; a linha de
+  referência que já começava com `\===` não se confunde com a escapada; na apuração, só a pasta que não existe conta
+  como "sem veredito" — outra falha de leitura para e diz a causa; o sinal do medidor não lê nome herdado de objeto.
+- **Aparência.** O painel do plano não corta o título no meio de um caractere, não mostra Markdown cru no título,
+  e o erro de gravação do `--abrir` diz a causa em palavras; o "Ritmo" traz um exemplo concreto; centavos não saem
+  como "-0,00"; os avisos da revisão dizem quantas entradas faltam, com o plural certo, sem "cegueira" nem "BOM"
+  soltos; achado sem descrição sai "(sem descrição)", e lente repetida aparece uma vez só; os avisos de shell, de
+  design e de custo ganharam linha em branco onde a leitura pedia, e nomes com aspas ou quebra de linha não deformam
+  mais a mensagem. No README, a cor de destaque não se confunde com a acentuação da escrita, e o defeito do âmbar
+  fraco tem endereço (as issues do repositório).
+- **Estilo e teste.** Código repetido num lugar só (a lista das faltas da revisão, a forma única do aviso do `cd`
+  solto, as janelas do medidor), uma função sem uso tirada, comentários com o motivo no lugar de marcas de plano, e
+  testes novos para os botões do painel e para os textos acentuados dele.
+
+**As sobras** (o que a triagem achou fora da lista)
+
+- **Rodar o `/esquadro:init` de novo com "nunca" na referência de topo** agora apaga as referências gravadas antes.
+  Nas outras chaves (`travas`, `marchas`, `limiares`), responder vazio segue sem apagar nada. O `/esquadro:init` diz
+  isso.
+- **O `/esquadro:calibrar` compara com o limiar que vale de verdade**: o gravado no `projeto.json`, senão os 250 mil
+  do modo contínuo, senão o padrão do plugin, e diz de onde ele veio. "Manter" agora se grava
+  (`node scripts/calibrar.js --manter`, só com o seu sim).
+- **O `claude plugin validate` não avisa mais** do gancho sem tratamento de erro no painel: se o gancho falhar, a
+  chamada da ferramenta segue normalmente.
+- **Este CHANGELOG ganhou acento da 0.7.7 para trás.** Mensagens antigas citadas entre aspas ou crases ficam como
+  eram.
+
+**Escolhas técnicas** (feitas dentro do escopo, ditas aqui para você poder discordar)
+
+- O texto do subitem aberto que o portão de fecho mostra ficou sem acento: ele sai num aviso de gancho, e esses
+  seguem sem acento.
+- No `/esquadro:init` de novo, só `referencias` vazio apaga; vazio nas outras chaves não apaga.
+- O calibrar mostra o limiar em vigor e a origem dele; "manter" grava esse mesmo número.
+- O gancho do painel, se falhar, deixa a chamada seguir: ele só observa.
+- A função de correção de apelido de modelo, sem uso em lugar nenhum, saiu em vez de ganhar um chamador.
+- No comando do botão, as barras antes de aspa ou do fim dobram, pela regra padrão de linha de comando.
+- Na apuração, só a pasta que não existe vira "sem veredito"; pasta ilegível ou arquivo no lugar dela para com a
+  causa.
+- O ataque do `__proto__` foi confirmado por teste antes do conserto.
+
 ## 0.8.2 — aparência nova na faixa, na linha de status e nos dois painéis; avisos numa forma só; 105 correções
 
 **Mudado: a aparência** (desenhada por imagem e aprovada antes do código)
@@ -13,7 +76,8 @@
 - **A faixa acima do prompt**: `plano 082 · 2 de 7 tarefas · próxima: Tarefa 3 — ...`, com a unidade do plano
   (tarefa, etapa, fase, onda ou item) e "concluído (6 de 6 tarefas)" quando nada falta, em vez de "nada aberto".
   Embaixo, a frase do que aconteceu e o botão, com rótulo em palavras (gerar handoff, virar regra, ver o que cortar,
-  carregar o manual). Todo botão sai `primary`: no VS Code o `secondary` sai igual. Se o clique não consegue
+  carregar o manual). Todo botão sai no desenho de destaque (`primary`), porque no VS Code o desenho discreto
+  (`secondary`) sai igual a ele e não marcaria diferença nenhuma; a ordem fica no texto. Se o clique não consegue
   escrever no prompt, a faixa diz o comando a digitar, em vez de falhar calada.
 - **`/esquadro-sessao` em cinco blocos com título**: Contexto e limites, Gasto, Previsão, Troca de chat e O que
   fazer. "Handoffs" virou "trocas de chat" e "turnos" virou "respostas" (troca de chat explicada no README); número
@@ -56,7 +120,9 @@ documentação, mais 22 falhas, 27 de estilo, 3 de tamanho e 2 de segurança)
   prompt.
 - **Windows.** Dois caminhos que só diferem em maiúscula e minúscula contam como o mesmo arquivo na referência de
   topo, como o glob já fazia; fora do Windows, são dois.
-- **Re-init.** A fusão por chave guarda uma chave `__proto__` vinda do JSON como chave comum.
+- **Rodar o `/esquadro:init` de novo num projeto já configurado.** Um `projeto.json` com a chave especial
+  `__proto__` não consegue mais mexer nas outras chaves da configuração: ela fica guardada como uma chave comum. Para
+  quem usa, nada muda.
 
 **Documentação.** O README diz o que é troca de chat, mostra a aparência nova, o que fazer quando o âmbar fica fraco
 no tema claro, o que é "lado" na revisão e o que o re-init faz com `referencias`. O `/esquadro:init` faz a pergunta
@@ -182,204 +248,204 @@ agentes. Sem a chave `referencias`, a revisão custa o mesmo de antes.
 **Mudado**
 
 - **README completo.** O README passa a cobrir tudo o que o plugin instala e o que esperar de cada coisa: uma
-  secao com tudo o que vem instalado (skills, o workflow `esquadro:paralelo`, os agentes, os ganchos por evento e os
-  paineis `/esquadro-sessao` e `/esquadro-plano`), os portoes fora da tabela das oito travas (decisao, apelido,
+  seção com tudo o que vem instalado (skills, o workflow `esquadro:paralelo`, os agentes, os ganchos por evento e os
+  painéis `/esquadro-sessao` e `/esquadro-plano`), os portões fora da tabela das oito travas (decisão, apelido,
   estilo, handoff, qualidade de resposta, vigia), o `projeto.json` chave por chave, a parte visual (lentes de tela, a escolha visual
-  na pagina Artifact, catalogo de estados, alvo de 24 x 24 px, INP, print antes x depois, roteiro de 5 usuarios), os
-  scripts de linha de comando que faltavam, o que mora em `modelos/` e nas referencias da `padrao`, e os
-  comportamentos das versoes 0.6.0 a 0.7.6 que o README ainda nao contava. Nenhuma frase antiga mudou de sentido.
-- **Teste.** O teste do README le do disco as skills, o workflow, os agentes, os eventos de gancho, os paineis, os
-  scripts, as chaves do `projeto.json`, as travas, os `modelos/` e as referencias da `padrao`: item novo que chega
+  na página Artifact, catálogo de estados, alvo de 24 x 24 px, INP, print antes x depois, roteiro de 5 usuários), os
+  scripts de linha de comando que faltavam, o que mora em `modelos/` e nas referências da `padrao`, e os
+  comportamentos das versões 0.6.0 a 0.7.6 que o README ainda não contava. Nenhuma frase antiga mudou de sentido.
+- **Teste.** O teste do README lê do disco as skills, o workflow, os agentes, os eventos de gancho, os painéis, os
+  scripts, as chaves do `projeto.json`, as travas, os `modelos/` e as referências da `padrao`: item novo que chega
   sem README reprova sozinho.
 
-## 0.7.6 — a escolha visual numa pagina Artifact e as lentes de tela mais completas
+## 0.7.6 — a escolha visual numa página Artifact e as lentes de tela mais completas
 
 **Mudado**
 
-- **Escolha visual numa pagina Artifact.** A `esquadro:padrao` ja mandava mostrar a imagem antes de pedir uma
-  escolha visual. Agora, quando a sessao tem a ferramenta Artifact (pagina privada no claude.ai), o meio
-  preferido e uma pagina com antes, proposta e referencia lado a lado, em claro e escuro, nas larguras de tela que
-  o projeto declara (sem declaracao, as que o produto comprovadamente atende: a de notebook, e a de celular so se
-  ele roda em celular). O rito e o da imagem: o link primeiro, as 3 opcoes no turno seguinte. Sem a ferramenta, a
-  imagem de sempre. A pagina sai do computador: so dado ficticio; tela com dado de cliente ou credencial troca por
-  dado ficticio antes de publicar, ou fica na imagem local.
-- **Lentes de tela.** A Lente 2 (estados) pede o componente visto sozinho com todos os estados: a pagina dele no
-  catalogo de componentes do projeto, ou uma pagina de estados montada para a revisao. A Lente 4
-  (acessibilidade) pede alvo de pelo menos 24 x 24 px (WCAG 2.2, criterio 2.5.8, com as excecoes do criterio);
-  abaixo disso e P1. A Lente 7 (regressao) mede a resposta ao clique pelo INP (Interaction to Next Paint, o
-  tempo do clique ate a tela responder): bom ate 200 ms, ruim acima de 500 ms (web.dev); medido acima de 500 ms
-  e P1, entre 200 e 500 ms e P2, sem medicao a lente diz que nao mediu.
-- **Marcha AAA.** Com gerador de print, a regressao de tela se prova por comparacao automatica de print antes x
-  depois; sem ele, a comparacao foi a olho, e isso se declara. Em funcao visivel nova, o fecho entrega ao dono um
-  roteiro de teste de uso com 5 usuarios reais (cerca de 85% dos problemas de uso), que nao bloqueia a entrega.
+- **Escolha visual numa página Artifact.** A `esquadro:padrao` já mandava mostrar a imagem antes de pedir uma
+  escolha visual. Agora, quando a sessão tem a ferramenta Artifact (página privada no claude.ai), o meio
+  preferido é uma página com antes, proposta e referência lado a lado, em claro e escuro, nas larguras de tela que
+  o projeto declara (sem declaração, as que o produto comprovadamente atende: a de notebook, e a de celular só se
+  ele roda em celular). O rito é o da imagem: o link primeiro, as 3 opções no turno seguinte. Sem a ferramenta, a
+  imagem de sempre. A página sai do computador: só dado fictício; tela com dado de cliente ou credencial troca por
+  dado fictício antes de publicar, ou fica na imagem local.
+- **Lentes de tela.** A Lente 2 (estados) pede o componente visto sozinho com todos os estados: a página dele no
+  catálogo de componentes do projeto, ou uma página de estados montada para a revisão. A Lente 4
+  (acessibilidade) pede alvo de pelo menos 24 x 24 px (WCAG 2.2, critério 2.5.8, com as exceções do critério);
+  abaixo disso é P1. A Lente 7 (regressão) mede a resposta ao clique pelo INP (Interaction to Next Paint, o
+  tempo do clique até a tela responder): bom até 200 ms, ruim acima de 500 ms (web.dev); medido acima de 500 ms
+  é P1, entre 200 e 500 ms é P2, sem medição a lente diz que não mediu.
+- **Marcha AAA.** Com gerador de print, a regressão de tela se prova por comparação automática de print antes x
+  depois; sem ele, a comparação foi a olho, e isso se declara. Em função visível nova, o fecho entrega ao dono um
+  roteiro de teste de uso com 5 usuários reais (cerca de 85% dos problemas de uso), que não bloqueia a entrega.
 
-## 0.7.5 — limiar invalido no projeto.json cai no padrao
+## 0.7.5 — limiar inválido no projeto.json cai no padrão
 
 **Corrigido**
 
-- **Limiar que nao e numero positivo cai no padrao.** Um valor de `limiares` no `projeto.json` igual a `null`,
-  `0`, negativo ou texto entrava cru na conta: `tokensAlarme: null` fazia o alarme de tamanho sair no comeco da
-  conversa, e `tokensDeContexto: 0` fazia o aviso sair a zero. Agora so numero positivo vale; o resto fica com
-  o padrao. Vale para o medidor, o alarme, o bloco da abertura (que diz os numeros que o medidor usa) e o
-  `/esquadro:calibrar`. Um numero escrito como texto (`"300000"`) tambem deixa de valer: grave sem aspas
+- **Limiar que não é número positivo cai no padrão.** Um valor de `limiares` no `projeto.json` igual a `null`,
+  `0`, negativo ou texto entrava cru na conta: `tokensAlarme: null` fazia o alarme de tamanho sair no começo da
+  conversa, e `tokensDeContexto: 0` fazia o aviso sair a zero. Agora só número positivo vale; o resto fica com
+  o padrão. Vale para o medidor, o alarme, o bloco da abertura (que diz os números que o medidor usa) e o
+  `/esquadro:calibrar`. Um número escrito como texto (`"300000"`) também deixa de valer: grave sem aspas
   (`300000`) para o seu limiar continuar mandando.
-- **Textos.** O README liga o alarme de 450 mil a faixa acima de 500 mil, onde a chamada custa cerca de 4 vezes
-  mais, e diz que limiar invalido cai no padrao. Na 0.7.4, "o bloco da abertura diz os 250 mil" vale para o
-  padrao: com limiar gravado no projeto, o bloco diz o numero dele.
+- **Textos.** O README liga o alarme de 450 mil à faixa acima de 500 mil, onde a chamada custa cerca de 4 vezes
+  mais, e diz que limiar inválido cai no padrão. Na 0.7.4, "o bloco da abertura diz os 250 mil" vale para o
+  padrão: com limiar gravado no projeto, o bloco diz o número dele.
 
-## 0.7.4 — com o modo continuo ligado, o aviso de tamanho sai a 250 mil
+## 0.7.4 — com o modo contínuo ligado, o aviso de tamanho sai a 250 mil
 
 **Mudado**
 
-- **Modo continuo: aviso de troca de chat a 250 mil tokens.** Com `modoContinuo` ligado, o aviso de tamanho
-  saia no padrao de 175 mil, embora o modo exista para a sessao longa; no teste numa etapa real, o aviso
-  apareceu duas vezes e as sessoes seguiram. Agora, com a chave, o padrao do aviso e 250 mil (o alarme segue
-  em 450 mil). O numero que o projeto gravar em `limiares.tokensDeContexto` continua mandando. Sem a chave,
-  nada muda: 175 mil. O medidor da sessao mostra o limiar que vale.
-- **Modo continuo, textos.** O bloco da abertura, a `esquadro:padrao` e o README dizem os 250 mil; o README
+- **Modo contínuo: aviso de troca de chat a 250 mil tokens.** Com `modoContinuo` ligado, o aviso de tamanho
+  saía no padrão de 175 mil, embora o modo exista para a sessão longa; no teste numa etapa real, o aviso
+  apareceu duas vezes e as sessões seguiram. Agora, com a chave, o padrão do aviso é 250 mil (o alarme segue
+  em 450 mil). O número que o projeto gravar em `limiares.tokensDeContexto` continua mandando. Sem a chave,
+  nada muda: 175 mil. O medidor da sessão mostra o limiar que vale.
+- **Modo contínuo, textos.** O bloco da abertura, a `esquadro:padrao` e o README dizem os 250 mil; o README
   passa a nomear as quatro coisas que ainda pedem troca de chat, como a skill (faltava o incidente que exigiu
   cirurgia).
 
-## 0.7.3 — pergunta de fato passa no portao de decisao e o modo continuo mais claro
+## 0.7.3 — pergunta de fato passa no portão de decisão e o modo contínuo mais claro
 
 **Mudado**
 
-- **Pergunta de fato passa no portao de decisao com `(fato)` no titulo curto.** Ate a 0.7.2 o portao
-  barrava toda pergunta ao dono sem exatamente 3 opcoes e sem a recomendada em primeiro, inclusive a
-  pergunta de sintoma ou de dado que so o dono tem, que nao e decisao (nas sessoes do autor, ela acabou
-  saindo em texto, duas vezes). Agora `(fato)`, exata e entre parenteses, em maiuscula ou minuscula, no
-  `header` (o titulo curto) da pergunta, a libera da regra das 3 opcoes. A marca so conta no `header`: no
-  texto da pergunta ou num rotulo, nao. A decisao sem a marca segue barrada, e a mensagem de bloqueio
+- **Pergunta de fato passa no portão de decisão com `(fato)` no título curto.** Até a 0.7.2 o portão
+  barrava toda pergunta ao dono sem exatamente 3 opções e sem a recomendada em primeiro, inclusive a
+  pergunta de sintoma ou de dado que só o dono tem, que não é decisão (nas sessões do autor, ela acabou
+  saindo em texto, duas vezes). Agora `(fato)`, exata e entre parênteses, em maiúscula ou minúscula, no
+  `header` (o título curto) da pergunta, a libera da regra das 3 opções. A marca só conta no `header`: no
+  texto da pergunta ou num rótulo, não. A decisão sem a marca segue barrada, e a mensagem de bloqueio
   passa a ensinar a marca.
 
 **Corrigido**
 
-- **Medidor da sessao: o "0 de N" conta so os gatilhos que podem disparar.** Com o modo continuo ligado,
-  os cinco gatilhos que a chave cala entravam no denominador ("troca: 0 de 7"), embora nao pudessem
+- **Medidor da sessão: o "0 de N" conta só os gatilhos que podem disparar.** Com o modo contínuo ligado,
+  os cinco gatilhos que a chave cala entravam no denominador ("troca: 0 de 7"), embora não pudessem
   disparar. Agora a linha curta diz "0 de 2". Sem a chave `modoContinuo`, nada muda.
-- **Modo continuo, textos.** A `esquadro:padrao` diz como saber se o modo esta ligado (a abertura da
-  sessao diz), nomeia o que deixa de pedir troca de chat em vez de "todo o resto desta secao" (o
-  "Disparou?" segue para os gatilhos que ficam e o "Sempre" nao muda) e poe credencial, permissao e
-  seguranca na lista do que ainda vai ao dono; o bloco da abertura e o README dizem o mesmo. No README,
-  o item "Ele avisa quando e hora de abrir chat novo" ganha a ressalva do modo continuo.
-- **Teste do Jev pela regra de hoje.** O Jev e um modelo externo; `docs/jev` mede o que ele diz contra a
+- **Modo contínuo, textos.** A `esquadro:padrao` diz como saber se o modo está ligado (a abertura da
+  sessão diz), nomeia o que deixa de pedir troca de chat em vez de "todo o resto desta secao" (o
+  "Disparou?" segue para os gatilhos que ficam e o "Sempre" não muda) e põe credencial, permissão e
+  segurança na lista do que ainda vai ao dono; o bloco da abertura e o README dizem o mesmo. No README,
+  o item "Ele avisa quando e hora de abrir chat novo" ganha a ressalva do modo contínuo.
+- **Teste do Jev pela regra de hoje.** O Jev é um modelo externo; `docs/jev` mede o que ele diz contra a
   regra do `/esquadro:auditar`. O `docs/jev/jev.test.js` ainda dizia que 1 termo em comum bastava para a
-  sobreposicao de skills; a regra mudou na 0.5.2 (2 termos comuns e fracao de 0,20). O teste agora confere
-  os dois limites. O codigo nao mudou.
+  sobreposição de skills; a regra mudou na 0.5.2 (2 termos comuns e fração de 0,20). O teste agora confere
+  os dois limites. O código não mudou.
 
-## 0.7.2 — revisao proporcional ao diff, cd solto que se corrige e filtro de subagente num lugar so
+## 0.7.2 — revisão proporcional ao diff, cd solto que se corrige e filtro de subagente num lugar só
 
 **Mudado**
 
-- **`/esquadro:revisar` passa a ser proporcional ao tamanho da mudanca.** Ate a 0.7.1 toda revisao
-  despachava a familia inteira de lentes (6 inspetores numa logica, 9 num codigo de estilo), inclusive para
-  trocar uma palavra. Nas revisoes do autor, os diffs pequenos gastaram cerca de 40% dos inspetores e nao
-  acharam nenhum defeito real; os defeitos vieram de logica nova ou grande. Agora o `preparar-revisao.js`
-  mede o diff contra o HEAD e diz a faixa: ate 3 linhas, 1 inspetor (`correcao`); logica de ate 40 linhas
-  com teste vermelho e mutacao, 2 (`correcao` e `borda`); texto, 2 (`correcao` e `microcopy`); arquivo
-  novo, logica maior, estilo ou o que nao der para medir, a tabela de familias de antes. Quem revisa pode
-  subir de faixa, nunca descer. A regra de parada nao muda: duas rondas secas, teto de 3.
-- **Nas faixas pequenas, o inspetor le so o trecho mudado.** `A.txt` e `B.txt` levam o trecho com 20
-  linhas de margem; o resto fica em branco, com uma linha `[fora do trecho: linhas a-b]` no inicio de cada
-  vao. Os numeros de linha seguem os do arquivo, entao a apuracao e a refutacao nao mudam. O inspetor sabe
-  que o vao nao e defeito: o que depender dele vira "nao consigo ver". Na faixa completa, o arquivo inteiro,
+- **`/esquadro:revisar` passa a ser proporcional ao tamanho da mudança.** Até a 0.7.1 toda revisão
+  despachava a família inteira de lentes (6 inspetores numa lógica, 9 num código de estilo), inclusive para
+  trocar uma palavra. Nas revisões do autor, os diffs pequenos gastaram cerca de 40% dos inspetores e não
+  acharam nenhum defeito real; os defeitos vieram de lógica nova ou grande. Agora o `preparar-revisao.js`
+  mede o diff contra o HEAD e diz a faixa: até 3 linhas, 1 inspetor (`correcao`); lógica de até 40 linhas
+  com teste vermelho e mutação, 2 (`correcao` e `borda`); texto, 2 (`correcao` e `microcopy`); arquivo
+  novo, lógica maior, estilo ou o que não der para medir, a tabela de famílias de antes. Quem revisa pode
+  subir de faixa, nunca descer. A regra de parada não muda: duas rondas secas, teto de 3.
+- **Nas faixas pequenas, o inspetor lê só o trecho mudado.** `A.txt` e `B.txt` levam o trecho com 20
+  linhas de margem; o resto fica em branco, com uma linha `[fora do trecho: linhas a-b]` no início de cada
+  vão. Os números de linha seguem os do arquivo, então a apuração e a refutação não mudam. O inspetor sabe
+  que o vão não é defeito: o que depender dele vira "nao consigo ver". Na faixa completa, o arquivo inteiro,
   como antes.
-- **O `cd` solto no Bash se corrige sozinho em vez de ser barrado.** Era o portao que mais parava o trabalho
-  (cerca de 435 idas e voltas por semana nas sessoes do autor): o comando era negado e o agente tinha de
+- **O `cd` solto no Bash se corrige sozinho em vez de ser barrado.** Era o portão que mais parava o trabalho
+  (cerca de 435 idas e voltas por semana nas sessões do autor): o comando era negado e o agente tinha de
   escrever de novo. Agora o comando vai inteiro num subshell, `( ... )`, e roda: a pasta volta sozinha, e o
-  agente fica sabendo da correcao e da forma certa. A permissao continua a de sempre (o portao nao aprova
-  nada), e a correcao nao conta como bloqueio para a troca de chat. Seguem negados: o `cd` solto no
-  PowerShell (que nao tem subshell que devolva a pasta), o comando que termina em barra e o que nao se le
+  agente fica sabendo da correção e da forma certa. A permissão continua a de sempre (o portão não aprova
+  nada), e a correção não conta como bloqueio para a troca de chat. Seguem negados: o `cd` solto no
+  PowerShell (que não tem subshell que devolva a pasta), o comando que termina em barra e o que não se lê
   inteiro.
 
 **Corrigido**
 
-- **O filtro que separa o retorno de subagente da sua fala fica num lugar so.** Ate a 0.7.1 ele estava
-  copiado em dois ganchos (a pergunta sobre o contexto e a sugestao de `/esquadro:aprender`), preso ao
+- **O filtro que separa o retorno de subagente da sua fala fica num lugar só.** Até a 0.7.1 ele estava
+  copiado em dois ganchos (a pergunta sobre o contexto e a sugestão de `/esquadro:aprender`), preso ao
   texto com que o Claude Code entrega o retorno; quando esse texto mudou no 2.1.296, os dois deixaram
-  passar ate a 0.7.1 corrigir as duas copias. Agora os dois usam a mesma funcao, e a proxima mudanca da
-  forma se corrige uma vez. O comportamento nao muda: nas transcricoes do autor (7291 prompts), o filtro
+  passar até a 0.7.1 corrigir as duas cópias. Agora os dois usam a mesma função, e a próxima mudança da
+  forma se corrige uma vez. O comportamento não muda: nas transcrições do autor (7291 prompts), o filtro
   novo decide igual ao antigo em todos.
-- **README: "os outros cinco gatilhos" virou "sete".** No paragrafo do gatilho de commit, o numero ficou
-  para tras quando a tabela de gatilhos cresceu. Um teste passa a conferir esse numero contra os limiares
-  do codigo.
+- **README: "os outros cinco gatilhos" virou "sete".** No parágrafo do gatilho de commit, o número ficou
+  para trás quando a tabela de gatilhos cresceu. Um teste passa a conferir esse número contra os limiares
+  do código.
 
-## 0.7.1 — painel do plano completo e tres correcoes
+## 0.7.1 — painel do plano completo e três correções
 
 **Mudado**
 
-- **Troca de chat por tamanho: o padrao passa de 250 mil para 175 mil tokens.** A medicao da 0.7.0
-  contava a leitura do handoff na abertura do chat novo como se fosse a escrita, e a troca saia mais cara
-  do que e; por isso ela achou o empate em 250 mil. Medido de novo, so com a escrita: nas sessoes do autor
-  cada troca custa US$ 1,56, e 175 mil e o menor limiar em que trocar no fim do turno nao sai mais caro
+- **Troca de chat por tamanho: o padrão passa de 250 mil para 175 mil tokens.** A medição da 0.7.0
+  contava a leitura do handoff na abertura do chat novo como se fosse a escrita, e a troca saía mais cara
+  do que é; por isso ela achou o empate em 250 mil. Medido de novo, só com a escrita: nas sessões do autor
+  cada troca custa US$ 1,56, e 175 mil é o menor limiar em que trocar no fim do turno não sai mais caro
   que seguir. O alarme firme continua a 450 mil. Quem gravou `limiares.tokensDeContexto` no `projeto.json`
-  fica com o numero dele; para voltar ao padrao da 0.7.0, grave `250000` nessa chave. O
-  `/esquadro:calibrar` passa a medir a amostra contra o padrao novo: conta as conversas que chegaram a 175
-  mil (os minimos seguem 30 sessoes e 10 conversas).
-- **`/esquadro-plano` mostra o plano inteiro.** Sem `plano-ativo.json`, o painel acha o plano pelo ultimo
-  `Plano: <caminho>` do Objetivo da frente vinculada a sessao (antes dizia "nenhum plano ativo" mesmo com
-  plano em curso); le cabecalhos `Tarefa`, `Item`, `Etapa`, `Onda` e `Fase` com numero (`3a` vale) e
-  travessao, e `[FEITO]` no cabecalho quando nao ha caixas; e acrescenta o que falta, as sessoes gastas
-  (marcas `(sessao N` no Objetivo da frente) e a estimativa das que faltam, com a base da conta. O portao
-  de "etapa com subitem aberto" segue lendo so o formato de antes.
+  fica com o número dele; para voltar ao padrão da 0.7.0, grave `250000` nessa chave. O
+  `/esquadro:calibrar` passa a medir a amostra contra o padrão novo: conta as conversas que chegaram a 175
+  mil (os mínimos seguem 30 sessões e 10 conversas).
+- **`/esquadro-plano` mostra o plano inteiro.** Sem `plano-ativo.json`, o painel acha o plano pelo último
+  `Plano: <caminho>` do Objetivo da frente vinculada à sessão (antes dizia "nenhum plano ativo" mesmo com
+  plano em curso); lê cabeçalhos `Tarefa`, `Item`, `Etapa`, `Onda` e `Fase` com número (`3a` vale) e
+  travessão, e `[FEITO]` no cabeçalho quando não há caixas; e acrescenta o que falta, as sessões gastas
+  (marcas `(sessao N` no Objetivo da frente) e a estimativa das que faltam, com a base da conta. O portão
+  de "etapa com subitem aberto" segue lendo só o formato de antes.
 
 **Corrigido**
 
 - **"Hora de trocar de chat" por resposta de subagente.** Quando o retorno de um subagente citava "o
-  contexto esta bom?", o aviso saia como se a pergunta fosse sua. O retorno de subagente e o aviso de
-  tarefa em segundo plano deixam de contar como pergunta, tambem na forma em que o Claude Code 2.1.296 os
+  contexto esta bom?", o aviso saía como se a pergunta fosse sua. O retorno de subagente e o aviso de
+  tarefa em segundo plano deixam de contar como pergunta, também na forma em que o Claude Code 2.1.296 os
   entrega ("Another Claude session sent a message...", seguido do retorno).
-- **Sugestao de `/esquadro:aprender` sem correcao sua.** O mesmo retorno de subagente, quando trazia uma
-  frase de correcao, era lido como correcao do dono. Mesmo filtro.
-- **Revisao cega que dava ronda seca com P1 novo.** O apurador tratava como repeticao um achado na mesma
+- **Sugestão de `/esquadro:aprender` sem correção sua.** O mesmo retorno de subagente, quando trazia uma
+  frase de correção, era lido como correção do dono. Mesmo filtro.
+- **Revisão cega que dava ronda seca com P1 novo.** O apurador tratava como repetição um achado na mesma
   linha, lente e severidade da ronda anterior, mesmo quando a linha tinha sido reescrita entre as rondas.
-  Agora o apurador le o texto da linha citada no `A.txt`/`B.txt` de cada ronda: se ele mudou (espacos
-  nao contam), o achado conta como novo. O `refutados.json` segue valendo como antes.
+  Agora o apurador lê o texto da linha citada no `A.txt`/`B.txt` de cada ronda: se ele mudou (espaços
+  não contam), o achado conta como novo. O `refutados.json` segue valendo como antes.
 
 ## 0.7.0 — menos paradas
 
 **Mudado**
 
-- **Troca de chat por tamanho: o padrao passa de 150 mil para 250 mil tokens.** Medido em 435 sessoes:
-  abrir chat novo custa escrever o handoff (o texto de continuacao) mais a rampa (o chat novo so faz a
-  primeira edicao com ~119 mil tokens de contexto), e trocar no fim do turno a 150 mil saia 9% mais caro
-  que nao trocar; a 250 mil empata. O aviso continua saindo so no fim do turno, nunca no meio da tarefa.
-  Chave: `limiares.tokensDeContexto`. Quem ja gravou essa chave no `projeto.json` fica com o numero dela;
+- **Troca de chat por tamanho: o padrão passa de 150 mil para 250 mil tokens.** Medido em 435 sessões:
+  abrir chat novo custa escrever o handoff (o texto de continuação) mais a rampa (o chat novo só faz a
+  primeira edição com ~119 mil tokens de contexto), e trocar no fim do turno a 150 mil saía 9% mais caro
+  que não trocar; a 250 mil empata. O aviso continua saindo só no fim do turno, nunca no meio da tarefa.
+  Chave: `limiares.tokensDeContexto`. Quem já gravou essa chave no `projeto.json` fica com o número dela;
   para voltar ao antigo, grave `150000` nela.
 
 **Novo**
 
 - **Alarme a 450 mil tokens** (`limiares.tokensAlarme`). Um segundo aviso, mais firme, que sai uma vez
   mesmo depois do primeiro: acima de 500 mil cada chamada custa cerca de 4 vezes a de 200 a 300 mil.
-- **Validar antes de pedir.** A abertura de toda sessao injeta, entre o bloco de paralelismo e o de
+- **Validar antes de pedir.** A abertura de toda sessão injeta, entre o bloco de paralelismo e o de
   qualidade, a regra de o agente validar sozinho (rodar o teste, abrir o navegador pelo Claude in Chrome
-  ou pelo protocolo de depuracao do Chrome, ler o resultado) antes de pedir acao manual, e pedir so o que
-  so voce pode, tudo num pedido so. Vale com e sem o modo continuo, e nao tem chave para desligar. A
+  ou pelo protocolo de depuração do Chrome, ler o resultado) antes de pedir ação manual, e pedir só o que
+  só você pode, tudo num pedido só. Vale com e sem o modo contínuo, e não tem chave para desligar. A
   skill `padrao` traz a mesma regra.
-- **Modo continuo** (`"modoContinuo": true` em `.claude/esquadro/projeto.json`, desligado por padrao).
-  So o booleano `true` liga. Com ele, so tres coisas pedem troca de chat: o tamanho da conversa (aviso e
-  alarme), os bloqueios de portao (no limiar `limiares.bloqueios`, 6 por padrao) e a sua pergunta sobre
-  o contexto; revisoes, decisoes, commits, turnos e arquivos nao encerram a sessao. Em troca, o agente
-  rele o plano antes de cada subitem, decide sozinho a escolha tecnica dentro do escopo e lista no fecho;
-  a voce ele segue perguntando o irreversivel, o externo (publicar, push, envio), o de custo e o de produto.
-- **`/esquadro:calibrar`.** Le as transcricoes que o Claude Code guarda deste projeto (so a conversa
-  principal), mede a partir de quantos tokens trocar de chat ainda compensa e sugere o limiar. So numeros
-  saem do script, nenhum trecho de conversa. Com menos de 30 sessoes, ou menos de 10 conversas que chegaram
-  ao limiar padrao, a amostra e pequena e o limiar atual fica. Ele so grava no `projeto.json` com
-  `--gravar` (aceita de 50000 ate abaixo do alarme), que a skill so roda depois do seu sim.
+- **Modo contínuo** (`"modoContinuo": true` em `.claude/esquadro/projeto.json`, desligado por padrão).
+  Só o booleano `true` liga. Com ele, só três coisas pedem troca de chat: o tamanho da conversa (aviso e
+  alarme), os bloqueios de portão (no limiar `limiares.bloqueios`, 6 por padrão) e a sua pergunta sobre
+  o contexto; revisões, decisões, commits, turnos e arquivos não encerram a sessão. Em troca, o agente
+  relê o plano antes de cada subitem, decide sozinho a escolha técnica dentro do escopo e lista no fecho;
+  a você ele segue perguntando o irreversível, o externo (publicar, push, envio), o de custo e o de produto.
+- **`/esquadro:calibrar`.** Lê as transcrições que o Claude Code guarda deste projeto (só a conversa
+  principal), mede a partir de quantos tokens trocar de chat ainda compensa e sugere o limiar. Só números
+  saem do script, nenhum trecho de conversa. Com menos de 30 sessões, ou menos de 10 conversas que chegaram
+  ao limiar padrão, a amostra é pequena e o limiar atual fica. Ele só grava no `projeto.json` com
+  `--gravar` (aceita de 50000 até abaixo do alarme), que a skill só roda depois do seu sim.
 
 ## 0.6.6 — dois erros calados passam a avisar
 
 **Corrigido**
 
-- **Proxima decisao com caminho errado.** `scripts/plano.js --proxima-decisao` com um caminho que nao
-  existe respondia `1` sem dizer nada, e a decisao saia com o numero 1 num projeto que ja tinha outras. O
-  `1` continua (projeto novo ainda nao tem arquivo de decisoes), mas agora vem com um aviso que mostra
+- **Próxima decisão com caminho errado.** `scripts/plano.js --proxima-decisao` com um caminho que não
+  existe respondia `1` sem dizer nada, e a decisão saía com o número 1 num projeto que já tinha outras. O
+  `1` continua (projeto novo ainda não tem arquivo de decisões), mas agora vem com um aviso que mostra
   o caminho procurado. Uma pasta no lugar do arquivo para com erro.
-- **Autorizacao do paralelo recusava arquivo valido.** O `settings.local.json` gravado pelo PowerShell
-  5.1 comeca com uma marca invisivel (BOM), e o arquivo vazio era tratado como JSON quebrado: nos dois
-  casos a autorizacao do `/esquadro:paralelo` nao era gravada. Agora a marca e ignorada e o arquivo
-  vazio vale como sem configuracao.
+- **Autorização do paralelo recusava arquivo válido.** O `settings.local.json` gravado pelo PowerShell
+  5.1 começa com uma marca invisível (BOM), e o arquivo vazio era tratado como JSON quebrado: nos dois
+  casos a autorização do `/esquadro:paralelo` não era gravada. Agora a marca é ignorada e o arquivo
+  vazio vale como sem configuração.
 
 ## 0.6.5 — o agente de leitura conta linhas certo
 
@@ -388,727 +454,727 @@ agentes. Sem a chave `referencias`, a revisão custa o mesmo de antes.
 - **Contagem de linhas errada no PowerShell.** Pedido para contar as linhas de um arquivo de 121, o agente
   `leitor` do `/esquadro:paralelo` respondeu 110: usou `Measure-Object -Line`, que pula linha vazia, e
   disse que era o mesmo que `wc -l`. O agente agora traz como contar nos dois shells, avisa desse
-  comando e de que, sem quebra de linha no fim do arquivo, os dois shells diferem em uma linha. Medido no VS Code com a 0.6.4: tres leituras custaram 38.514 tokens, contra 169.098 antes dela.
+  comando e de que, sem quebra de linha no fim do arquivo, os dois shells diferem em uma linha. Medido no VS Code com a 0.6.4: três leituras custaram 38.514 tokens, contra 169.098 antes dela.
 
 ## 0.6.4 — leitura em paralelo custa menos
 
 **Mudado**
 
-- **Tarefa so de leitura do `/esquadro:paralelo` abre leve.** Cada agente de leitura nascia com as
-  instrucoes do projeto, a memoria e a lista de skills, e tres leituras simples custaram cerca de 169
-  mil tokens. Agora quem so le roda no agente `leitor` do plugin, que abre sem esse peso e sem
-  ferramenta de edicao: medido, uma leitura caiu de cerca de 56 mil para 6 mil tokens. Quem edita
-  segue como antes, com as regras do projeto e copia isolada do repositorio.
+- **Tarefa só de leitura do `/esquadro:paralelo` abre leve.** Cada agente de leitura nascia com as
+  instruções do projeto, a memória e a lista de skills, e três leituras simples custaram cerca de 169
+  mil tokens. Agora quem só lê roda no agente `leitor` do plugin, que abre sem esse peso e sem
+  ferramenta de edição: medido, uma leitura caiu de cerca de 56 mil para 6 mil tokens. Quem edita
+  segue como antes, com as regras do projeto e cópia isolada do repositório.
 
 ## 0.6.3 — o paralelo roda no VS Code em Windows
 
 **Corrigido**
 
 - **`/esquadro:paralelo` recusado no VS Code em Windows.** O Git para Windows instala o plugin trocando
-  o fim de linha de cada arquivo, e o VS Code recusava o workflow antes da janela de aprovacao, por ver
-  um caractere escondido no script. O repositorio agora fixa o fim de linha (`.gitattributes`), e um
-  teste reprova se o workflow tiver caractere de controle. Quem ja tem a 0.6.2 recebe a correcao na
-  proxima atualizacao do plugin.
+  o fim de linha de cada arquivo, e o VS Code recusava o workflow antes da janela de aprovação, por ver
+  um caractere escondido no script. O repositório agora fixa o fim de linha (`.gitattributes`), e um
+  teste reprova se o workflow tiver caractere de controle. Quem já tem a 0.6.2 recebe a correção na
+  próxima atualização do plugin.
 
 ## 0.6.2 — menos contexto, mais paralelo
 
-Medido nas sessoes do autor: as chamadas com conversa acima de 150 mil tokens eram 61% do total e 71%
-do custo, e a abertura de cada inspetor carregava listas que ele nunca usa. Esta versao corta os dois e
-ensina o Claude a nao ficar parado esperando agente.
+Medido nas sessões do autor: as chamadas com conversa acima de 150 mil tokens eram 61% do total e 71%
+do custo, e a abertura de cada inspetor carregava listas que ele nunca usa. Esta versão corta os dois e
+ensina o Claude a não ficar parado esperando agente.
 
 **Novo**
 
-- **Trabalho em paralelo.** A abertura de toda sessao traz quatro regras curtas: agente em segundo
-  plano nao e motivo para parar; agentes que editam ao mesmo tempo rodam isolados; relatorio de agente
-  e alegacao; e o freio de custo (modelo mais barato que resolve, no maximo 8 por disparo). Desligar: a
+- **Trabalho em paralelo.** A abertura de toda sessão traz quatro regras curtas: agente em segundo
+  plano não é motivo para parar; agentes que editam ao mesmo tempo rodam isolados; relatório de agente
+  é alegação; e o freio de custo (modelo mais barato que resolve, no máximo 8 por disparo). Desligar: a
   chave `paralelismo` com `false` em `.claude/esquadro/projeto.json`.
 - **Workflow `/esquadro:paralelo`.** Com 3 ou mais tarefas independentes, o Claude oferece o workflow,
-  diz quantos agentes, qual modelo e o custo, e so roda depois do seu sim. Ele aplica o freio sozinho:
-  8 por disparo (diz quais ficaram de fora), Haiku para quem so le e Sonnet para quem edita, copia
-  isolada do repositorio para quem edita, e cada resultado volta com a evidencia que o agente colou.
-- **Autorizacao uma vez so.** O `/esquadro:init` pergunta se o workflow pode rodar sem janela de
-  aprovacao e, no sim, grava a regra em `.claude/settings.local.json` (arquivo pessoal, fora do git)
-  sem tocar nas outras permissoes.
-- **O tamanho da conversa conta.** Setimo gatilho de troca de chat: conversa acima de 150 mil tokens
-  de contexto. O plugin le o fim do registro da sessao no fim de cada turno (pode vir um turno
-  atrasado); o medidor `/esquadro-sessao` usa o numero ao vivo.
+  diz quantos agentes, qual modelo e o custo, e só roda depois do seu sim. Ele aplica o freio sozinho:
+  8 por disparo (diz quais ficaram de fora), Haiku para quem só lê e Sonnet para quem edita, cópia
+  isolada do repositório para quem edita, e cada resultado volta com a evidência que o agente colou.
+- **Autorização uma vez só.** O `/esquadro:init` pergunta se o workflow pode rodar sem janela de
+  aprovação e, no sim, grava a regra em `.claude/settings.local.json` (arquivo pessoal, fora do git)
+  sem tocar nas outras permissões.
+- **O tamanho da conversa conta.** Sétimo gatilho de troca de chat: conversa acima de 150 mil tokens
+  de contexto. O plugin lê o fim do registro da sessão no fim de cada turno (pode vir um turno
+  atrasado); o medidor `/esquadro-sessao` usa o número ao vivo.
 
 **Mudou**
 
-- **Inspetor e juiz mais leves.** Os dois agentes da revisao cega so leem (`Read`, `Grep`, `Glob`) e
-  abrem sem a lista de skills e sem as instrucoes do projeto (pede o Claude Code 2.1.271 ou mais novo).
-- **Revisao de arquivo so de logica: 6 inspetores**, nao 8. Saem as lentes de medidor e de escopo, que
+- **Inspetor e juiz mais leves.** Os dois agentes da revisão cega só leem (`Read`, `Grep`, `Glob`) e
+  abrem sem a lista de skills e sem as instruções do projeto (pede o Claude Code 2.1.271 ou mais novo).
+- **Revisão de arquivo só de lógica: 6 inspetores**, não 8. Saem as lentes de medidor e de escopo, que
   quase nunca acharam defeito real nesse tipo de arquivo.
 
 ## 0.6.1 — onze ajustes de uso
 
-Os itens que a revisao da 0.6.0 deixou registrados e que se esbarram no uso normal. Cada um com teste
-escrito antes; o portao de fecho tambem passou por revisao cega.
+Os itens que a revisão da 0.6.0 deixou registrados e que se esbarram no uso normal. Cada um com teste
+escrito antes; o portão de fecho também passou por revisão cega.
 
 **Corrigido**
 
-- **Comando destrutivo.** `git restore` com opcao que nao muda o descarte antes do `.` (`-q`, `--ours`,
-  `--theirs`, `--merge`, `--conflict=`, a abreviacao `--work` do `--worktree`...) apagava a arvore e
-  passava; agora e barrado como o `git restore .`. `restore --staged -q .` (so o indice) e `-p .`
+- **Comando destrutivo.** `git restore` com opção que não muda o descarte antes do `.` (`-q`, `--ours`,
+  `--theirs`, `--merge`, `--conflict=`, a abreviação `--work` do `--worktree`...) apagava a árvore e
+  passava; agora é barrado como o `git restore .`. `restore --staged -q .` (só o índice) e `-p .`
   (interativo) seguem liberados.
-- **Portao de fecho.** Intencao nao e mais lida como alegacao: "vou concluir a tarefa", "antes de fechar
+- **Portão de fecho.** Intenção não é mais lida como alegação: "vou concluir a tarefa", "antes de fechar
   a etapa", "concluindo a fase". E passam a ser lidas: "Tarefa 3: concluida", "tarefa nº 3", "a tarefa 3
-  ja esta concluida", "onda 7b concluida", "tarefa 1.2 concluida". Id que o plano nao tem como cabecalho
-  `Tarefa N` (7b, 1.2) e cobrado pela tarefa em andamento, nunca pela Tarefa 7 ou 1 por engano.
-- **Medidor da sessao.** A medida que chega enquanto outra mede nao se perde mais; se a leitura de uso
-  travar, a linha de status diz isso e mede de novo em vez de congelar no ultimo numero. Percentual sai
-  inteiro; janela sem nome, gatilho incompleto e previsao infinita sao omitidos em vez de virar
-  "undefined" ou "Infinity". No painel do VS Code, o "o que fazer" nao emenda mais no ultimo item.
+  ja esta concluida", "onda 7b concluida", "tarefa 1.2 concluida". Id que o plano não tem como cabeçalho
+  `Tarefa N` (7b, 1.2) é cobrado pela tarefa em andamento, nunca pela Tarefa 7 ou 1 por engano.
+- **Medidor da sessão.** A medida que chega enquanto outra mede não se perde mais; se a leitura de uso
+  travar, a linha de status diz isso e mede de novo em vez de congelar no último número. Percentual sai
+  inteiro; janela sem nome, gatilho incompleto e previsão infinita são omitidos em vez de virar
+  "undefined" ou "Infinity". No painel do VS Code, o "o que fazer" não emenda mais no último item.
 - **Painel do plano.** `plano-ativo.json` gravado com BOM (comum no Windows) vale de novo, inclusive no
-  portao de fecho; o que existe mas nao se le diz isso em vez de "nenhum plano ativo"; sem plano, o
-  painel mostra o caminho real do `plano.js` para abrir um. A saida JSON do `plano.js` nao conta
-  tarefa sem caixa de passo como concluida (`semCaixas`).
-- **Chave de liga/desliga com valor torto.** `"sugerirAprender": "false"` (entre aspas) nao desliga, e
-  agora a abertura da sessao avisa; a conferencia final do `/esquadro:init` (`validar.js`) reprova; o
+  portão de fecho; o que existe mas não se lê diz isso em vez de "nenhum plano ativo"; sem plano, o
+  painel mostra o caminho real do `plano.js` para abrir um. A saída JSON do `plano.js` não conta
+  tarefa sem caixa de passo como concluída (`semCaixas`).
+- **Chave de liga/desliga com valor torto.** `"sugerirAprender": "false"` (entre aspas) não desliga, e
+  agora a abertura da sessão avisa; a conferência final do `/esquadro:init` (`validar.js`) reprova; o
   re-init aceita as
   seis chaves (`sugerirAprender`, `auditarNaAbertura`, `qualidadeDeResposta`, `portaoDecisao`,
   `portaoHandoff`, `vigia`).
-- **`/esquadro:aprender`.** Regra que e so o comeco de outra ja gravada era recusada como "JA EXISTE";
-  a duplicata agora e a linha inteira.
-- **Novidade da semana do vigia.** Linha longa quebra em ate tres linhas na tela, sem partir o link;
+- **`/esquadro:aprender`.** Regra que é só o começo de outra já gravada era recusada como "JA EXISTE";
+  a duplicata agora é a linha inteira.
+- **Novidade da semana do vigia.** Linha longa quebra em até três linhas na tela, sem partir o link;
   antes, cortava em 200 caracteres.
-- **README.** O paragrafo dos comandos `/esquadro-sessao` e `/esquadro-plano` diz as tres causas de o
-  comando nao aparecer (inclusive o esquadro antigo, com o comando de atualizar), que a forma com
-  dois-pontos nao existe, e o que o painel responde sem plano ativo.
+- **README.** O parágrafo dos comandos `/esquadro-sessao` e `/esquadro-plano` diz as três causas de o
+  comando não aparecer (inclusive o esquadro antigo, com o comando de atualizar), que a forma com
+  dois-pontos não existe, e o que o painel responde sem plano ativo.
 
-## 0.6.0 — os numeros na tela, e a correcao que vira regra
+## 0.6.0 — os números na tela, e a correção que vira regra
 
-Uma revisao completa do plugin (scripts, ganchos, skills, agentes e testes) e o que ela trouxe de
+Uma revisão completa do plugin (scripts, ganchos, skills, agentes e testes) e o que ela trouxe de
 novo. Cada falha confirmada foi corrigida com teste escrito antes; o comportamento novo vem com teste;
-a suite inteira roda com `npm test`.
+a suíte inteira roda com `npm test`.
 
 **Novo**
 
-- **Medidor da sessao e painel do plano, dentro do Claude Code.** Dois comandos que vem com o plugin,
-  como *mods* (extensoes que o proprio Claude Code roda na sessao; exigem o Claude Code 2.1.287 ou mais
+- **Medidor da sessão e painel do plano, dentro do Claude Code.** Dois comandos que vêm com o plugin,
+  como *mods* (extensões que o próprio Claude Code roda na sessão; exigem o Claude Code 2.1.287 ou mais
   novo). `/esquadro-sessao` mostra o contexto usado, as janelas de limite (5h e semana) com a hora em
-  que renovam, o custo, a previsao em turnos e cada gatilho de troca de chat com o valor e o limiar.
-  `/esquadro-plano` mostra o plano ativo: tarefas feitas, abertas e a proxima. No terminal e no app
-  Desktop o medidor tambem fica na linha de status, e quando um gatilho cruza aparece uma faixa acima
-  do prompt com o botao "gerar handoff". Nada disso abre rede.
-- **Correcao vira sugestao de regra.** Quando a sua mensagem parece uma correcao ao jeito de o Claude
+  que renovam, o custo, a previsão em turnos e cada gatilho de troca de chat com o valor e o limiar.
+  `/esquadro-plano` mostra o plano ativo: tarefas feitas, abertas e a próxima. No terminal e no app
+  Desktop o medidor também fica na linha de status, e quando um gatilho cruza aparece uma faixa acima
+  do prompt com o botão "gerar handoff". Nada disso abre rede.
+- **Correção vira sugestão de regra.** Quando a sua mensagem parece uma correção ao jeito de o Claude
   trabalhar ("eu ja te disse", "da proxima vez..."), ele atende o pedido e oferece, em uma linha, virar
-  regra com `/esquadro:aprender`. O gancho nunca grava: quem grava e a skill, depois do seu sim. No
-  maximo uma sugestao a cada cinco turnos. Desliga com `"sugerirAprender": false` no `projeto.json`.
-- **A auditoria roda sozinha.** Na abertura da sessao, no maximo uma vez a cada 7 dias, o plugin roda
-  a auditoria do `/esquadro:auditar` e so fala se algo passou do limite: peso de instrucao, skills que
-  se sobrepoem, regras que se contradizem, skill do projeto parada ha 90 dias ou mais. Os prazos ficam
+  regra com `/esquadro:aprender`. O gancho nunca grava: quem grava é a skill, depois do seu sim. No
+  máximo uma sugestão a cada cinco turnos. Desliga com `"sugerirAprender": false` no `projeto.json`.
+- **A auditoria roda sozinha.** Na abertura da sessão, no máximo uma vez a cada 7 dias, o plugin roda
+  a auditoria do `/esquadro:auditar` e só fala se algo passou do limite: peso de instrução, skills que
+  se sobrepõem, regras que se contradizem, skill do projeto parada há 90 dias ou mais. Os prazos ficam
   em `limiares` (`diasEntreAuditorias`, `diasSkillParada`); desliga com `"auditarNaAbertura": false`.
-- **Para quem mantem o plugin: a novidade da semana na abertura.** Com `"vigia": true` no
-  `projeto.json` (desligado por padrao), a abertura mostra uma vez o arquivo semanal que o
-  `scripts/vigia-puxar.js` trouxe para `~/.claude/esquadro/vigia`, marcado como dado, nao instrucao.
-  Quem busca o arquivo e uma tarefa agendada; gancho nenhum abre rede.
+- **Para quem mantém o plugin: a novidade da semana na abertura.** Com `"vigia": true` no
+  `projeto.json` (desligado por padrão), a abertura mostra uma vez o arquivo semanal que o
+  `scripts/vigia-puxar.js` trouxe para `~/.claude/esquadro/vigia`, marcado como dado, não instrução.
+  Quem busca o arquivo é uma tarefa agendada; gancho nenhum abre rede.
 - **Ferramentas de linha de comando:** o README mostra como rodar cada script a partir da pasta do
   plugin instalado (`node "<plugin>/scripts/uso.js"`), e os avisos que mandam rodar um script citam o
-  caminho real, nunca uma variavel nao expandida.
+  caminho real, nunca uma variável não expandida.
 
 **Corrigido**
 
-- **Comando destrutivo.** Passam a ser barrados: `push` forcado com `-f` agrupado a outras opcoes,
-  `clean` com o `-f` depois de outra opcao, `checkout`, `restore` e `switch` que descartam a arvore
-  inteira, e escrita direta em disco. Opcao global do git com valor entre aspas nao escapa mais.
-  `checkout -- <arquivo>` e `restore --staged .` seguem liberados. Padrao invalido em
-  `comandosLiberados` nao libera nada.
-- **Estado que nao grava nao abre portao.** Se a pasta de estado do plugin nao aceita escrita, nada
-  que estaria barrado passa por isso. Um `projeto.json` invalido e dito como invalido, nao como
-  ausente, tambem na abertura.
-- **O fecho com plano ativo cobra a etapa certa:** a tarefa citada (todas, quando sao varias), a que
-  esta em andamento quando nao ha numero, nunca uma tarefa futura. Plano ativo que nao pode ser lido e
+- **Comando destrutivo.** Passam a ser barrados: `push` forçado com `-f` agrupado a outras opções,
+  `clean` com o `-f` depois de outra opção, `checkout`, `restore` e `switch` que descartam a árvore
+  inteira, e escrita direta em disco. Opção global do git com valor entre aspas não escapa mais.
+  `checkout -- <arquivo>` e `restore --staged .` seguem liberados. Padrão inválido em
+  `comandosLiberados` não libera nada.
+- **Estado que não grava não abre portão.** Se a pasta de estado do plugin não aceita escrita, nada
+  que estaria barrado passa por isso. Um `projeto.json` inválido é dito como inválido, não como
+  ausente, também na abertura.
+- **O fecho com plano ativo cobra a etapa certa:** a tarefa citada (todas, quando são várias), a que
+  está em andamento quando não há número, nunca uma tarefa futura. Plano ativo que não pode ser lido é
   avisado.
-- **Catraca.** `max-width`, `min()`, `maxWidth` e variavel local `max`/`min` deixam de ser regua;
-  constante em caixa alta, nome com sufixo e numero com unidade seguem sendo. Anotacao de tipo entre o
-  nome e o numero nao esconde a regua.
-- **Token fora do design system.** Seletor de id com letras hexadecimais nao e mais cor; cor em valor
-  de varias linhas, em argumento de mixin e em fallback de `var()` passa a ser achada; comentarios de
-  bloco sao respeitados.
-- **`sanitar` nao diz LIMPO sem ter lido.** Arquivo que nao abre, vocabulario local quebrado e
-  `excecaoEm` invalido saem com 2. Arquivo com acento no nome, UTF-16 com BOM e pasta pessoal do macOS
-  e do Windows em qualquer caixa entram na conferencia; binario sai como "nao conferido", com o motivo.
-- **`/esquadro:init` na reconfiguracao** preserva o que a entrevista nao perguntou de novo (limiares,
-  chaves postas a mao, subchaves de agentes) e declara o escopo antes de gravar a configuracao. Valor
-  com `: ` no cabecalho de um agente gerado sai entre aspas, e quebra de linha ali e recusada.
-- **`/esquadro:aprender`** recusa gatilho ou acao com quebra de linha: a regra e uma linha so.
-- **`cicatriz.js`** aceita um arquivo, e nao so uma pasta, em `--manual` e `--corpus`.
+- **Catraca.** `max-width`, `min()`, `maxWidth` e variável local `max`/`min` deixam de ser régua;
+  constante em caixa alta, nome com sufixo e número com unidade seguem sendo. Anotação de tipo entre o
+  nome e o número não esconde a régua.
+- **Token fora do design system.** Seletor de id com letras hexadecimais não é mais cor; cor em valor
+  de várias linhas, em argumento de mixin e em fallback de `var()` passa a ser achada; comentários de
+  bloco são respeitados.
+- **`sanitar` não diz LIMPO sem ter lido.** Arquivo que não abre, vocabulário local quebrado e
+  `excecaoEm` inválido saem com 2. Arquivo com acento no nome, UTF-16 com BOM e pasta pessoal do macOS
+  e do Windows em qualquer caixa entram na conferência; binário sai como "nao conferido", com o motivo.
+- **`/esquadro:init` na reconfiguração** preserva o que a entrevista não perguntou de novo (limiares,
+  chaves postas à mão, subchaves de agentes) e declara o escopo antes de gravar a configuração. Valor
+  com `: ` no cabeçalho de um agente gerado sai entre aspas, e quebra de linha ali é recusada.
+- **`/esquadro:aprender`** recusa gatilho ou ação com quebra de linha: a regra é uma linha só.
+- **`cicatriz.js`** aceita um arquivo, e não só uma pasta, em `--manual` e `--corpus`.
 
-## 0.5.4 — o portao do handoff erra menos
+## 0.5.4 — o portão do handoff erra menos
 
-Ajustes que a revisao cega da 0.5.3 deixou registrados. O comportamento novo vem com teste; a suite
+Ajustes que a revisão cega da 0.5.3 deixou registrados. O comportamento novo vem com teste; a suíte
 inteira roda com `npm test`.
 
-- **O portao do prompt do handoff segue mais de perto o CommonMark ao procurar o bloco de codigo.**
-  Cerca com 4 colunas de recuo ou mais (contadas a partir do conteudo do item de lista em que esta)
-  nao abre nem fecha bloco: e bloco recuado. O tab conta ate a proxima coluna multipla de 4, tambem
-  logo depois do `>` de uma citacao: `>`, tab e a cerca abrem o bloco. A cerca aberta numa citacao
-  fecha quando a citacao acaba, e o texto depois dela nao conta como corpo. Dentro da cerca, uma
-  linha `>` fora de citacao e corpo, e uma linha so de espaco nao separavel (NBSP) tambem.
-- **Estado corrompido nao dispara o aviso de troca de chat pelos arquivos tocados.** Se o registro
-  dos arquivos tocados nao for uma lista (texto, objeto), ele conta zero, como ja acontecia com as
-  decisoes e os commits.
-- **O motivo do portao do prompt do handoff** pede o prompt "num bloco de codigo (tres crases ou tres
-  tis)", no lugar da cerca crua seguida de virgula.
-- **README:** a mensagem literal do portao do prompt do handoff entra na lista do que cada portao
-  responde quando nega; a tabela de `travas` diz que `fecho: false` nao desliga esse portao; o
-  paragrafo dele vira frases curtas e diz o que acontece com ele desligado; a descricao do
-  `/esquadro:handoff` cita o portao e a excecao do aviso de troca de chat.
-- Comentarios de `portao-fecho.js`, `marcar-trabalho.js`, `abrir-turno.js` e `lib/saude.js`
-  alinhados ao que o codigo faz.
+- **O portão do prompt do handoff segue mais de perto o CommonMark ao procurar o bloco de código.**
+  Cerca com 4 colunas de recuo ou mais (contadas a partir do conteúdo do item de lista em que está)
+  não abre nem fecha bloco: é bloco recuado. O tab conta até a próxima coluna múltipla de 4, também
+  logo depois do `>` de uma citação: `>`, tab e a cerca abrem o bloco. A cerca aberta numa citação
+  fecha quando a citação acaba, e o texto depois dela não conta como corpo. Dentro da cerca, uma
+  linha `>` fora de citação é corpo, e uma linha só de espaço não separável (NBSP) também.
+- **Estado corrompido não dispara o aviso de troca de chat pelos arquivos tocados.** Se o registro
+  dos arquivos tocados não for uma lista (texto, objeto), ele conta zero, como já acontecia com as
+  decisões e os commits.
+- **O motivo do portão do prompt do handoff** pede o prompt "num bloco de codigo (tres crases ou tres
+  tis)", no lugar da cerca crua seguida de vírgula.
+- **README:** a mensagem literal do portão do prompt do handoff entra na lista do que cada portão
+  responde quando nega; a tabela de `travas` diz que `fecho: false` não desliga esse portão; o
+  parágrafo dele vira frases curtas e diz o que acontece com ele desligado; a descrição do
+  `/esquadro:handoff` cita o portão e a exceção do aviso de troca de chat.
+- Comentários de `portao-fecho.js`, `marcar-trabalho.js`, `abrir-turno.js` e `lib/saude.js`
+  alinhados ao que o código faz.
 
 ## 0.5.3 — o prompt do handoff chega ao chat
 
-Gravar o handoff so no arquivo deixava o chat novo sem o texto para colar. O fim de turno passa a
-cobrar o prompt na resposta. O comportamento novo vem com teste; a suite inteira roda com `npm test`.
+Gravar o handoff só no arquivo deixava o chat novo sem o texto para colar. O fim de turno passa a
+cobrar o prompt na resposta. O comportamento novo vem com teste; a suíte inteira roda com `npm test`.
 
-- **O turno que gravou um handoff sem o prompt em bloco e barrado.** Arquivo de handoff e um `.md`
+- **O turno que gravou um handoff sem o prompt em bloco é barrado.** Arquivo de handoff é um `.md`
   com data `AAAA-MM-DD-` na frente do nome e "handoff" no nome (`<data>-<assunto>-handoff.md`) ou
-  dentro de uma pasta `handoff/`. Se o turno gravou um desses e a resposta final nao tem bloco de
-  codigo (cerca de tres crases ou de tres tis, com corpo nao vazio; cerca sem fecho, dentro de
-  citacao ou de item de lista tambem conta), o fim do turno e barrado, uma vez, com o motivo dizendo o que fazer: colar
+  dentro de uma pasta `handoff/`. Se o turno gravou um desses e a resposta final não tem bloco de
+  código (cerca de três crases ou de três tis, com corpo não vazio; cerca sem fecho, dentro de
+  citação ou de item de lista também conta), o fim do turno é barrado, uma vez, com o motivo dizendo o que fazer: colar
   o prompt agora, em bloco, nesta resposta final.
-- **Um bloqueio so, com todos os motivos.** Se o mesmo turno tambem tem subitem aberto ou ficou sem
-  evidencia, os motivos saem juntos no mesmo bloqueio.
-- **O aviso de troca de chat nao manda colar de novo.** No turno que gravou o handoff e ja tem o bloco
+- **Um bloqueio só, com todos os motivos.** Se o mesmo turno também tem subitem aberto ou ficou sem
+  evidência, os motivos saem juntos no mesmo bloqueio.
+- **O aviso de troca de chat não manda colar de novo.** No turno que gravou o handoff e já tem o bloco
   na resposta final, a ordem ao Claude passa a ser apontar para o bloco acima, sem rodar o handoff nem
   colar outra vez.
-- **Como desligar:** `"portaoHandoff": false` no `projeto.json`. O `travas.fecho: false` nao o
+- **Como desligar:** `"portaoHandoff": false` no `projeto.json`. O `travas.fecho: false` não o
   desliga.
-- **Limites:** o portao le so a resposta final (bloco colado numa mensagem anterior do mesmo turno
-  nao conta) e confere que ha um bloco, nao que o bloco e o prompt. So o arquivo gravado por
-  ferramenta de arquivo marca o turno; o gravado por comando de shell, nao.
-- Sao **22 baldes** de contador: 17 que negam, 5 que so contam.
+- **Limites:** o portão lê só a resposta final (bloco colado numa mensagem anterior do mesmo turno
+  não conta) e confere que há um bloco, não que o bloco é o prompt. Só o arquivo gravado por
+  ferramenta de arquivo marca o turno; o gravado por comando de shell, não.
+- São **22 baldes** de contador: 17 que negam, 5 que só contam.
 
-## 0.5.2 — o auditar so acusa sobreposicao de verdade, e os portoes dizem por que barram
+## 0.5.2 — o auditar só acusa sobreposição de verdade, e os portões dizem por que barram
 
-A sobreposicao de skills do `/esquadro:auditar` passa a pedir mais que uma palavra em comum, e uma
-leva de ajustes do que as revisoes cegas anteriores deixaram registrado. Os comportamentos novos vem
-com teste; a suite inteira roda com `npm test`.
+A sobreposição de skills do `/esquadro:auditar` passa a pedir mais que uma palavra em comum, e uma
+leva de ajustes do que as revisões cegas anteriores deixaram registrado. Os comportamentos novos vêm
+com teste; a suíte inteira roda com `npm test`.
 
-- **O `/esquadro:auditar` so acusa sobreposicao com 2 termos ou mais em comum.** Antes, 1 termo em
-  comum entre as descricoes de duas skills bastava. Agora sao 2 termos ou mais **e** a fracao de
+- **O `/esquadro:auditar` só acusa sobreposição com 2 termos ou mais em comum.** Antes, 1 termo em
+  comum entre as descrições de duas skills bastava. Agora são 2 termos ou mais **e** a fração de
   termos comuns (os comuns sobre todos os termos do par) de 0,20 ou mais. Numa bateria de 80 pares
-  marcados, a regra antiga acusava 40, 39 deles sem sobreposicao; a nova acusa so o par que se
-  sobrepoe. Segue sendo aviso, nao bloqueio.
-- **O portao de estilo le mais formas de comando de shell** (so vale com `.claude/esquadro/design.json`):
-  - caminho em variavel que o proprio comando define antes (`OUT=x; ... > "$OUT/a.css"`,
-    `$out = 'x'`) vira o valor dela e passa pela conferencia normal: fora do projeto, nao conta. A
-    variavel que vem de fora, ou que e definida dentro de `bash -c`/`eval`, segue sem valor;
-  - no PowerShell, `(Join-Path a b)` e lido como o caminho `a/b`, nao como o fim do comando;
-  - `-InputObject` (`Out-File`, `Tee-Object`) e o conteudo, nao o arquivo escrito;
-  - `New-Item -Path pasta -Name arquivo` escreve `pasta/arquivo`, nao os dois soltos;
-  - copia para destino sem extensao (`cp a.css src`), `.` ou `..` vai para dentro da pasta. Nome de
-    arquivo sem extensao (`cp a.css Makefile`) tambem vira pasta: e o limite da leitura;
-  - `bash`/`sh` sem `-c` le o roteiro do heredoc (`bash <<EOF`), salvo quando recebe arquivo de roteiro;
-  - a negacao diz por que: o esquadro nao le o conteudo que um comando de shell vai gravar.
-- **O fim de sessao limpa tambem as marcas de veredito.** As marcas `<id>.veredito-<agente>.marca`,
-  que acumulavam na pasta de estado, saem pela mesma regra dos 7 dias. A pasta se le entrada a
-  entrada, com o prazo conferido antes de cada uma: pasta grande nao gasta mais o tempo da limpeza
-  antes de comecar.
-- **O portao de decisao diz o remedio de cada causa.** Opcao nula, em texto solto ou sem `label` em
+  marcados, a regra antiga acusava 40, 39 deles sem sobreposição; a nova acusa só o par que se
+  sobrepõe. Segue sendo aviso, não bloqueio.
+- **O portão de estilo lê mais formas de comando de shell** (só vale com `.claude/esquadro/design.json`):
+  - caminho em variável que o próprio comando define antes (`OUT=x; ... > "$OUT/a.css"`,
+    `$out = 'x'`) vira o valor dela e passa pela conferência normal: fora do projeto, não conta. A
+    variável que vem de fora, ou que é definida dentro de `bash -c`/`eval`, segue sem valor;
+  - no PowerShell, `(Join-Path a b)` é lido como o caminho `a/b`, não como o fim do comando;
+  - `-InputObject` (`Out-File`, `Tee-Object`) é o conteúdo, não o arquivo escrito;
+  - `New-Item -Path pasta -Name arquivo` escreve `pasta/arquivo`, não os dois soltos;
+  - cópia para destino sem extensão (`cp a.css src`), `.` ou `..` vai para dentro da pasta. Nome de
+    arquivo sem extensão (`cp a.css Makefile`) também vira pasta: é o limite da leitura;
+  - `bash`/`sh` sem `-c` lê o roteiro do heredoc (`bash <<EOF`), salvo quando recebe arquivo de roteiro;
+  - a negação diz por que: o esquadro não lê o conteúdo que um comando de shell vai gravar.
+- **O fim de sessão limpa também as marcas de veredito.** As marcas `<id>.veredito-<agente>.marca`,
+  que acumulavam na pasta de estado, saem pela mesma regra dos 7 dias. A pasta se lê entrada a
+  entrada, com o prazo conferido antes de cada uma: pasta grande não gasta mais o tempo da limpeza
+  antes de começar.
+- **O portão de decisão diz o remédio de cada causa.** Opção nula, em texto solto ou sem `label` em
   texto barra, com "cada opcao e { label, description }". Cada causa traz o que fazer: "deixe
   exatamente 3", "ponha (Recomendado) no rotulo dela", "a marca vai so na 1a opcao". A marca repetida
-  em duas opcoes sai como "as opcoes 2 e 3".
-- **O peso de instrucao nao conta o mesmo arquivo duas vezes.** Fonte declarada que tambem e
+  em duas opções sai como "as opcoes 2 e 3".
+- **O peso de instrução não conta o mesmo arquivo duas vezes.** Fonte declarada que também é
   `regras.md` ou `SKILL.md`, `./CLAUDE.md` ao lado de `CLAUDE.md`, ou `claude.md` e `CLAUDE.md` onde o
-  disco ignora caixa: vale a primeira citacao. Fonte com caminho absoluto passa a ser lida
-  (contava 0). O metodo ao lado do numero diz de onde vieram as fontes: declaradas, candidatas
+  disco ignora caixa: vale a primeira citação. Fonte com caminho absoluto passa a ser lida
+  (contava 0). O método ao lado do número diz de onde vieram as fontes: declaradas, candidatas
   (achadas pela varredura) ou nenhuma.
-- **Apuracao da revisao cega.** Achado com linha 0 ou negativa e descartado como sem `arquivo:linha`
-  (antes molhava a ronda e nao tinha como ser refutado). Os pares para o juiz saem so entre vizinhos
+- **Apuração da revisão cega.** Achado com linha 0 ou negativa é descartado como sem `arquivo:linha`
+  (antes molhava a ronda e não tinha como ser refutado). Os pares para o juiz saem só entre vizinhos
   em ordem de linha, sem comparar todos com todos; a lista sai igual. `mesmos: null` pela API vale
   como sem juiz.
-- **Textos:** no init, a pergunta dos lugares de registro e uma por lugar, cada uma com as suas 3
-  opcoes, e a opcao de nao gravar a skill avisa que a resposta dos lugares de registro nao fica gravada
+- **Textos:** no init, a pergunta dos lugares de registro é uma por lugar, cada uma com as suas 3
+  opções, e a opção de não gravar a skill avisa que a resposta dos lugares de registro não fica gravada
   em lugar nenhum; no init e na skill
-  `padrao`, a skill de execucao do projeto e a que diz "Gerado por `/esquadro:init`" (com mais de
-  uma, pergunta-se ao dono; sem nenhuma, vale a escrita a mao); no `revisar`, "com mais de 50 pares,
-  lotes de ate 50"; no README, o `portaoDecisao` em "Como desligar uma trava" e o orcamento de 1,5 s
-  do fim de sessao (o `timeout` do `hooks.json` nao o aumenta).
+  `padrao`, a skill de execução do projeto é a que diz "Gerado por `/esquadro:init`" (com mais de
+  uma, pergunta-se ao dono; sem nenhuma, vale a escrita à mão); no `revisar`, "com mais de 50 pares,
+  lotes de ate 50"; no README, o `portaoDecisao` em "Como desligar uma trava" e o orçamento de 1,5 s
+  do fim de sessão (o `timeout` do `hooks.json` não o aumenta).
 
-## 0.5.1 — a recomendada e uma so, a lista vazia barra e o juiz nao aponta um achado para ele mesmo
+## 0.5.1 — a recomendada é uma só, a lista vazia barra e o juiz não aponta um achado para ele mesmo
 
-Tres ajustes do que a revisao cega da 0.5.0 deixou registrado. Os comportamentos novos vem com teste;
-a suite inteira roda com `npm test`.
+Três ajustes do que a revisão cega da 0.5.0 deixou registrado. Os comportamentos novos vêm com teste;
+a suíte inteira roda com `npm test`.
 
-- **A recomendada e uma so.** O `portao-decisao.js` confere a marca em todas as opcoes, nao so na
-  primeira: a marca tambem na 2a ou na 3a opcao barra a pergunta, e a mensagem diz quais opcoes
+- **A recomendada é uma só.** O `portao-decisao.js` confere a marca em todas as opções, não só na
+  primeira: a marca também na 2a ou na 3a opção barra a pergunta, e a mensagem diz quais opções
   repetiram a marca.
-- **Lista de perguntas vazia barra.** `AskUserQuestion` com `questions: []` passava sem conferencia;
-  agora o portao barra com "nenhuma pergunta na lista".
-- **O juiz nao aponta um achado para ele mesmo.** Um `mesmos.json` com `novo` igual a `outro` para a
-  apuracao com erro e a instrucao de copiar o par como veio em `paresCandidatos`; antes saia o aviso
-  "provavel mesmo defeito que" a propria chave.
+- **Lista de perguntas vazia barra.** `AskUserQuestion` com `questions: []` passava sem conferência;
+  agora o portão barra com "nenhuma pergunta na lista".
+- **O juiz não aponta um achado para ele mesmo.** Um `mesmos.json` com `novo` igual a `outro` para a
+  apuração com erro e a instrução de copiar o par como veio em `paresCandidatos`; antes saía o aviso
+  "provavel mesmo defeito que" a própria chave.
 
-## 0.5.0 — o juiz que aponta achado repetido e o portao da pergunta ao dono
+## 0.5.0 — o juiz que aponta achado repetido e o portão da pergunta ao dono
 
-Duas pecas da frente do decisor local: um modelo pequeno entra na revisao cega so para
-avisar, e a regra das 3 opcoes deixa de ser so texto. Os comportamentos novos vem com teste; a suite
+Duas peças da frente do decisor local: um modelo pequeno entra na revisão cega só para
+avisar, e a regra das 3 opções deixa de ser só texto. Os comportamentos novos vêm com teste; a suíte
 inteira roda com `npm test`.
 
-- **O juiz de "mesmo defeito" so avisa.** Agente novo `juiz-mesmo` (`model: haiku`, `effort: low`,
+- **O juiz de "mesmo defeito" só avisa.** Agente novo `juiz-mesmo` (`model: haiku`, `effort: low`,
   sem `Write` nem `Edit`). O `apurar-ronda.js` passa a listar `paresCandidatos`: cada achado P0/P1
-  novo da ultima ronda ao lado de outro achado do lado novo, no mesmo arquivo, a ate 10 linhas, com
-  chave diferente. No Passo 3 do `/esquadro:revisar`, um juiz recebe a lista (lotes de ate 50 pares),
-  a resposta vai em `mesmos.json` e a saida mostra `provaveisMesmos`. **A contagem nao muda:** ronda
-  seca, abertos e teto seguem iguais, e o achado novo continua molhando a ronda. Repeticao de algo ja
-  corrigido se prova na fonte, pelo `refutados.json`; a palavra do juiz nao e prova. `mesmos.json`
-  ilegivel ou que nao e lista para a apuracao com a instrucao de corrigir ou apagar.
-- **A pergunta ao dono passa por um portao.** Gancho novo antes do `AskUserQuestion`
-  (`portao-decisao.js`): barra a pergunta que nao tem exatamente 3 opcoes, ou cuja primeira opcao
-  nao traz a marca entre parenteses — `(Recomendado)`, `(Recomendada)`, `(Recommended)` ou
-  `(Recom.)`, em qualquer caixa. Palavra solta ("Recomendado: x") ou negacao ("Nao recomendado") nao
-  e a marca. A mensagem diz o que refazer. Um projeto com outra regra o desliga com
-  `"portaoDecisao": false` no `.claude/esquadro/projeto.json` (so o booleano desliga). Falha do
-  proprio portao libera a pergunta.
-- **README:** tabela de ganchos com o portao novo (dez pontos do ciclo); a secao dos agentes e a
-  excecao declarada de modelo passam a nomear o `inspetor` e o `juiz-mesmo`.
+  novo da última ronda ao lado de outro achado do lado novo, no mesmo arquivo, a até 10 linhas, com
+  chave diferente. No Passo 3 do `/esquadro:revisar`, um juiz recebe a lista (lotes de até 50 pares),
+  a resposta vai em `mesmos.json` e a saída mostra `provaveisMesmos`. **A contagem não muda:** ronda
+  seca, abertos e teto seguem iguais, e o achado novo continua molhando a ronda. Repetição de algo já
+  corrigido se prova na fonte, pelo `refutados.json`; a palavra do juiz não é prova. `mesmos.json`
+  ilegível ou que não é lista para a apuração com a instrução de corrigir ou apagar.
+- **A pergunta ao dono passa por um portão.** Gancho novo antes do `AskUserQuestion`
+  (`portao-decisao.js`): barra a pergunta que não tem exatamente 3 opções, ou cuja primeira opção
+  não traz a marca entre parênteses — `(Recomendado)`, `(Recomendada)`, `(Recommended)` ou
+  `(Recom.)`, em qualquer caixa. Palavra solta ("Recomendado: x") ou negação ("Nao recomendado") não
+  é a marca. A mensagem diz o que refazer. Um projeto com outra regra o desliga com
+  `"portaoDecisao": false` no `.claude/esquadro/projeto.json` (só o booleano desliga). Falha do
+  próprio portão libera a pergunta.
+- **README:** tabela de ganchos com o portão novo (dez pontos do ciclo); a seção dos agentes e a
+  exceção declarada de modelo passam a nomear o `inspetor` e o `juiz-mesmo`.
 
-## 0.4.4 — o estilo escrito pelo shell passa pelo design, o fim de sessao limpa o estado velho e o commit conta pela linha do git
+## 0.4.4 — o estilo escrito pelo shell passa pelo design, o fim de sessão limpa o estado velho e o commit conta pela linha do git
 
-Tres pendencias que o usuario sente, do backlog de achados, e ajustes no init, na lente de seguranca,
-no `/esquadro:auditar` e no README. Os comportamentos novos vem com teste; a suite inteira roda com
+Três pendências que o usuário sente, do backlog de achados, e ajustes no init, na lente de segurança,
+no `/esquadro:auditar` e no README. Os comportamentos novos vêm com teste; a suíte inteira roda com
 `npm test`.
 
-- Sao **21 baldes** de contador: 16 que negam, 5 que so contam.
+- São **21 baldes** de contador: 16 que negam, 5 que só contam.
 - **O arquivo de estilo escrito por comando de shell passa pelo design.** Gancho novo na entrada
   `Bash|PowerShell` (`portao-estilo.js`, balde `estilo_por_shell`): com `.claude/esquadro/design.json`,
-  o comando que escreve arquivo de estilo e negado, e a mensagem manda usar Write ou Edit, que conferem
-  os tokens. Sem o `design.json`, nada muda. O leitor do comando e heuristico: o que ele nao pega esta
+  o comando que escreve arquivo de estilo é negado, e a mensagem manda usar Write ou Edit, que conferem
+  os tokens. Sem o `design.json`, nada muda. O leitor do comando é heurístico: o que ele não pega está
   em "O que o esquadro NAO promete", no README.
-- **O fim de sessao limpa o estado velho.** Gancho `SessionEnd` novo (`fim-sessao.js`): apaga os
-  arquivos de sessao parados ha mais de 7 dias, nunca o da sessao que fecha, para o `--resume` seguir
+- **O fim de sessão limpa o estado velho.** Gancho `SessionEnd` novo (`fim-sessao.js`): apaga os
+  arquivos de sessão parados há mais de 7 dias, nunca o da sessão que fecha, para o `--resume` seguir
   funcionando.
-- **O commit conta pela linha do git.** Quando o Claude Code nao informa o `gitOperation` (ele some com
-  `-q` e com `git -C` em caminho com espaco), o contador le a linha `[branch sha]` que o `git commit`
-  imprime. Commit com `-q` nao imprime a linha e segue sem contar; o README diz isso.
-- **O peso de instrucao conta as fontes candidatas.** Sem `projeto.json`, o init e o `/esquadro:auditar`
-  somam ao peso os candidatos a fonte canonica que a varredura achou, marcados como candidatos
+- **O commit conta pela linha do git.** Quando o Claude Code não informa o `gitOperation` (ele some com
+  `-q` e com `git -C` em caminho com espaço), o contador lê a linha `[branch sha]` que o `git commit`
+  imprime. Commit com `-q` não imprime a linha e segue sem contar; o README diz isso.
+- **O peso de instrução conta as fontes candidatas.** Sem `projeto.json`, o init e o `/esquadro:auditar`
+  somam ao peso os candidatos a fonte canônica que a varredura achou, marcados como candidatos
   (`fontes: 'candidatas'`). Fontes declaradas no `projeto.json` mandam, mesmo vazias.
-- **Init: onde cada coisa se registra.** Passo 4b novo: pergunta um arquivo para as decisoes do dono,
-  um para as duvidas abertas e um para o progresso do plano. No re-init com a skill do projeto ja
-  gravada, o 7c nao grava por cima: o init mostra o trecho para o dono por na skill e avisa quando a
-  resposta nao fica gravada.
-- **Lente de seguranca de codigo:** tres conferencias antes de abrir P0 e a regra do P2, como a lente
+- **Init: onde cada coisa se registra.** Passo 4b novo: pergunta um arquivo para as decisões do dono,
+  um para as dúvidas abertas e um para o progresso do plano. No re-init com a skill do projeto já
+  gravada, o 7c não grava por cima: o init mostra o trecho para o dono por na skill e avisa quando a
+  resposta não fica gravada.
+- **Lente de segurança de código:** três conferências antes de abrir P0 e a regra do P2, como a lente
   de tela.
-- **README:** a versao nova chega alguns minutos depois de abrir a sessao e o aviso pode nao aparecer
-  no painel (`claude plugin list` confere o que esta no disco); tabela de ganchos com os dois novos;
-  subtitulo e link dos comandos corrigidos.
+- **README:** a versão nova chega alguns minutos depois de abrir a sessão e o aviso pode não aparecer
+  no painel (`claude plugin list` confere o que está no disco); tabela de ganchos com os dois novos;
+  subtítulo e link dos comandos corrigidos.
 
 ## 0.4.3 — o aviso de troca de chat que chega ao Claude, mensagens que dizem o que fazer e a doutrina de uso comum
 
-Quem instala o plugin passa a ganhar a troca de chat com handoff, que antes so vinha do `CLAUDE.md`
-de quem o escreveu. Nenhum portao novo. Os comportamentos novos vem com teste; a suite inteira roda
+Quem instala o plugin passa a ganhar a troca de chat com handoff, que antes só vinha do `CLAUDE.md`
+de quem o escreveu. Nenhum portão novo. Os comportamentos novos vêm com teste; a suíte inteira roda
 com `npm test`.
 
-- **O aviso de troca de chat chega ao Claude, nao so a tela.** No fim do turno, uma vez por sessao, o
-  Claude recebe a ordem de rodar `/esquadro:handoff`, dizer que e hora de abrir chat novo citando o
-  gatilho e colar o prompt pronto. Se o fim de turno ja for de um laco de continuacao, o aviso espera
-  o proximo. Funciona sem o `/esquadro:init`, com os limiares padrao.
-- **Dois gatilhos novos e uma pergunta que dispara.** Contam as decisoes suas respondidas nas
-  perguntas de escolha (padrao 3) e os commits que passaram (padrao 3, lidos do
-  `gitOperation.commit.sha` que o Claude Code informa; sem o campo, o commit nao conta). Perguntar se
-  o contexto ou a memoria da conversa esta bom dispara na hora, a cada vez.
-- **README:** o que dispara, o que nao (erro de medicao e o tamanho da conversa, que gancho nao
-  enxerga), como conferir que os ganchos rodam, o estilo de resposta (output style) e a atualizacao
-  automatica pelo `~/.claude/settings.json` (`autoUpdate: true` na entrada do `esquadro-local`),
-  porque o painel do VS Code nao tem o botao.
-- **Mensagens que dizem o que fazer.** A medicao de qualidade diz como julgar os pares que faltam, o
-  que conferir quando a abertura do plugin nao aparece ou aparece duas vezes, e qual chave do
-  `projeto.json` falta quando o bloco aparece onde nao devia. A tabela de idioma nao mostra mais
-  "undefined" quando a regra nao tem sugestao, e o subshell sugerido vem explicado.
+- **O aviso de troca de chat chega ao Claude, não só à tela.** No fim do turno, uma vez por sessão, o
+  Claude recebe a ordem de rodar `/esquadro:handoff`, dizer que é hora de abrir chat novo citando o
+  gatilho e colar o prompt pronto. Se o fim de turno já for de um laço de continuação, o aviso espera
+  o próximo. Funciona sem o `/esquadro:init`, com os limiares padrão.
+- **Dois gatilhos novos e uma pergunta que dispara.** Contam as decisões suas respondidas nas
+  perguntas de escolha (padrão 3) e os commits que passaram (padrão 3, lidos do
+  `gitOperation.commit.sha` que o Claude Code informa; sem o campo, o commit não conta). Perguntar se
+  o contexto ou a memória da conversa está bom dispara na hora, a cada vez.
+- **README:** o que dispara, o que não (erro de medição e o tamanho da conversa, que gancho não
+  enxerga), como conferir que os ganchos rodam, o estilo de resposta (output style) e a atualização
+  automática pelo `~/.claude/settings.json` (`autoUpdate: true` na entrada do `esquadro-local`),
+  porque o painel do VS Code não tem o botão.
+- **Mensagens que dizem o que fazer.** A medição de qualidade diz como julgar os pares que faltam, o
+  que conferir quando a abertura do plugin não aparece ou aparece duas vezes, e qual chave do
+  `projeto.json` falta quando o bloco aparece onde não devia. A tabela de idioma não mostra mais
+  "undefined" quando a regra não tem sugestão, e o subshell sugerido vem explicado.
 - **O molde de agente ganha `effort`, `tools`, `maxTurns` e a escalada.** O gerador recusa, dizendo o
-  valor aceito, esforco fora da lista, `maxTurns` que nao e inteiro positivo, ferramenta com nome
-  invalido (nome de ferramenta MCP, com hifen, vale) e valor de tipo errado; o `escalaPara` sai da
-  ordem da escada, nao da resposta.
-- **Doutrina de uso comum na skill `padrao`.** Agente que edita por casamento exato nao fica no degrau
-  mais barato; subagente que cai por limite de uso e relancado em outro modelo; tres conferencias antes
-  de abrir P0 de seguranca; numero medido so depois da ultima edicao; as duas provas da mutacao;
-  decisao anunciada e decisao gravada; hora so depois do `date`; escolha visual mostra a imagem antes
-  de perguntar. As armadilhas de ambiente (`06-ambiente.md`) ganham: credencial que nao se contorna,
-  envio e regeneracao no mesmo turno, comando que lista o ambiente e vaza segredo, codigo de saida de
+  valor aceito, esforço fora da lista, `maxTurns` que não é inteiro positivo, ferramenta com nome
+  inválido (nome de ferramenta MCP, com hífen, vale) e valor de tipo errado; o `escalaPara` sai da
+  ordem da escada, não da resposta.
+- **Doutrina de uso comum na skill `padrao`.** Agente que edita por casamento exato não fica no degrau
+  mais barato; subagente que cai por limite de uso é relançado em outro modelo; três conferências antes
+  de abrir P0 de segurança; número medido só depois da última edição; as duas provas da mutação;
+  decisão anunciada é decisão gravada; hora só depois do `date`; escolha visual mostra a imagem antes
+  de perguntar. As armadilhas de ambiente (`06-ambiente.md`) ganham: credencial que não se contorna,
+  envio e regeneração no mesmo turno, comando que lista o ambiente é vaza segredo, código de saída de
   comando encanado, falha de `fork` do Git Bash, o `bash` do WSL e o caminho curto do Windows. No
-  init, o `AGENTS.md` espelhado e conferido junto do `CLAUDE.md`.
+  init, o `AGENTS.md` espelhado é conferido junto do `CLAUDE.md`.
 
-## 0.4.2 — o leitor do `cd` mais fiel ao shell, a medicao que nao perde execucao paga e testes mais firmes
+## 0.4.2 — o leitor do `cd` mais fiel ao shell, a medição que não perde execução paga e testes mais firmes
 
-A segunda metade das pendencias conferidas contra o codigo: o leitor do `cd` solto e a tabela de
-idioma, a medicao de qualidade e a higiene dos testes. Nenhum portao novo. Os comportamentos novos vem
-com teste; a suite inteira roda com `npm test`.
+A segunda metade das pendências conferidas contra o código: o leitor do `cd` solto e a tabela de
+idioma, a medição de qualidade e a higiene dos testes. Nenhum portão novo. Os comportamentos novos vêm
+com teste; a suíte inteira roda com `npm test`.
 
-- **O `cd` solto lido como o shell le.** Atribuicao, `time`, `!` e palavra entre aspas na frente deixam
-  o `cd` em posicao de comando (`x=1 cd y` nega). Funcao do PowerShell so roda quando e chamada, e o
-  que vem depois do `=` de atribuicao e lido como comando (`$x = Set-Location y` nega). Grupo `{ }` em
-  cano roda em subshell e nao nega. `pushd a && popd` nao nega; `popd` dentro de `if`/`while` ou de
-  funcao chamada depois de `&&` pode nao rodar e nao conta como volta. Comando com mais de 100 niveis
-  de aninhamento nao e lido inteiro e passa a ser negado, com mensagem propria.
-- **A tabela de idioma mais robusta.** Arquivo salvo com BOM se le; padrao vazio ou so de espaco e
-  regra que nao se le (antes casava tudo); regra sem `achado` nao derruba a mensagem; o conferir e o
-  aviso da tabela usam a mesma plataforma. O aviso diz que o comando seguinte ja usa a tabela
+- **O `cd` solto lido como o shell lê.** Atribuição, `time`, `!` e palavra entre aspas na frente deixam
+  o `cd` em posição de comando (`x=1 cd y` nega). Função do PowerShell só roda quando é chamada, e o
+  que vem depois do `=` de atribuição é lido como comando (`$x = Set-Location y` nega). Grupo `{ }` em
+  cano roda em subshell e não nega. `pushd a && popd` não nega; `popd` dentro de `if`/`while` ou de
+  função chamada depois de `&&` pode não rodar e não conta como volta. Comando com mais de 100 níveis
+  de aninhamento não é lido inteiro e passa a ser negado, com mensagem própria.
+- **A tabela de idioma mais robusta.** Arquivo salvo com BOM se lê; padrão vazio ou só de espaço é
+  regra que não se lê (antes casava tudo); regra sem `achado` não derruba a mensagem; o conferir e o
+  aviso da tabela usam a mesma plataforma. O aviso diz que o comando seguinte já usa a tabela
   consertada, a frase "troque de idioma" deixou a caixa alta e o eco do comando para em 120
   caracteres, dizendo o tamanho.
-- **A medicao de qualidade nao perde execucao paga.** Falha ao ler a saida do claude vira motivo da
-  geracao, que se grava; a gravacao final diz o que ficou sem gravar; "o claude rodou e foi parado"
-  se separa de "nao rodou". `--prompt` sem valor e recusado com mensagem propria; arquivo do prompt que
-  cairia em `.claude/esquadro/` ou `.git/` do brinquedo e recusado antes da 1a execucao; a dica de
-  tirar as aspas de `ESQUADRO_CLAUDE`; montagem com mais de 10 minutos e dada como morta mesmo com o pid
+- **A medição de qualidade não perde execução paga.** Falha ao ler a saída do claude vira motivo da
+  geração, que se grava; a gravação final diz o que ficou sem gravar; "o claude rodou e foi parado"
+  se separa de "nao rodou". `--prompt` sem valor é recusado com mensagem própria; arquivo do prompt que
+  cairia em `.claude/esquadro/` ou `.git/` do brinquedo é recusado antes da 1a execução; a dica de
+  tirar as aspas de `ESQUADRO_CLAUDE`; montagem com mais de 10 minutos é dada como morta mesmo com o pid
   vivo.
-- **A regua do voto do juiz mudou (leia antes de comparar rodadas).** Valem como "nao sei" tambem as
+- **A régua do voto do juiz mudou (leia antes de comparar rodadas).** Valem como "nao sei" também as
   frases curtas em 1a pessoa ("nao consigo dizer", "nao da para saber", "impossivel decidir"); aspas
-  baixas e angulares simples citam; os preenchedores do hangul nao escondem o "nao sei"; aspa em numero
-  impar na linha nao forma citacao; o fecho curvo usado dos dois lados so cita quando e o unico par da
-  linha. Na duvida, o voto vira empate. Os votos reais ja medidos nao mudaram, mas uma rodada nova nao
+  baixas e angulares simples citam; os preenchedores do hangul não escondem o "nao sei"; aspa em número
+  ímpar na linha não forma citação; o fecho curvo usado dos dois lados só cita quando é o único par da
+  linha. Na dúvida, o voto vira empate. Os votos reais já medidos não mudaram, mas uma rodada nova não
   se compara com uma antiga sem dizer isso.
-- **Testes mais firmes.** A catraca de tempo do portao destrutivo mede de novo antes de reprovar (um
-  pico isolado sob carga nao derruba mais a suite); os testes de agentes e do `AGENTS.md` apagam a pasta
-  temporaria que criam; a
+- **Testes mais firmes.** A catraca de tempo do portão destrutivo mede de novo antes de reprovar (um
+  pico isolado sob carga não derruba mais a suíte); os testes de agentes e do `AGENTS.md` apagam a pasta
+  temporária que criam; a
   mensagem de teste pulado mostra o caminho com `/`. No init, o molde do `AGENTS.md` sai com acento e
-  linhas de ate 100 caracteres, e o JSON de respostas e apagado no fim.
+  linhas de até 100 caracteres, e o JSON de respostas é apagado no fim.
 
-## 0.4.1 — erros que dizem a causa em portugues, o revisar mais firme e o escopo que nao se perde em link
+## 0.4.1 — erros que dizem a causa em português, o revisar mais firme e o escopo que não se perde em link
 
-A primeira metade das pendencias conferidas contra o codigo (mensagens, portoes, escopo e o
-instrumento do revisar). Nenhum portao novo. Os comportamentos novos vem com teste; a suite inteira
+A primeira metade das pendências conferidas contra o código (mensagens, portões, escopo e o
+instrumento do revisar). Nenhum portão novo. Os comportamentos novos vêm com teste; a suíte inteira
 roda com `npm test`.
 
-- **Erro de arquivo dito em portugues, com o codigo no fim.** Os avisos que repetiam a mensagem do
-  Node em ingles passam a dizer a causa: "nao existe", "sem permissao", "e uma pasta", "parte do
-  caminho nao e uma pasta", "em uso", "ja existe", "disco cheio", com o codigo (`ENOENT`, `EACCES`...)
-  entre parenteses. Vale nos scripts do revisar, na reinjecao, no escopo, na auditoria e no exportar.
-- **O escopo nao se perde em link nem em arquivo ilegivel.** Arquivo de frente que existe e nao se le
-  diz a causa e o que conferir. Frente que e link para fora do projeto nao e lida; pasta `escopos/`
-  que e link para fora da lista vazia, com uma linha dizendo por que. Uma linha `---` deixou de virar item. Na
-  reinjecao, o plano ativo se confere pelo caminho real, campo que nao e texto vira "Plano ativo
-  ilegivel" (nunca `undefined`), e o corte da linha longa nao parte um emoji ao meio.
-- **O revisar mais firme.** As duas lentes que tinham o mesmo nome nas duas familias agora se
+- **Erro de arquivo dito em português, com o código no fim.** Os avisos que repetiam a mensagem do
+  Node em inglês passam a dizer a causa: "nao existe", "sem permissao", "e uma pasta", "parte do
+  caminho nao e uma pasta", "em uso", "ja existe", "disco cheio", com o código (`ENOENT`, `EACCES`...)
+  entre parênteses. Vale nos scripts do revisar, na reinjeção, no escopo, na auditoria e no exportar.
+- **O escopo não se perde em link nem em arquivo ilegível.** Arquivo de frente que existe e não se lê
+  diz a causa e o que conferir. Frente que é link para fora do projeto não é lida; pasta `escopos/`
+  que é link para fora da lista vazia, com uma linha dizendo por que. Uma linha `---` deixou de virar item. Na
+  reinjeção, o plano ativo se confere pelo caminho real, campo que não é texto vira "Plano ativo
+  ilegivel" (nunca `undefined`), e o corte da linha longa não parte um emoji ao meio.
+- **O revisar mais firme.** As duas lentes que tinham o mesmo nome nas duas famílias agora se
   distinguem: "Fidelidade ao design system" e "Estados obrigatorios" ganham "(codigo)" e "(tela)", e a
-  refutacao casa a lente certa. O gravador nao remapeia veredito antigo com o nome sem sufixo. O
-  `apurar` le valor que comeca com `--` como valor, a menos que seja flag do uso; um `mapa.json`
+  refutação casa a lente certa. O gravador não remapeia veredito antigo com o nome sem sufixo. O
+  `apurar` lê valor que começa com `--` como valor, a menos que seja flag do uso; um `mapa.json`
   estragado vira "(mapa ilegivel)" na listagem em vez de derrubar o comando; entrada nula no
-  `refutados.json` e "entrada invalida". O `preparar` nao deixa pasta vazia quando o arquivamento
-  falha, avisa da revisao fechada no formato antigo, segue se outro `preparar` ja arquivou, e ignora
-  `## ` dentro de bloco de codigo ao achar a regua. O gravador recusa pasta de ronda fora do projeto e,
+  `refutados.json` e "entrada invalida". O `preparar` não deixa pasta vazia quando o arquivamento
+  falha, avisa da revisão fechada no formato antigo, segue se outro `preparar` já arquivou, e ignora
+  `## ` dentro de bloco de código ao achar a régua. O gravador recusa pasta de ronda fora do projeto e,
   quando grava o veredito mas a marca falha, diz na hora que gravou.
-- **Portoes e libs menores.** `travas`, `marchas` e `limiares` parciais no `projeto.json` se fundem por
-  chave com o padrao, em vez de substituir o bloco inteiro. Catalogo consultado mais de um dia no
-  futuro e invalido. Exportar sem nada para copiar e erro. A abertura diz "nao sei" quando o git nao
-  responde. A auditoria tira o `\r` do CRLF ao medir e diz por que o `regras.md` e ilegivel. O portao
-  destrutivo avisa mesmo quando gravar o estado falha. Sairam o campo `ultimaFerramenta` do estado, a
-  funcao `extrairTokens` e as ferramentas `search` e `ls` da busca, que nada usava.
-- **Dois baldes novos no contador, para o que o portao de escopo barra por motivos diferentes:**
+- **Portões e libs menores.** `travas`, `marchas` e `limiares` parciais no `projeto.json` se fundem por
+  chave com o padrão, em vez de substituir o bloco inteiro. Catálogo consultado mais de um dia no
+  futuro é inválido. Exportar sem nada para copiar é erro. A abertura diz "nao sei" quando o git não
+  responde. A auditoria tira o `\r` do CRLF ao medir e diz por que o `regras.md` é ilegível. O portão
+  destrutivo avisa mesmo quando gravar o estado falha. Saíram o campo `ultimaFerramenta` do estado, a
+  função `extrairTokens` e as ferramentas `search` e `ls` da busca, que nada usava.
+- **Dois baldes novos no contador, para o que o portão de escopo barra por motivos diferentes:**
   `frente_invalida` (nome de arquivo de frente fora da classe permitida) e `fora_declarado` (o arquivo
   casa o que o escopo declara "Fora"). Antes os dois somavam em `fora_do_escopo`, e quem lia o contador
-  nao sabia qual dos tres motivos tinha barrado. Os dois entram na soma de bloqueios do gatilho de
-  saude. Sao **20 baldes** de contador: 15 que negam, 5 que so contam.
+  não sabia qual dos três motivos tinha barrado. Os dois entram na soma de bloqueios do gatilho de
+  saúde. São **20 baldes** de contador: 15 que negam, 5 que só contam.
 
 ## 0.4.0 — o bloco de qualidade de resposta, e a economia que saiu
 
-Um recurso novo, ligado por padrao, e uma skill aposentada. Nenhum portao novo: o recurso nao barra
-nada. Os comportamentos novos vem com teste; a suite inteira roda com `npm test`.
+Um recurso novo, ligado por padrão, e uma skill aposentada. Nenhum portão novo: o recurso não barra
+nada. Os comportamentos novos vêm com teste; a suíte inteira roda com `npm test`.
 
-- **Toda sessao abre com um bloco de seis regras de clareza para as respostas ao usuario.** A
-  abertura da sessao injeta o bloco: conclusao na primeira linha, sem preambulo nem cortesia, termo
-  tecnico explicado na primeira vez, uma linha entre ferramentas, evidencia reduzida a linha que
-  prova no bloco de saida, e nada de repetir o que o usuario acabou de ler ou decidir. O "Sai/Fica"
-  de cada regra esta no proprio bloco. Texto gravado em arquivo (plano, decisao, handoff) fica fora.
-  Funciona sem `/esquadro:init`: sem `projeto.json`, o bloco e tudo o que a abertura imprime. O
-  custo e um bloco curto por abertura e nenhum por turno, com teto prendido por teste. O README traz
-  o bloco literal e o numero de caracteres, e um teste prende que ele e igual ao que a abertura injeta.
-- **Como desligar:** `"qualidadeDeResposta": false` em `.claude/esquadro/projeto.json`. So `false`
-  desliga; outro tipo segue ligado e o portao de escrita avisa "qualidadeDeResposta tem de ser true ou false",
+- **Toda sessão abre com um bloco de seis regras de clareza para as respostas ao usuário.** A
+  abertura da sessão injeta o bloco: conclusão na primeira linha, sem preâmbulo nem cortesia, termo
+  técnico explicado na primeira vez, uma linha entre ferramentas, evidência reduzida a linha que
+  prova no bloco de saída, e nada de repetir o que o usuário acabou de ler ou decidir. O "Sai/Fica"
+  de cada regra está no próprio bloco. Texto gravado em arquivo (plano, decisão, handoff) fica fora.
+  Funciona sem `/esquadro:init`: sem `projeto.json`, o bloco é tudo o que a abertura imprime. O
+  custo é um bloco curto por abertura e nenhum por turno, com teto prendido por teste. O README traz
+  o bloco literal e o número de caracteres, e um teste prende que ele é igual ao que a abertura injeta.
+- **Como desligar:** `"qualidadeDeResposta": false` em `.claude/esquadro/projeto.json`. Só `false`
+  desliga; outro tipo segue ligado e o portão de escrita avisa "qualidadeDeResposta tem de ser true ou false",
   como os outros avisos de tipo do `projeto.json`.
-  O `init` nao pergunta nem grava a chave, e projeto ja gravado nao precisa mudar.
-- **O bloco so entrou porque ganhou uma medicao A/B cega.** Doze perguntas congeladas, tres
-  condicoes (com o bloco, a resposta padrao e o caveman), cada par julgado nas duas ordens por um
-  inspetor que nao sabe qual lado e qual. Contra o caveman: 12 vitorias, 0 derrotas, 0 empates.
-  Contra a resposta padrao: 4 vitorias, 3 derrotas, 5 empates. Tokens de saida, somados nas 12
-  execucoes de cada condicao: padrao 30462, caveman 12732, com o bloco 22888. Medido no Sonnet; no
-  Opus, nao medido. A margem contra a resposta padrao e curta, o texto foi ajustado uma vez olhando
-  as derrotas destas mesmas perguntas (sobreajuste possivel), e sessao longa nao foi medida. O
+  O `init` não pergunta nem grava a chave, e projeto já gravado não precisa mudar.
+- **O bloco só entrou porque ganhou uma medição A/B cega.** Doze perguntas congeladas, três
+  condições (com o bloco, a resposta padrão e o caveman), cada par julgado nas duas ordens por um
+  inspetor que não sabe qual lado é qual. Contra o caveman: 12 vitórias, 0 derrotas, 0 empates.
+  Contra a resposta padrão: 4 vitórias, 3 derrotas, 5 empates. Tokens de saída, somados nas 12
+  execuções de cada condição: padrão 30462, caveman 12732, com o bloco 22888. Medido no Sonnet; no
+  Opus, não medido. A margem contra a resposta padrão é curta, o texto foi ajustado uma vez olhando
+  as derrotas destas mesmas perguntas (sobreajuste possível), e sessão longa não foi medida. O
   instrumento vem no plugin: `scripts/medir-qualidade.js`, com as perguntas em
-  `modelos/qualidade-prompts.json`; o placar inteiro esta no README.
+  `modelos/qualidade-prompts.json`; o placar inteiro está no README.
 - **A `/esquadro:economia` saiu.** As regras dela foram para dois lugares: a regra do tamanho das
-  opcoes (uma ou duas frases, com a consequencia e o custo dentro; mais que isso e duas escolhas) foi
-  para a skill `padrao`, e as outras viraram o bloco da abertura. A skill e o teste dela sairam do
-  plugin; o instrumento de fecho (a resposta enxuta que ainda traz o bloco de saida passa, e sem o
-  bloco e barrada) segue provado, agora com exemplos proprios. A skill `padrao` passa a apontar para
+  opções (uma ou duas frases, com a consequência e o custo dentro; mais que isso é duas escolhas) foi
+  para a skill `padrao`, e as outras viraram o bloco da abertura. A skill e o teste dela saíram do
+  plugin; o instrumento de fecho (a resposta enxuta que ainda traz o bloco de saída passa, e sem o
+  bloco é barrada) segue provado, agora com exemplos próprios. A skill `padrao` passa a apontar para
   o bloco da abertura, e o teste de "todo comando que o CHANGELOG anuncia existe" aceita o comando
-  que o proprio CHANGELOG diz que saiu, em qualquer entrada.
-- **O README ganha o passo a passo para ligar a atualizacao automatica** do marketplace, em "Como
-  instalar": plugin de terceiro nao se atualiza sozinho ate esse botao ser ligado.
-- **Os contadores nao mudaram:** sao **18 baldes** de contador: 13 que negam, 5 que so contam.
+  que o próprio CHANGELOG diz que saiu, em qualquer entrada.
+- **O README ganha o passo a passo para ligar a atualização automática** do marketplace, em "Como
+  instalar": plugin de terceiro não se atualiza sozinho até esse botão ser ligado.
+- **Os contadores não mudaram:** são **18 baldes** de contador: 13 que negam, 5 que só contam.
 
-## 0.3.5 — o `cd` solto lido de uma vez, a tabela do PowerShell que avisa e a auditoria que nao cala
+## 0.3.5 — o `cd` solto lido de uma vez, a tabela do PowerShell que avisa e a auditoria que não cala
 
-Tudo o que a revisao da 0.3.4 deixou registrado. Nenhum portao novo. Os comportamentos novos vem com
-teste; a suite inteira roda com `npm test`.
+Tudo o que a revisão da 0.3.4 deixou registrado. Nenhum portão novo. Os comportamentos novos vêm com
+teste; a suíte inteira roda com `npm test`.
 
-- **O `cd` solto se acha numa leitura so do comando.** O detector era uma pilha de filtros, e cada
-  um errava o que o outro ja tinha tirado ou ainda nao. Agora o comando se le de uma vez, no idioma
-  da ferramenta: aspas (com `$'...'` no Bash), comentario, heredoc e here-string, subshell e cada elo
-  de cano no Bash, a subexpressao `$( )` do PowerShell (que roda, mesmo dentro de aspa dupla), chave
-  de hashtable, e se a palavra esta mesmo em posicao de comando. Passam a ser negados: o `cd` depois
-  de um `<<EOF` escrito em comentario, `"$(Set-Location X)"`, o `cd` no braco de um `case`,
+- **O `cd` solto se acha numa leitura só do comando.** O detector era uma pilha de filtros, e cada
+  um errava o que o outro já tinha tirado ou ainda não. Agora o comando se lê de uma vez, no idioma
+  da ferramenta: aspas (com `$'...'` no Bash), comentário, heredoc e here-string, subshell e cada elo
+  de cano no Bash, a subexpressão `$( )` do PowerShell (que roda, mesmo dentro de aspa dupla), chave
+  de hashtable, e se a palavra está mesmo em posição de comando. Passam a ser negados: o `cd` depois
+  de um `<<EOF` escrito em comentário, `"$(Set-Location X)"`, o `cd` no braço de um `case`,
   `` c`d `` e o `cd` depois de uma aspa `$'...'`. Deixam de ser negados: `@{ cd = 1 }`,
   `Push-Location` sem caminho, `sl\`, `then` e `do` como argumento, `pushd X; ...; popd` no Bash,
-  `echo a | cd X` e a definicao de uma funcao com `cd` (chamar a funcao segue negado). Um `popd`
-  depois de `&&` ou `||` nao conta como volta garantida.
-- **A tabela do PowerShell que nao se le avisa, em vez de calar.** Se `modelos/shell-win32.json` nao
-  se le, ou uma regra dela nao compila, a trava de idioma se desligava calada. Agora o comando passa
-  e sai um aviso, uma vez por sessao, com o arquivo ou a regra e a causa. A tabela tambem passou a
-  ler as aspas como o PowerShell le. O contador ganhou o balde `shell_tabela_quebrada`, que so conta:
-  sao **18 baldes** de contador: 13 que negam, 5 que so contam.
-- **A auditoria diz quando nao leu as regras.** Um `regras.md` que nao se le dava "nenhuma
-  contradicao". Agora a saida ganha a chave `regras`: lidas, ou nao lidas com a causa e o que fazer.
+  `echo a | cd X` e a definição de uma função com `cd` (chamar a função segue negado). Um `popd`
+  depois de `&&` ou `||` não conta como volta garantida.
+- **A tabela do PowerShell que não se lê avisa, em vez de calar.** Se `modelos/shell-win32.json` não
+  se lê, ou uma regra dela não compila, a trava de idioma se desligava calada. Agora o comando passa
+  e sai um aviso, uma vez por sessão, com o arquivo ou a regra e a causa. A tabela também passou a
+  ler as aspas como o PowerShell lê. O contador ganhou o balde `shell_tabela_quebrada`, que só conta:
+  são **18 baldes** de contador: 13 que negam, 5 que só contam.
+- **A auditoria diz quando não leu as regras.** Um `regras.md` que não se lê dava "nenhuma
+  contradicao". Agora a saída ganha a chave `regras`: lidas, ou não lidas com a causa e o que fazer.
   A medida do `MEMORY.md` conta linhas e bytes fora da carga a partir do mesmo corte, e a dica de
-  erro muda com a causa (caminho, pasta no lugar do arquivo, permissao).
-- **Os avisos do gravador de vereditos dizem o que fazer.** O aviso traz a lente quando ela se le, e
-  explica como gravar a mao (salvar o JSON do inspetor como `<pasta>/<lente>.json`), em vez de
+  erro muda com a causa (caminho, pasta no lugar do arquivo, permissão).
+- **Os avisos do gravador de vereditos dizem o que fazer.** O aviso traz a lente quando ela se lê, e
+  explica como gravar à mão (salvar o JSON do inspetor como `<pasta>/<lente>.json`), em vez de
   "como antes".
-- **`destrutivo: false` no `projeto.json` desliga tambem o `cd` solto**, como ja fazia; agora o
+- **`destrutivo: false` no `projeto.json` desliga também o `cd` solto**, como já fazia; agora o
   README e o `init` dizem isso, e um teste prende.
 
-## 0.3.4 — vereditos gravados sozinhos, `cd` solto negado e a memoria medida
+## 0.3.4 — vereditos gravados sozinhos, `cd` solto negado e a memória medida
 
-Tres pontos medidos no uso da 0.3.3. Os comportamentos novos vem com teste; a suite inteira roda com
+Três pontos medidos no uso da 0.3.3. Os comportamentos novos vêm com teste; a suíte inteira roda com
 `npm test`.
 
-- **Os vereditos da revisao cega se gravam sozinhos.** Um hook novo (`gravar-veredito.js`) le a
+- **Os vereditos da revisão cega se gravam sozinhos.** Um hook novo (`gravar-veredito.js`) lê a
   resposta do inspetor pelos dois caminhos que o Claude Code entrega (`SubagentStop` e o
   `SubagentHandback`) e grava `<lente>.json` na pasta de vereditos da ronda. O inspetor devolve a
-  chave da lente e a pasta que o briefing passou; o hook so grava se ela for a `vereditos` de uma
+  chave da lente e a pasta que o briefing passou; o hook só grava se ela for a `vereditos` de uma
   ronda de verdade, com `A.txt` e `B.txt` ao lado. Nunca sobrescreve, nunca barra o inspetor e nunca
-  cala: o que nao gravou vira aviso com a causa e a pasta, para gravar a mao como antes.
-- **`cd` solto e negado nas ferramentas Bash e PowerShell.** A pasta atual persiste de uma chamada
-  para a outra, e o `git` seguinte age no repositorio errado. O portao agora nega o `cd` no nivel de
+  cala: o que não gravou vira aviso com a causa e a pasta, para gravar à mão como antes.
+- **`cd` solto é negado nas ferramentas Bash e PowerShell.** A pasta atual persiste de uma chamada
+  para a outra, e o `git` seguinte age no repositório errado. O portão agora nega o `cd` no nível de
   cima do comando e mostra a forma que devolve a pasta: subshell no Bash, `Push-Location` com
-  `Pop-Location` no PowerShell, ou `git -C`/`npm --prefix`. Texto entre aspas, comentario e corpo de
-  heredoc nao contam; o escape e o `comandosLiberados` do `projeto.json`. As tres instrucoes do
-  proprio plugin que usavam `cd` solto mudaram para a forma aceita. O contador ganhou o balde
-  `cd_solto`: sao **17 baldes** de contador: 13 que negam, 4 que so contam.
-- **A auditoria mede o `MEMORY.md`.** Com `--memoria <caminho>` (a skill passa o caminho), a saida
-  ganha a chave `memoria`: linhas, bytes, maior linha e o que fica fora da carga da sessao, contra o
-  limite da documentacao (as primeiras 200 linhas ou 25 KB, lido como 25.000 bytes). A medida sai a
-  parte e nao soma no teto de instrucao. Sem caminho, ou arquivo que nao se le, diz "nao medida" e a
+  `Pop-Location` no PowerShell, ou `git -C`/`npm --prefix`. Texto entre aspas, comentário e corpo de
+  heredoc não contam; o escape é o `comandosLiberados` do `projeto.json`. As três instruções do
+  próprio plugin que usavam `cd` solto mudaram para a forma aceita. O contador ganhou o balde
+  `cd_solto`: são **17 baldes** de contador: 13 que negam, 4 que só contam.
+- **A auditoria mede o `MEMORY.md`.** Com `--memoria <caminho>` (a skill passa o caminho), a saída
+  ganha a chave `memoria`: linhas, bytes, maior linha e o que fica fora da carga da sessão, contra o
+  limite da documentação (as primeiras 200 linhas ou 25 KB, lido como 25.000 bytes). A medida sai à
+  parte e não soma no teto de instrução. Sem caminho, ou arquivo que não se lê, diz "nao medida" e a
   causa.
 
-## 0.3.3 — revisao que nao aprova sem voto, e revisao nova que comeca do zero
+## 0.3.3 — revisão que não aprova sem voto, e revisão nova que começa do zero
 
-Dois defeitos da revisao cega, e o acabamento dos pontos que a revisao da 0.3.2 deixou registrados.
-Nenhum portao novo. Os comportamentos novos vem com teste; a suite inteira roda com `npm test`.
+Dois defeitos da revisão cega, e o acabamento dos pontos que a revisão da 0.3.2 deixou registrados.
+Nenhum portão novo. Os comportamentos novos vêm com teste; a suíte inteira roda com `npm test`.
 
-- **Ronda sem voto nao e ronda seca.** Uma ronda sem nenhum veredito contava como seca, e duas
-  assim aprovavam a revisao sem nenhum inspetor lido. Agora o `apurar-ronda.js` para com erro que
+- **Ronda sem voto não é ronda seca.** Uma ronda sem nenhum veredito contava como seca, e duas
+  assim aprovavam a revisão sem nenhum inspetor lido. Agora o `apurar-ronda.js` para com erro que
   diz qual ronda e o que fazer (gravar os vereditos dela, ou apagar a pasta da ronda preparada por
-  engano); a pasta de vereditos que nao se le para com a causa, em vez de contar como vazia. Se
+  engano); a pasta de vereditos que não se lê para com a causa, em vez de contar como vazia. Se
   nenhuma lente achou nada grave, a ronda seguinte chama ao menos uma.
-- **Revisao nova de arquivo ja revisado comeca do zero.** Preparar de novo um arquivo cuja revisao
-  ja fechou herdava as rondas antigas e o teto gasto. Agora o `preparar-revisao.js` move a revisao
+- **Revisão nova de arquivo já revisado começa do zero.** Preparar de novo um arquivo cuja revisão
+  já fechou herdava as rondas antigas e o teto gasto. Agora o `preparar-revisao.js` move a revisão
   fechada inteira para `.claude/esquadro/revisao-fechada/<arquivo>/<carimbo>/` (nada se apaga), diz
-  para onde ela foi e comeca na ronda 1.
-- **Apuracao da revisao.** `refutados.json` que nao e lista e `mapa.json` presente mas corrompido
+  para onde ela foi e começa na ronda 1.
+- **Apuração da revisão.** `refutados.json` que não é lista e `mapa.json` presente mas corrompido
   param com erro que cita o arquivo; antes viravam lista vazia e ronda sem mapa, calados. O arquivo
-  revisado e reconhecido tambem com `../` no meio do caminho e, quando o disco diz que e o mesmo
-  arquivo, com outra caixa. O id de sessao que vem do ambiente so e conferido quando o fecho vai ser
-  contado. Erro da apuracao diz onde corrigir; fecho contado sem sessao avisa que nao entrou no
-  contador de nenhuma e como evitar na proxima (`--sessao <id>`).
-- **Preparo da revisao.** Git que falha ao ler o `HEAD` (processo morto, objeto que nao se le) nao
-  passa mais por arquivo novo; repositorio sem commit segue tratando tudo como novo. Arquivo maior
-  que o limite no `HEAD` tem mensagem propria, sem "rode de novo". A regua do projeto e lida antes
-  de criar a pasta e gravada junto com o pacote, e "nenhuma regua declarada" so aparece quando nao
-  ha regua. Arquivo com nome comecando por `--` e aceito, e `--semente ''` e erro de uso. O aviso do
+  revisado é reconhecido também com `../` no meio do caminho e, quando o disco diz que é o mesmo
+  arquivo, com outra caixa. O id de sessão que vem do ambiente só é conferido quando o fecho vai ser
+  contado. Erro da apuração diz onde corrigir; fecho contado sem sessão avisa que não entrou no
+  contador de nenhuma e como evitar na próxima (`--sessao <id>`).
+- **Preparo da revisão.** Git que falha ao ler o `HEAD` (processo morto, objeto que não se lê) não
+  passa mais por arquivo novo; repositório sem commit segue tratando tudo como novo. Arquivo maior
+  que o limite no `HEAD` tem mensagem própria, sem "rode de novo". A régua do projeto é lida antes
+  de criar a pasta e gravada junto com o pacote, e "nenhuma regua declarada" só aparece quando não
+  há régua. Arquivo com nome começando por `--` é aceito, e `--semente ''` é erro de uso. O aviso do
   formato antigo procura o id em todas as pastas numeradas, e as mensagens de git ausente e de id
-  nao achado dizem o proximo passo.
-- **Portao de escopo.** Link simbolico em `escopos/` cujo destino fica fora do projeto nao entra na
+  não achado dizem o próximo passo.
+- **Portão de escopo.** Link simbólico em `escopos/` cujo destino fica fora do projeto não entra na
   lista de frentes (antes a linha do objetivo do destino aparecia no aviso). Marcador `-` sozinho
-  na linha nao e item. Frente que nao se le diz que nao se leu, com o codigo do erro, em vez de
-  "(sem objetivo)". As mensagens do intocavel e da trava 5 dizem onde a lista mora e o que a
-  ampliacao do escopo conta, em tom neutro.
-- **Reinjecao.** O aviso do `projeto.json` diz a causa (nao se le, com o codigo do erro; JSON
-  quebrado; nao e objeto) e que `/esquadro:init` de novo o regrava com as respostas dadas. Regras
-  ou plano que nao se leem viram uma linha com a causa, em vez de sumir calados. Plano apontado para
-  fora do projeto nao se le. Cada valor do `projeto.json` entra numa linha so, com limite de tamanho.
+  na linha não é item. Frente que não se lê diz que não se leu, com o código do erro, em vez de
+  "(sem objetivo)". As mensagens do intocável e da trava 5 dizem onde a lista mora e o que a
+  ampliação do escopo conta, em tom neutro.
+- **Reinjeção.** O aviso do `projeto.json` diz a causa (não se lê, com o código do erro; JSON
+  quebrado; não é objeto) e que `/esquadro:init` de novo o regrava com as respostas dadas. Regras
+  ou plano que não se leem viram uma linha com a causa, em vez de sumir calados. Plano apontado para
+  fora do projeto não se lê. Cada valor do `projeto.json` entra numa linha só, com limite de tamanho.
 
-## 0.3.2 — mensagens que dizem o que fazer, e erro que nao passa calado
+## 0.3.2 — mensagens que dizem o que fazer, e erro que não passa calado
 
-Acabamento dos pontos que a revisao da 0.3.1 deixou registrados. Nenhum portao novo. Os
-comportamentos novos vem com teste; a suite inteira roda com `npm test`.
+Acabamento dos pontos que a revisão da 0.3.1 deixou registrados. Nenhum portão novo. Os
+comportamentos novos vêm com teste; a suíte inteira roda com `npm test`.
 
-- **Apuracao da revisao.** `--sessao` sem valor, ou com caractere fora de letras, numeros, `_` e
-  `-`, para com erro antes de contar (vale tambem para o id que vem do ambiente). Um `fechada.json`
-  que se le mas nao e o registro do fecho (ex.: `{}`) para com erro, em vez de contar o fecho de
-  novo. O arquivo de uma revisao no formato antigo e comparado sem diferenca de grafia (barra
+- **Apuração da revisão.** `--sessao` sem valor, ou com caractere fora de letras, números, `_` e
+  `-`, para com erro antes de contar (vale também para o id que vem do ambiente). Um `fechada.json`
+  que se lê mas não é o registro do fecho (ex.: `{}`) para com erro, em vez de contar o fecho de
+  novo. O arquivo de uma revisão no formato antigo é comparado sem diferença de grafia (barra
   invertida, `./` na frente). "refutados.json ilegivel" cita a base e diz o que fazer, e a leitura
-  das rondas tem um tratamento so, com o proximo passo.
-- **Preparo da revisao.** Git que nao responde ao ler o `HEAD` (tempo esgotado, falha ao iniciar)
-  para com erro e nao grava nada; antes o arquivo passava por novo, com o lado antigo vazio. Falha
+  das rondas tem um tratamento só, com o próximo passo.
+- **Preparo da revisão.** Git que não responde ao ler o `HEAD` (tempo esgotado, falha ao iniciar)
+  para com erro e não grava nada; antes o arquivo passava por novo, com o lado antigo vazio. Falha
   ao ler o arquivo ou ao gravar o pacote diz o caminho e o que fazer, sem stack trace; a pasta de
-  ronda que ficou pela metade e citada, para ser apagada. `--arquivo` ou `--semente` sem valor e
+  ronda que ficou pela metade é citada, para ser apagada. `--arquivo` ou `--semente` sem valor é
   erro de uso. O aviso do formato antigo diz para onde mover as pastas: `revisao/<id>/`, com o id.
-- **Portao de escopo.** As mensagens dizem o que e a marcha (o nivel de rigor que o
-  `projeto.json` da ao caminho), o que a trava 4 e a trava 5 guardam e o que e uma frente. Link
-  simbolico para arquivo em `escopos/` e frente; link quebrado e pasta nao sao. A lista de frentes
-  tira so o arquivo vinculado: em disco que diferencia caixa, `Foo.md` e `foo.md` sao duas frentes.
-- **Reinjecao.** Um `projeto.json` presente e ilegivel (JSON quebrado, ou que nao e objeto) deixa
-  de sumir calado: uma linha diz que ele nao se le e o que fazer. Ausente segue como antes.
+- **Portão de escopo.** As mensagens dizem o que é a marcha (o nível de rigor que o
+  `projeto.json` dá ao caminho), o que a trava 4 e a trava 5 guardam e o que é uma frente. Link
+  simbólico para arquivo em `escopos/` é frente; link quebrado e pasta não são. A lista de frentes
+  tira só o arquivo vinculado: em disco que diferencia caixa, `Foo.md` e `foo.md` são duas frentes.
+- **Reinjeção.** Um `projeto.json` presente e ilegível (JSON quebrado, ou que não é objeto) deixa
+  de sumir calado: uma linha diz que ele não se lê e o que fazer. Ausente segue como antes.
 
-## 0.3.1 — revisao por arquivo e acabamento do escopo por frente
+## 0.3.1 — revisão por arquivo e acabamento do escopo por frente
 
-Pendencias achadas na revisao da 0.3.0 e no uso dela. Nenhum portao novo. Os comportamentos novos
-vem com teste; a suite inteira roda com `npm test`.
+Pendências achadas na revisão da 0.3.0 e no uso dela. Nenhum portão novo. Os comportamentos novos
+vêm com teste; a suíte inteira roda com `npm test`.
 
-- **Revisao cega, uma base por arquivo.** O `preparar-revisao.js` grava em
+- **Revisão cega, uma base por arquivo.** O `preparar-revisao.js` grava em
   `.claude/esquadro/revisao/<arquivo>/<n>/`, e o `apurar-ronda.js --arquivo <caminho>` apura a base
-  daquele arquivo: varios arquivos revisados juntos deixam de se misturar como rondas de uma revisao
-  so. Sem `--arquivo`, uma base unica e achada sozinha; com mais de uma, o script para e lista os
-  arquivos. Revisao em andamento no formato de antes (pasta numerada solta em `revisao/`) segue
-  nele ate acabar, com aviso.
-- **Fecho contado uma vez.** Revisao fechada grava `fechada.json` na base; rodar o apurar de novo nao
-  conta o fecho outra vez, e a saida diz que ja foi contado.
-- **Apuracao que nao cala.** Erro que antes passava em silencio agora para com o que fazer:
-  `--arquivo` sem valor, arquivo sem base quando so ha revisao de outro, `fechada.json` ilegivel,
-  falha ao gravar o fecho, e erro de leitura que nao e "nao existe".
-- **Arquivo so de logica.** O `/esquadro:revisar` dispensa a lente `design` em arquivo que nao e de
-  estilo e nao monta tela: as de codigo sem ela. Na duvida, todas as de codigo.
-- **Escopo por frente.** O aviso de vinculo diz o que fazer se a tarefa mudou; a lista de frentes da
-  abertura nao repete a vinculada e some quando fica vazia; uma pasta chamada `x.md` em `escopos/`
-  nao e frente; a reinjecao cita a frente pelo nome do arquivo que vale.
-- **Sessao sem interacao.** O README explica que em `claude -p` o Claude Code nega escrever em
-  `<projeto>/.claude/**`: o arquivo da frente tem de existir antes, e o agente le antes de editar.
+  daquele arquivo: vários arquivos revisados juntos deixam de se misturar como rondas de uma revisão
+  só. Sem `--arquivo`, uma base única é achada sozinha; com mais de uma, o script para e lista os
+  arquivos. Revisão em andamento no formato de antes (pasta numerada solta em `revisao/`) segue
+  nele até acabar, com aviso.
+- **Fecho contado uma vez.** Revisão fechada grava `fechada.json` na base; rodar o apurar de novo não
+  conta o fecho outra vez, e a saída diz que já foi contado.
+- **Apuração que não cala.** Erro que antes passava em silêncio agora para com o que fazer:
+  `--arquivo` sem valor, arquivo sem base quando só há revisão de outro, `fechada.json` ilegível,
+  falha ao gravar o fecho, e erro de leitura que não é "nao existe".
+- **Arquivo só de lógica.** O `/esquadro:revisar` dispensa a lente `design` em arquivo que não é de
+  estilo e não monta tela: as de código sem ela. Na dúvida, todas as de código.
+- **Escopo por frente.** O aviso de vínculo diz o que fazer se a tarefa mudou; a lista de frentes da
+  abertura não repete a vinculada e some quando fica vazia; uma pasta chamada `x.md` em `escopos/`
+  não é frente; a reinjeção cita a frente pelo nome do arquivo que vale.
+- **Sessão sem interação.** O README explica que em `claude -p` o Claude Code nega escrever em
+  `<projeto>/.claude/**`: o arquivo da frente tem de existir antes, e o agente lê antes de editar.
 
 ## 0.3.0 — escopo por frente
 
-Duas frentes de trabalho no mesmo projeto deixam de disputar um `escopo.md` so. Nenhum portao novo:
-muda o arquivo que o portao de escopo le.
+Duas frentes de trabalho no mesmo projeto deixam de disputar um `escopo.md` só. Nenhum portão novo:
+muda o arquivo que o portão de escopo lê.
 
 - **Escopo por frente.** Cada frente pode ter o seu arquivo em `.claude/esquadro/escopos/<frente>.md`,
-  no mesmo formato do `escopo.md`. Editar esse arquivo vincula a sessao a frente, e a partir dai o
-  portao de escopo, o de agente caro, a reinjecao das regras e o aviso de abertura leem so ele. Sem
-  vinculo, vale o `escopo.md` de sempre: projeto que ja usa o plugin nao precisa mudar nada.
-  Aposentar uma frente e mover o arquivo dela para fora da pasta. Nome de frente com caractere fora
-  de letras sem acento, numeros, `_` e `-` e negado.
-- **Abertura.** Havendo frentes na pasta, a sessao abre com a lista delas e o objetivo de cada uma,
-  e com o jeito de se vincular. As mensagens de negacao citam o arquivo de escopo em vigor.
-- **Versao.** O `package.json` passa a ter a versao do manifesto, e um teste reprova se discordarem.
+  no mesmo formato do `escopo.md`. Editar esse arquivo vincula a sessão à frente, e a partir daí o
+  portão de escopo, o de agente caro, a reinjeção das regras e o aviso de abertura leem só ele. Sem
+  vínculo, vale o `escopo.md` de sempre: projeto que já usa o plugin não precisa mudar nada.
+  Aposentar uma frente é mover o arquivo dela para fora da pasta. Nome de frente com caractere fora
+  de letras sem acento, números, `_` e `-` é negado.
+- **Abertura.** Havendo frentes na pasta, a sessão abre com a lista delas e o objetivo de cada uma,
+  e com o jeito de se vincular. As mensagens de negação citam o arquivo de escopo em vigor.
+- **Versão.** O `package.json` passa a ter a versão do manifesto, e um teste reprova se discordarem.
 
-## 0.2.0 — correcao dos portoes
+## 0.2.0 — correção dos portões
 
-Doze defeitos achados usando o plugin num projeto real, e um achado da revisao deles. Cada correcao
-tem teste que reprovava antes e mutacao plantada que o teste acusa. Nenhum portao novo: o que muda e
+Doze defeitos achados usando o plugin num projeto real, e um achado da revisão deles. Cada correção
+tem teste que reprovava antes e mutação plantada que o teste acusa. Nenhum portão novo: o que muda é
 onde os de antes erravam.
 
-- **Raiz do projeto.** Os hooks acham o projeto subindo a partir da pasta da sessao: sessao aberta
+- **Raiz do projeto.** Os hooks acham o projeto subindo a partir da pasta da sessão: sessão aberta
   numa subpasta passa a ler o `projeto.json`, as regras e o `escopo.md` da raiz.
-- **Escopo.** Caminho com anotacao depois dele (`src/** (so o modulo X)`) passa a casar; a secao
+- **Escopo.** Caminho com anotação depois dele (`src/** (so o modulo X)`) passa a casar; a seção
   "Fora" nega em qualquer marcha; escopo herdado de outra tarefa ganha aviso.
-- **Revisao cega.** So os achados do lado novo contam para a ronda; os do lado antigo saem listados a
-  parte. Achado refutado na fonte primaria vai em `refutados.json`, com prova e severidade. Arquivo
-  novo vira pacote com um lado vazio. A regua do projeto vai no pacote, e o inspetor a le.
-- **Idioma de shell.** O portao olha a ferramenta: no Windows o Bash e o Git Bash, e `&&` nele nao e
-  idioma errado. Here-string do PowerShell nao e lida como comando.
-- **Comando destrutivo.** O corpo de um heredoc so deixa de ser lido quando o comando inteiro e um
-  unico `cat` ou `tee` com corpo inerte, texto que o bash nao executa; qualquer outra coisa no comando,
-  le tudo. `-Confirm:$false` conta como forcado, como o `-f` do `rm`.
-- **Contador de agentes.** Trava por sessao e gravacao atomica: despachos em paralelo nao perdem
+- **Revisão cega.** Só os achados do lado novo contam para a ronda; os do lado antigo saem listados à
+  parte. Achado refutado na fonte primária vai em `refutados.json`, com prova e severidade. Arquivo
+  novo vira pacote com um lado vazio. A régua do projeto vai no pacote, e o inspetor a lê.
+- **Idioma de shell.** O portão olha a ferramenta: no Windows o Bash é o Git Bash, e `&&` nele não é
+  idioma errado. Here-string do PowerShell não é lida como comando.
+- **Comando destrutivo.** O corpo de um heredoc só deixa de ser lido quando o comando inteiro é um
+  único `cat` ou `tee` com corpo inerte, texto que o bash não executa; qualquer outra coisa no comando,
+  lê tudo. `-Confirm:$false` conta como forçado, como o `-f` do `rm`.
+- **Contador de agentes.** Trava por sessão e gravação atômica: despachos em paralelo não perdem
   contagem.
-- **Aviso de `intocaveis`.** Padrao que aponta para pasta que existe no disco, fora do git, deixa de
-  ser dado como padrao que nao pega nada.
+- **Aviso de `intocaveis`.** Padrão que aponta para pasta que existe no disco, fora do git, deixa de
+  ser dado como padrão que não pega nada.
 - **Menores.** `experimento.js`: linha do outro manual com id repetido ganha o prefixo `outro:`, e a
-  prosa sai no stderr (o stdout e JSON puro). Modulo de design: `.04em` e lido como medida.
+  prosa sai no stderr (o stdout é JSON puro). Módulo de design: `.04em` é lido como medida.
 
 ## 0.1.0 — v1
 
-Primeira versao. Oito travas; todo portao e um script deterministico, sem modelo no meio.
+Primeira versão. Oito travas; todo portão é um script determinístico, sem modelo no meio.
 
-Cada trava nasceu de uma falha nomeada — mecanismo sem falha de origem e decoracao, e foi por esse
-criterio que o que nao tinha origem ficou de fora.
+Cada trava nasceu de uma falha nomeada — mecanismo sem falha de origem é decoração, e foi por esse
+critério que o que não tinha origem ficou de fora.
 
-### Portoes de custo zero, sempre ligados
+### Portões de custo zero, sempre ligados
 
-- **Trava 3 — fecho sem evidencia.** Bloqueia o fim do turno quando a resposta alega sucesso sem
-  colar a saida. Bloqueia tambem quando ha subitem aberto na tarefa do plano ativo.
+- **Trava 3 — fecho sem evidência.** Bloqueia o fim do turno quando a resposta alega sucesso sem
+  colar a saída. Bloqueia também quando há subitem aberto na tarefa do plano ativo.
 - **Trava 4 — arquivo fora do escopo.** Bloqueia a escrita fora do `escopo.md` declarado, e o
-  arquivo marcado como intocavel mesmo quando o escopo o cobriria.
-- **Trava 5 — comando destrutivo e sessao concorrente.** Bloqueia o comando que apaga sem volta, o
-  idioma de shell errado, e a escrita em arquivo que outra frente ja mexeu — contra a foto do
-  `git status` tirada na abertura da sessao.
-- **Trava 6 — agente caro em marcha rapida.** Bloqueia o despacho do modelo do topo quando o escopo
-  so tem caminhos de marcha rapida. Conta todo despacho, inclusive os que permite.
+  arquivo marcado como intocável mesmo quando o escopo o cobriria.
+- **Trava 5 — comando destrutivo e sessão concorrente.** Bloqueia o comando que apaga sem volta, o
+  idioma de shell errado, e a escrita em arquivo que outra frente já mexeu — contra a foto do
+  `git status` tirada na abertura da sessão.
+- **Trava 6 — agente caro em marcha rápida.** Bloqueia o despacho do modelo do topo quando o escopo
+  só tem caminhos de marcha rápida. Conta todo despacho, inclusive os que permite.
 - **Trava 7 — criar sem ter procurado.** Bloqueia arquivo novo quando nada foi buscado no turno.
-  Editar existente nunca e barrado, e nomear o arquivo no `escopo.md` libera.
-- **Trava 8 — catraca afrouxada.** Bloqueia a edicao que sobe um teto ou desce um piso. Apertar a
-  regua passa sempre. Unica trava sem botao de desligar.
+  Editar existente nunca é barrado, e nomear o arquivo no `escopo.md` libera.
+- **Trava 8 — catraca afrouxada.** Bloqueia a edição que sobe um teto ou desce um piso. Apertar a
+  régua passa sempre. Única trava sem botão de desligar.
 
-Modulo opcional, so com `design.json`: bloqueia cor ou medida fora do design system. Medida so se
-confere em `px`, `rem` e `em`: `%` e as outras unidades passam sem conferencia.
+Módulo opcional, só com `design.json`: bloqueia cor ou medida fora do design system. Medida só se
+confere em `px`, `rem` e `em`: `%` e as outras unidades passam sem conferência.
 
 ### Comandos
 
-- **`/esquadro:init`** — varre o repositorio, mostra o que inferiu e faz **seis** perguntas que
-  varredura nenhuma responde; a sexta e a escada de agentes do projeto, do mais barato ao mais
+- **`/esquadro:init`** — varre o repositório, mostra o que inferiu e faz **seis** perguntas que
+  varredura nenhuma responde; a sexta é a escada de agentes do projeto, do mais barato ao mais
   caro, com o apelido de modelo de cada degrau. Grava sempre `projeto.json` e `regras.md`, e
-  registra a conferencia do catalogo de modelos da instalacao em `catalogo.json`. O resto e
-  opcional: `design.json`, so quando ha design system, e, cada um so com aprovacao explicita e sem
-  sobrescrever arquivo que ja exista, os agentes do projeto em `.claude/agents/`, a `SKILL.md` do
-  projeto e o `AGENTS.md` na raiz. Rodado de novo no mesmo projeto, reabre a configuracao: pergunta
-  so o que faz sentido reperguntar e mostra o que mudou antes de gravar.
-- **`/esquadro:revisar`** — revisao cega A/B em lentes distintas: **nove** de codigo, **oito** de
-  tela, e **dezessete** quando a mudanca e de codigo e de tela. Default reprovar, apuracao por
-  script, teto de tres rondas.
-- **`/esquadro:aprender`** — correcao vira regra proposta no formato `gatilho -> acao`; nada e
-  gravado sem aprovacao explicita.
-- **`/esquadro:handoff`** — texto de continuacao para um chat novo, conferido no disco.
-- **`/esquadro:auditar`** — mede o peso de instrucao contra o teto e aponta o que cortar:
-  sobreposicoes, contradicoes e itens fora da rubrica.
-- **`/esquadro:economia`** — poe o ritual obrigatorio no tamanho certo: o preambulo sai inteiro, a
-  evidencia encolhe para o numero que prova, e nada do ritual e removido, so reformulado.
+  registra a conferência do catálogo de modelos da instalação em `catalogo.json`. O resto é
+  opcional: `design.json`, só quando há design system, e, cada um só com aprovação explícita e sem
+  sobrescrever arquivo que já exista, os agentes do projeto em `.claude/agents/`, a `SKILL.md` do
+  projeto e o `AGENTS.md` na raiz. Rodado de novo no mesmo projeto, reabre a configuração: pergunta
+  só o que faz sentido reperguntar e mostra o que mudou antes de gravar.
+- **`/esquadro:revisar`** — revisão cega A/B em lentes distintas: **nove** de código, **oito** de
+  tela, e **dezessete** quando a mudança é de código e de tela. Default reprovar, apuração por
+  script, teto de três rondas.
+- **`/esquadro:aprender`** — correção vira regra proposta no formato `gatilho -> acao`; nada é
+  gravado sem aprovação explícita.
+- **`/esquadro:handoff`** — texto de continuação para um chat novo, conferido no disco.
+- **`/esquadro:auditar`** — mede o peso de instrução contra o teto e aponta o que cortar:
+  sobreposições, contradições e itens fora da rubrica.
+- **`/esquadro:economia`** — põe o ritual obrigatório no tamanho certo: o preâmbulo sai inteiro, a
+  evidência encolhe para o número que prova, e nada do ritual é removido, só reformulado.
 
-A skill `padrao` vem junto e nao e comando: e o manual de execucao, que o agente carrega no comeco
-da tarefa. Ela absorve a skill universal que existia em separado, e declara as duas familias de
-lentes e qual delas o `revisar` despacha para cada mudanca.
+A skill `padrao` vem junto e não é comando: é o manual de execução, que o agente carrega no começo
+da tarefa. Ela absorve a skill universal que existia em separado, e declara as duas famílias de
+lentes e qual delas o `revisar` despacha para cada mudança.
 
 ### O mapa de modelos que envelhece
 
-Nenhum nome de modelo mora no plugin: os apelidos nascem no projeto, pela entrevista, e a deteccao
-de envelhecimento e uma escada de gatilhos. A unica excecao e o agente `inspetor`, que o `revisar`
-despacha, e ela esta declarada no README.
+Nenhum nome de modelo mora no plugin: os apelidos nascem no projeto, pela entrevista, e a detecção
+de envelhecimento é uma escada de gatilhos. A única exceção é o agente `inspetor`, que o `revisar`
+despacha, e ela está declarada no README.
 
-- **Gatilho 1 — na instalacao.** Ao terminar, o `init` confere o catalogo de modelos e registra a
-  conferencia. Atualizar o plugin nao confere nada, e isso esta dito no README.
+- **Gatilho 1 — na instalação.** Ao terminar, o `init` confere o catálogo de modelos e registra a
+  conferência. Atualizar o plugin não confere nada, e isso está dito no README.
 - **Gatilho 2 — no agente principal.** A skill `padrao` compara os apelidos gravados no projeto com
-  o catalogo que o harness entregou na sessao. Nunca num subagente: ele recebe a propria
-  identidade, nao o catalogo. O cache e o limite de frequencia da consulta ficam num script que
-  nao abre conexao.
+  o catálogo que o harness entregou na sessão. Nunca num subagente: ele recebe a própria
+  identidade, não o catálogo. O cache e o limite de frequência da consulta ficam num script que
+  não abre conexão.
 - **Gatilho 3 — hook.** Compara o `model:` de cada agente com o apelido gravado no `projeto.json`,
-  arquivo com arquivo, offline. Avisa, deixa passar e mostra o conserto nas duas direcoes, porque
-  nao tem como saber qual dos dois lados envelheceu.
+  arquivo com arquivo, offline. Avisa, deixa passar e mostra o conserto nas duas direções, porque
+  não tem como saber qual dos dois lados envelheceu.
 - **Apelidos vivos.** `node scripts/provar-apelidos.js` monta o roteiro, o agente principal sonda,
-  e a suite reprova quando um apelido sondado foi recusado. Sem sondagem, fica "nao provado", e
-  isso nao reprova. `--plugin` sonda o apelido do proprio `inspetor`.
+  e a suíte reprova quando um apelido sondado foi recusado. Sem sondagem, fica "nao provado", e
+  isso não reprova. `--plugin` sonda o apelido do próprio `inspetor`.
 
 ### Ferramentas de linha de comando
 
-- `node scripts/cobertura.js` — quais portoes este ambiente verifica, quais nao, e por que.
-- `node scripts/cicatriz.js` — para cada regra do manual, se existe decisao, incidente ou achado
-  atras dela. Mede e propoe; podar e decisao de quem mantem o manual.
+- `node scripts/cobertura.js` — quais portões este ambiente verifica, quais não, e por que.
+- `node scripts/cicatriz.js` — para cada regra do manual, se existe decisão, incidente ou achado
+  atrás dela. Mede e propõe; podar é decisão de quem mantém o manual.
 - `node scripts/plataforma.js` — em que sistemas cada trecho dependente de plataforma foi de fato
-  exercitado. A matriz e varrida do codigo, e a suite reprova ponto novo que ela nao declare.
-- `node scripts/sanitar.js` — o detector de sanitacao como comando, nas tres superficies. A suite
-  reprova so pelo conteudo; autoria e mensagem exigem o historico do git, e ficam no comando.
-- `node scripts/exportar.js` — monta, numa pasta a parte, exatamente o que iria para um repositorio
-  publico, com a mesma lista que o detector audita, e confere quantos arquivos copiou.
-- `node scripts/experimento.js` — monta a tabela de obrigacoes do seu manual, cruzada com a de
+  exercitado. A matriz é varrida do código, e a suíte reprova ponto novo que ela não declare.
+- `node scripts/sanitar.js` — o detector de sanitação como comando, nas três superfícies. A suíte
+  reprova só pelo conteúdo; autoria e mensagem exigem o histórico do git, e ficam no comando.
+- `node scripts/exportar.js` — monta, numa pasta à parte, exatamente o que iria para um repositório
+  público, com a mesma lista que o detector audita, e confere quantos arquivos copiou.
+- `node scripts/experimento.js` — monta a tabela de obrigações do seu manual, cruzada com a de
   outro manual passado por `--manual`, e julga o resultado gravado do experimento: o plugin bastou,
-  ou ainda falta manual. O veredito sai no codigo de saida; so o experimento mal feito reprova a
-  suite.
+  ou ainda falta manual. O veredito sai no código de saída; só o experimento mal feito reprova a
+  suíte.
 
-### Medicao
+### Medição
 
-- Controle positivo **e** negativo por mecanismo, em toda a suite. O numero de testes nao fica
-  congelado aqui de proposito: ele muda a cada mudanca e ninguem volta a um changelog para
-  corrigi-lo. Quem quiser o numero roda `npm test` e le o que saiu.
-- **16 baldes** de contador: 12 que negam, 4 que so contam. `node scripts/uso.js` lista os disparos.
-- Detector de sanitacao embutido: reprova o repositorio se dado pessoal vazar, em tres superficies
-  — conteudo dos arquivos, autoria do historico e mensagem de commit.
+- Controle positivo **e** negativo por mecanismo, em toda a suíte. O número de testes não fica
+  congelado aqui de propósito: ele muda a cada mudança e ninguém volta a um changelog para
+  corrigi-lo. Quem quiser o número roda `npm test` e lê o que saiu.
+- **16 baldes** de contador: 12 que negam, 4 que só contam. `node scripts/uso.js` lista os disparos.
+- Detector de sanitação embutido: reprova o repositório se dado pessoal vazar, em três superfícies
+  — conteúdo dos arquivos, autoria do histórico e mensagem de commit.

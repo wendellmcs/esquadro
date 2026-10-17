@@ -392,7 +392,8 @@ primeiro. Ele sai a 450 mil, antes da faixa acima de 500 mil, onde cada chamada 
 **Os números na tela são os que valem no seu projeto.** Com o modo contínuo ligado, o bloco que a abertura injeta
 diz o aviso e o alarme com os números em vigor: o `limiares.tokensDeContexto` gravado (se for número positivo) ou
 250 mil, e o `limiares.tokensAlarme`. O medidor `/esquadro-sessao` mostra o mesmo limiar que vale, e a linha curta
-(por exemplo "troca: 0 de 2") conta só os gatilhos que podem disparar, sem os cinco que a chave cala. Sem a chave
+(por exemplo "troca de chat em 180 mil tokens") diz quanto falta pelo gatilho mais perto entre os que podem
+disparar, sem os cinco que a chave cala. Sem a chave
 `modoContinuo`, nada disso muda.
 
 **O que não dispara:** erro de medição (contagem errada, número lido do lugar errado). Hook não o
@@ -428,10 +429,14 @@ conta (como o painel encontra o plano e faz a conta, logo abaixo). Sem plano nen
 ligada à sessão e nenhum plano anotado no escopo ou nas frentes), ele responde "Nenhum plano ativo" e o comando
 `--abrir` com o caminho do script na sua máquina. No terminal, no app Desktop e no chat da extensão do VS Code, o
 medidor também fica na linha de status, em uma linha só
-(`contexto 24% · 5h 4% até 13:50 · semana 18% · mês US$ 3.311 · sessão US$ 7,52 · troca 0 de 2`), e uma faixa
-acima do prompt mostra o plano (`plano 082 · 2 de 7 tarefas · próxima: Tarefa 3 — barra do medidor...`, ou
-`concluído (6 de 6 tarefas)` quando nada falta) e, embaixo dela, uma frase e um botão por vez, o do comando do
-esquadro que está na hora:
+(`contexto 24% · 5h 4% até 13:50 · semana 18% · mês US$ 3.311 · sessão US$ 7,52 · troca de chat em 180 mil tokens`).
+O fim da linha diz quanto falta para o aviso de troca de chat, na unidade do sinal mais perto (tokens, ou "1 decisão
+do dono" sem o modo contínuo); quando um sinal dispara, vira `troque de chat → /esquadro:handoff`, e depois do aviso,
+`troca já avisada → /esquadro:handoff`. O detalhe de cada sinal fica no bloco **Troca de chat** do
+`/esquadro-sessao`. Uma faixa acima do prompt mostra o plano da sessão (`plano 082 · 2 de 7 tarefas · próxima:
+Tarefa 3 — barra do medidor...`, ou `concluído (6 de 6 tarefas)` quando nada falta): o plano ativo, o da frente
+ligada à sessão ou o do `escopo.md`; chat sem plano não mostra plano de outra frente. Embaixo dela, uma frase e um
+botão por vez, o do comando do esquadro que está na hora:
 
 | Comando | Rótulo do botão | Aparece quando |
 |---|---|---|
@@ -459,7 +464,8 @@ próprio Claude Code e dos arquivos na sua máquina.
   acima). Sem ele, o plano anotado no Objetivo (o parágrafo `**Objetivo:**` do escopo): na sessão ligada a uma
   frente, o arquivo dela em `.claude/esquadro/escopos/`; na sessão sem frente, o `.claude/esquadro/escopo.md`. Se o
   `escopo.md` não anota plano e só uma frente anota, o painel mostra o plano dessa frente, avisa que a sessão não
-  está ligada a ela e diz qual arquivo editar para ligar; com várias, lista as frentes. O `/esquadro:handoff` anota o
+  está ligada a ela e diz qual arquivo editar para ligar; com várias, lista as frentes. A faixa acima do prompt não
+  faz isso: sem plano ativo, sem frente ligada e sem plano no `escopo.md`, ela não mostra plano. O `/esquadro:handoff` anota o
   plano para o chat novo.
 - **Como anotar.** `Plano: <caminho>`, ou `plano` seguido do caminho entre crases (`` plano `docs/x.md` ``). Com as
   duas formas no Objetivo, vale a que aponta para um arquivo que existe; se os dois arquivos existem, vale o
@@ -510,11 +516,12 @@ Desktop a faixa usa a cor `warning` do tema do Claude Code, que acompanha o tema
 VS Code essa cor não pinta, e a faixa usa `#F59E0B` direto; com o VS Code em tema claro, esse âmbar fica fraco de ler.
 Só a borda e o nome "esquadro" ficam fracos: a linha do plano, a frase e o botão seguem a cor do tema e se leem
 normalmente, então não há nada a fazer para usar o plugin. Não há chave para trocar essa cor; se o nome fraco
-atrapalhar, registre como defeito do esquadro.
+atrapalhar, abra um defeito em https://github.com/wendellmcs/esquadro/issues com o tema do VS Code e um print da faixa.
 
 Todo botão sai no desenho `primary` (no VS Code, o `secondary` sai igual), e a hierarquia fica no texto: um botão
-por vez, com a frase do que aconteceu antes dele. A linha de status e as respostas de `/esquadro-sessao` e
-`/esquadro-plano` saem com acento; os avisos dos ganchos seguem sem acento (o console do Windows os estraga) e têm
+por vez, com a frase do que aconteceu antes dele. Na escrita (til, cedilha e acento agudo, não a cor), a linha de
+status e as respostas de `/esquadro-sessao` e `/esquadro-plano` saem acentuadas; os avisos dos ganchos seguem sem
+acentuação (o console do Windows os estraga) e têm
 uma forma só: a 1ª linha diz o que falta, os caminhos vêm entre aspas, um por linha, as saídas vêm numeradas em
 "Faca uma destas", e a linha de desligar, quando o aviso tem chave, vem por último.
 
@@ -1159,8 +1166,10 @@ uma troca aqui — escrever o handoff mais a rampa do chat novo —, e simula a 
 para cada limiar de 150 mil até abaixo do alarme. Sugere o menor limiar em que trocar não sai mais
 caro que não trocar. Com menos de 30 sessões, ou menos de 10 conversas que chegaram ao padrão (175 mil), a
 amostra é pequena: fica o padrão, e ele diz por quê. Só números saem do script; nenhum trecho de
-conversa. Ele grava `limiares.tokensDeContexto` no `projeto.json` só com `--gravar`, que a skill só
-roda depois do seu sim. Mede dinheiro, não qualidade.
+conversa. O limiar atual que ele mostra é o que vale hoje: o gravado no `projeto.json`, senão os 250 mil
+do modo contínuo, quando ligado, senão o padrão — e ele diz qual dos três. Ele grava
+`limiares.tokensDeContexto` no `projeto.json` só com `--gravar <tokens>`, ou com `--manter` (grava o limiar
+atual, para o botão de calibrar não voltar), que a skill só roda depois do seu sim. Mede dinheiro, não qualidade.
 
 ### `padrao` — o manual que o agente carrega
 

@@ -41,13 +41,18 @@ e chamar `/esquadro:calibrar` de novo; e pare. Não leia nem abra os `.jsonl` vo
 
 ## Passo 3 — gravar só com o sim do dono
 
-Se a sugestão for igual ao `limiarAtual`, diga que o limiar atual já é o medido e que não há o que
+O `limiarAtual` é o que vale hoje, e `limiarAtualDe` diz de onde ele vem: `projeto.json` (gravado),
+`modo continuo` (o aviso a 250 mil do modo contínuo ligado) ou `padrao do plugin`; diga a origem junto do
+número. Se a sugestão for igual ao `limiarAtual`, diga que o limiar atual já é o medido e que não há o que
 gravar. Se for diferente e a amostra for suficiente, leve a decisão ao dono em três opções, a
-recomendada primeiro: gravar a sugestão; manter o limiar atual (não se roda nada); outro número que ele
-escolha. Só depois do sim explícito, grave **pelo comando**, passando só o número inteiro ("200 mil"
-vira `200000`):
+recomendada primeiro: gravar a sugestão; manter o limiar atual; outro número que ele escolha. Só depois
+do sim explícito, grave **pelo comando**, passando só o número inteiro ("200 mil" vira `200000`):
 
     node "${CLAUDE_PLUGIN_ROOT}/scripts/calibrar.js" --gravar <tokens>
+
+"Manter" também se grava, com `--manter` no lugar de `--gravar <tokens>`: o comando grava o limiar em
+vigor (a saída traz `manteve: true`). Sem isso, o projeto segue "nunca calibrado" e o botão de calibrar
+volta a cada chat.
 
 O comando aceita de 50000 até abaixo do alarme, mexe só em `limiares.tokensDeContexto` e preserva o
 resto do `projeto.json`. Diga que gravou só quando a saída trouxer `gravou: true`. Se o comando

@@ -37,6 +37,19 @@ const SINAL = {
   commits: ['commits nesta sessão', 'commits'],
   tokensDeContexto: ['tamanho do contexto', 'contexto']
 };
+// Pedido 71 (D544, barra A): o que falta para o aviso de troca, na unidade do sinal - [singular, plural]. O contexto
+// conta em tokens (quantoFalta); chave desconhecida usa o nome que veio.
+const FALTA = {
+  turnosComTrabalho: ['resposta com trabalho real', 'respostas com trabalho real'],
+  revisoesFechadas: ['revisão independente', 'revisões independentes'],
+  bloqueios: ['bloqueio de portão', 'bloqueios de portão'],
+  arquivosTocados: ['arquivo tocado', 'arquivos tocados'],
+  decisoesDoDono: ['decisão do dono', 'decisões do dono'],
+  commits: ['commit', 'commits']
+};
+
+// Plano 083 (p2-11): o par de SINAL/FALTA so pela chave propria - "constructor" ou "toString" lia o prototipo.
+function daChave(mapa, chave) { return Object.prototype.hasOwnProperty.call(mapa, chave) ? mapa[chave] : null; }
 
 function num(v) { return typeof v === 'number' && isFinite(v); }
 function dois(n) { return String(n).padStart(2, '0'); }
@@ -62,12 +75,13 @@ function janelas(uso) {
   // D442/11 (M-16, M-21): janela sem `kind` virava o nome "undefined"; sem nome, fica de fora.
   return lista.filter(function (j) { return j && num(j.percentUsed) && typeof j.kind === 'string' && j.kind !== ''; }).map(function (j) {
     const nome = NOME_DA_JANELA[j.kind] || String(j.kind);
-    // a de 5h renova no mesmo dia (hora basta); as outras, pelo dia e hora
-    const quando = j.resetsAt ? (j.kind === 'five_hour' ? hora(j.resetsAt) : [dia(j.resetsAt), hora(j.resetsAt)].filter(Boolean).join(' ')) : null;
-    // a resposta do comando diz "renova às 13:50" / "renova 22/10 às 04:00" (mock S4)
+    // a de 5h renova no mesmo dia (hora basta); as outras, pelo dia e hora. Plano 083 (p2-23): a hora e o dia saem
+    // uma vez; a barra diz "13:50" / "22/10 04:00" e a resposta do comando "às 13:50" / "22/10 às 04:00" (mock S4).
     const h = j.resetsAt ? hora(j.resetsAt) : null;
-    const renova = h ? (j.kind === 'five_hour' ? 'às ' + h : dia(j.resetsAt) + ' às ' + h) : null;
-    return { kind: j.kind, nome: nome, pct: j.percentUsed, quando: quando || null, renova: renova };
+    const d = h && j.kind !== 'five_hour' ? dia(j.resetsAt) : null;
+    const quando = h ? (d ? d + ' ' : '') + h : null;
+    const renova = h ? (d ? d + ' ' : '') + 'às ' + h : null;
+    return { kind: j.kind, nome: nome, pct: j.percentUsed, quando: quando, renova: renova };
   });
 }
 
@@ -84,22 +98,27 @@ function subidaMedia(amostras, campo) {
   return ultimas.reduce(function (t, v) { return t + v; }, 0) / ultimas.length;
 }
 
-// Turnos que faltam: nunca negativo (contexto ou janela ja passados do fim = ~0 turnos).
+// Quantas vezes o gasto de uma vez (uma resposta, ou um chat em trocasAte) cabe no que falta: nunca negativo
+// (contexto ou janela ja passados do fim = ~0). Plano 083 (p2-21): era `turnosAte`, mas tambem conta trocas de chat.
 // D442/11 (M-20): subida minuscula (ruido de float) dava "~Infinity turnos"; sem conta finita, null (omite).
-function turnosAte(falta, porTurno) {
-  const n = Math.max(0, Math.floor(falta / porTurno));
+function vezesAte(falta, porVez) {
+  const n = Math.max(0, Math.floor(falta / porVez));
   return isFinite(n) ? n : null;
 }
 
-/** Respostas que faltam ate o fim do contexto e da janela de 5h, pela subida media por turno; null sem conta. */
+/**
+ * As respostas que faltam, pela subida media por resposta: `contexto` ate o fim do contexto e `five_hour` ate o fim
+ * da janela de 5h (a chave e o `kind` da janela, que linhasDaPrevisao procura). O objeto vem sempre; cada campo e
+ * null sem conta (plano 083, p2-22: o comentario dizia "null sem conta" do objeto inteiro).
+ */
 function previsao(uso, amostras) {
   const lista = Array.isArray(amostras) ? amostras : [];
   const ctx = uso && uso.context;
-  const porTurno = subidaMedia(lista, 'tokens');
-  const nCtx = porTurno && ctx && num(ctx.tokens) && num(ctx.window) ? turnosAte(ctx.window - ctx.tokens, porTurno) : null;
+  const porResposta = subidaMedia(lista, 'tokens');
+  const nCtx = porResposta && ctx && num(ctx.tokens) && num(ctx.window) ? vezesAte(ctx.window - ctx.tokens, porResposta) : null;
   const pct5h = subidaMedia(lista, 'cincoH');
   const j5 = janelas(uso).find(function (j) { return j.kind === 'five_hour'; });
-  const n5 = pct5h && j5 ? turnosAte(100 - j5.pct, pct5h) : null;
+  const n5 = pct5h && j5 ? vezesAte(100 - j5.pct, pct5h) : null;
   return { contexto: nCtx, five_hour: n5 };
 }
 
@@ -130,7 +149,7 @@ function mediaPorSessao(historico, atual) {
       return { t: s.t, d: j.fim - j.ini };
     }).filter(Boolean).sort(function (a, b) { return b.t - a.t; }).slice(0, SESSOES_DA_MEDIA);
     if (deltas.length < MINIMO_DE_SESSOES) continue;
-    // media zero passa: turnosAte da null (nao divide por zero) e a previsao se omite
+    // media zero passa: vezesAte da null (nao divide por zero) e a previsao se omite
     r[kind] = { media: deltas.reduce(function (t, x) { return t + x.d; }, 0) / deltas.length, k: deltas.length };
   }
   return r;
@@ -148,7 +167,8 @@ function gastoValido(g) {
 
 // Plano 082 (mock D532): dinheiro da barra como se le no Brasil - ponto no milhar, virgula nos centavos.
 function milhar(inteiro) { return String(inteiro).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
-function centavos(v) { const p = v.toFixed(2).split('.'); return milhar(p[0]) + ',' + p[1]; }
+// Plano 083 (p2-12): negativo que arredonda a zero sai "0,00", nunca "-0,00".
+function centavos(v) { const p = (Math.abs(v) < 0.005 ? 0 : v).toFixed(2).split('.'); return milhar(p[0]) + ',' + p[1]; }
 // O mes arredonda, mas abaixo de US$ 1 o arredondado diria "US$ 0"; ai vai com centavos.
 function mes(v) { return v < 1 ? centavos(v) : milhar(Math.round(v)); }
 // Plano 082 (mock S4): contagem com ponto no milhar ("240.283"); numero quebrado sai como veio.
@@ -174,7 +194,7 @@ function gastoDoMes(g) {
  */
 function trocasAte(j, porSessao) {
   const m = porSessao[j.kind];
-  const n = m ? turnosAte(100 - j.pct, m.media) : null;
+  const n = m ? vezesAte(100 - j.pct, m.media) : null;
   if (n === null) return null;
   // media abaixo de 1% com uma casa: "0%" diria que a sessao nao gasta nada
   const media = m.media >= 1 ? pct(m.media) : m.media.toFixed(1).replace('.', ',') + '%';
@@ -182,10 +202,32 @@ function trocasAte(j, porSessao) {
     ' que deu para medir)';
 }
 
+// Os sinais que valem (sem os calados pelo modo continuo, D468), do mais perto do limite ao mais longe; no empate,
+// a ordem do saude.medir. A barra e o bloco "Troca de chat" da resposta do comando usam esta ordem.
+function valemPorPerto(medidas) {
+  const perto = function (g) { return g.limiar > 0 ? g.valor / g.limiar : 0; };
+  return medidas.filter(function (g) { return g.calado !== true; })
+    .map(function (g, i) { return { g: g, i: i }; })
+    .sort(function (a, b) { return perto(b.g) - perto(a.g) || a.i - b.i; })
+    .map(function (x) { return x.g; });
+}
+
+// Pedido 71 (D544): "180 mil tokens", "12 mil tokens", "500 tokens"; os outros sinais pela unidade de FALTA.
+function quantoFalta(g) {
+  const n = g.limiar - g.valor;
+  if (g.chave === 'tokensDeContexto') return n >= 1000 ? milhar(Math.floor(n / 1000)) + ' mil tokens' : inteiro(n) + ' tokens';
+  const u = daChave(FALTA, g.chave) || [g.nome, g.nome];
+  return inteiro(n) + ' ' + u[n === 1 ? 0 : 1];
+}
+
 // A barra (mock D532, S3): contexto · 5h ate HH:MM · semana · mes · sessao · troca. Sem "esquadro" na frente (o VS Code
 // ja escreve "esquadro plugin") e sem o plano (esta na faixa logo acima). A previsao saiu da barra: sem espaco para
 // dizer a unidade, fica so na resposta do comando.
-function barra(uso, gasto, js, cruzados, podem, avisou) {
+// Pedido 71 (D544, barra A; p2-27): o fim diz quanto falta para o aviso pelo sinal mais perto ("troca 0 de 2" nao
+// mudava o chat inteiro); disparou -> "troque de chat"; sem sinal medido, nada (numero inventado e pior que nenhum).
+// Plano 083 (p2-24): um objeto com nome no lugar dos 6 posicionais, que se trocavam sem erro.
+function barra(b) {
+  const uso = b.uso, gasto = b.gasto, js = b.js, medidas = b.medidas;
   const curta = [];
   const ctx = uso && uso.context;
   if (ctx && num(ctx.percent)) curta.push('contexto ' + pct(ctx.percent));
@@ -194,9 +236,12 @@ function barra(uso, gasto, js, cruzados, podem, avisou) {
   // ainda cresce; o quanto falta, a resposta do comando diz)
   if (gasto) curta.push('mês US$ ' + mes(gasto.usd) + (gasto.pendentes > 0 ? '+ (somando)' : ''));
   if (uso && uso.cost && num(uso.cost.usd)) curta.push('sessão US$ ' + centavos(uso.cost.usd));
-  if (avisou) curta.push('troca já avisada → /esquadro:handoff');
-  else if (cruzados.length) curta.push('troca ' + cruzados.length + ' de ' + podem + ' cruzou → /esquadro:handoff');
-  else curta.push('troca 0 de ' + podem);
+  if (b.avisou) curta.push('troca já avisada → /esquadro:handoff');
+  else if (b.cruzados.length) curta.push('troque de chat → /esquadro:handoff');
+  else {
+    const g = valemPorPerto(medidas).filter(function (x) { return x.limiar > x.valor; })[0];
+    if (g) curta.push('troca de chat em ' + quantoFalta(g));
+  }
   return curta.join(' · ');
 }
 
@@ -261,12 +306,8 @@ function linhasDaPrevisao(prev, js, porSessao) {
 // Os sinais que valem primeiro, do mais perto do limite ao mais longe; os desligados pelo modo continuo (D468) numa
 // linha so, no fim, sem "disparou".
 function linhasDosSinais(medidas, avisou) {
-  const nomeDe = function (g) { return SINAL[g.chave] || [g.nome, g.nome]; };
-  const perto = function (g) { return g.limiar > 0 ? g.valor / g.limiar : 0; };
-  const valem = medidas.filter(function (g) { return g.calado !== true; })
-    .map(function (g, i) { return { g: g, i: i }; })
-    .sort(function (a, b) { return perto(b.g) - perto(a.g) || a.i - b.i; })
-    .map(function (x) { return x.g; });
+  const nomeDe = function (g) { return daChave(SINAL, g.chave) || [g.nome, g.nome]; };
+  const valem = valemPorPerto(medidas);
   const calados = medidas.filter(function (g) { return g.calado === true; });
   const sinais = valem.map(function (g) {
     const tokens = g.chave === 'tokensDeContexto' ? ' tokens' : '';
@@ -303,10 +344,13 @@ function linhaDaSessao(entrada) {
   bloco('Contexto e limites', linhasDosLimites(uso, js));
   bloco('Gasto', linhasDoGasto(uso, gasto));
   bloco('Previsão', linhasDaPrevisao(previsao(uso, e.amostras), js, mediaPorSessao(e.historico, e.sessao)));
-  bloco('Troca de chat — ' + cruzados.length + ' de ' + podem + ' sinais disparou (basta 1)', linhasDosSinais(medidas, avisou));
+  // Plano 083 (p2-26): o verbo concorda - "1 de 7 sinais disparou", "0 de 2 sinais dispararam".
+  bloco('Troca de chat — ' + cruzados.length + ' de ' + podem + ' sinais ' + (cruzados.length === 1 ? 'disparou' : 'dispararam') +
+    ' (basta 1)', linhasDosSinais(medidas, avisou));
   bloco('O que fazer', [cruzou ? 'Rode /esquadro:handoff e cole o prompt pronto num chat novo.' : 'Nada por ora.']);
 
-  return { curta: barra(uso, gasto, js, cruzados, podem, avisou), longa: blocos.join('\n\n'), cruzou: cruzou };
+  const curta = barra({ uso: uso, gasto: gasto, js: js, cruzados: cruzados, medidas: medidas, avisou: avisou });
+  return { curta: curta, longa: blocos.join('\n\n'), cruzou: cruzou };
 }
 
 module.exports = { linhaDaSessao };

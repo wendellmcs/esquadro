@@ -492,6 +492,70 @@ test('botoes: botao sem rotulo ou sem texto nao desenha; o seguinte toma o lugar
   await ui.unmount()
 })
 
+// Plano 083 (p1-18): o resto do contrato do botaoDaVez - rotulo so com espacos, nome ou comando que nao e texto, e
+// item nulo na lista ficam de fora, e o seguinte toma o lugar.
+test('botoes: rotulo so com espacos, nome ou comando que nao e texto e item nulo nao desenham (p1-18)', async ($, on) => {
+  const preenchido: string[] = []
+  faixaComBotoes(on, () => [null, { nome: 'a', texto: 't', rotulo: '   ', comando: '/esquadro:init' },
+    // o comando em lista passaria na regex (String(['/x']) e '/x'): so o typeof o barra
+    { nome: 5, texto: 't', rotulo: 'r', comando: '/esquadro:init' }, { nome: 'c', texto: 't', rotulo: 'r', comando: ['/esquadro:init'] },
+    BOTOES[2]], preenchido)
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  const ui = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  for (const k of ['a', '5', 'c']) expect(await ui.find({ key: 'esquadro-' + k })).toBeUndefined()
+  expect(await ui.find({ key: 'esquadro-aprender' })).toBeDefined()
+  await ui.unmount()
+})
+
+// Plano 083 (p1-18): o mesmoBotao com um dos lados nulo - o botao que some da lista sem ser usado redesenha a faixa,
+// e a lista vazia que segue vazia nao redesenha.
+test('botoes: botao que some da lista sem uso redesenha; vazia seguida de vazia nao (p1-18)', async ($, on) => {
+  const preenchido: string[] = []
+  let lista: unknown[] = []
+  const contagem = faixaComBotoes(on, () => lista, preenchido)
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  expect(contagem.invalidou).toBe(0)
+  lista = [BOTOES[2]]
+  await $.turn.complete({ turnId: 't2', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  expect(contagem.invalidou).toBe(1)
+  lista = []
+  await $.turn.complete({ turnId: 't3', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  expect(contagem.invalidou).toBe(2)
+  const ui = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  expect(await ui.find({ key: 'esquadro-faixa' })).toBeUndefined()
+  await ui.unmount()
+})
+
+// Plano 083 (p1-18): o aviso do clique que falhou so sai no turno do agente principal; o de subagente nao o apaga.
+test('botoes: o aviso do clique que falhou fica no turno de subagente e sai no do agente principal (p1-18)', async ($, on) => {
+  const preenchido: string[] = []
+  faixaComBotoes(on, () => [BOTOES[1]], preenchido, [], true)
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  const ui = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  await ui.press({ key: 'esquadro-revisar' })
+  await ui.unmount()
+  await $.turn.complete({ turnId: 't2', answer: 'relatorio', durationMs: 10, isAborted: false, usage: null, agentId: 'ag1' })
+  const sub = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  expect(await sub.find({ type: 'Text', text: /consegui escrever/ })).toBeDefined()
+  expect(await sub.find({ key: 'esquadro-revisar' })).toBeUndefined()
+  await sub.unmount()
+  await $.turn.complete({ turnId: 't3', answer: 'ok', durationMs: 10, isAborted: false, usage: null })
+  const principal = await $.ui.mount({ ...BANDA, surface: 'terminal' })
+  expect(await principal.find({ type: 'Text', text: /consegui escrever/ })).toBeUndefined()
+  expect(await principal.find({ key: 'esquadro-revisar' })).toBeDefined()
+  await principal.unmount()
+})
+
+// Plano 083 (sobra 4): o tool.call so olha. Com o .catch, o gancho que falha deixa a chamada seguir com o resultado
+// de baixo, igual ao gancho que nao falha.
+test('tool.call: a chamada segue com o resultado de baixo (o gancho so olha)', async ($, on) => {
+  on('tool.call', () => ({ result: 'de baixo' }))
+  const r: any = await $.tool.call({ tool: 'Skill', skill: 'esquadro:padrao' })
+  expect(r.result).toBe('de baixo')
+  const outro: any = await $.tool.call({ tool: 'Read', file_path: '/x' } as any)
+  expect(outro.result).toBe('de baixo')
+})
+
 // Plano 082 (p5-3): a linha do plano so era checada como string; so espacos desenhava a faixa vazia e a quebra de
 // linha partia a faixa. Agora espaco em volta sai e espaco por dentro vira um so.
 test('faixa: plano so com espacos nao desenha; quebra de linha vira espaco', async ($, on) => {

@@ -25,15 +25,21 @@ function ehObjeto(v) { return !!v && typeof v === 'object' && !Array.isArray(v);
 
 /**
  * Plano 082 (p1-33): a fusao por chave de `a` com `b` (b vence), chave a chave como dado. O Object.assign tratava a
- * chave propria "__proto__" que o JSON.parse cria como o setter: trocava o prototipo e a chave sumia.
+ * chave propria "__proto__" que o JSON.parse cria como o setter: trocava o prototipo e a chave sumia. Lado nulo ou
+ * ausente nao tem chave a fundir (p4-4): vale o outro.
  */
 function fundir(a, b) {
   const r = {};
   for (const o of [a, b]) {
+    if (o === null || o === undefined) continue;
     for (const k of Object.keys(o)) Object.defineProperty(r, k, { value: o[k], enumerable: true, writable: true, configurable: true });
   }
   return r;
 }
+
+// Plano 083 (sobra 2): `referencias: {}` e a resposta "nunca" do init; no re-init ela troca a chave inteira. Nos
+// outros objetos de FUNDE_POR_CHAVE, `{}` segue sem apagar nada (o que nao se perguntou, preserva).
+const VAZIO_SUBSTITUI = ['referencias'];
 
 // As listas que os portoes LEEM de verdade. O aviso de tipo e estreito de
 // proposito (D101): so campo que muda decisao de portao, e so quando o TIPO
@@ -329,7 +335,9 @@ function atualizar(antigo, respostas, hoje) {
   const r = (respostas && typeof respostas === 'object') ? respostas : {};
   const data = ehData(hoje) ? hoje : new Date().toISOString().slice(0, 10);
 
-  const novas = Object.assign({}, r);
+  // p4-3 (seguranca): copia chave a chave como dado. O Object.assign tratava o "__proto__" proprio do JSON.parse como o
+  // setter: o prototipo de `novas` virava o objeto da resposta, e um `degraus` herdado dele gerava `agentes`.
+  const novas = fundir({}, r);
   if (novas.degraus !== undefined) {
     novas.agentes = degrausLib.paraProjeto(novas.degraus);
     delete novas.degraus;
@@ -347,7 +355,8 @@ function atualizar(antigo, respostas, hoje) {
     // F1-C01: resposta parcial de objeto se funde por chave; trocar o objeto inteiro
     // apagava as chaves que a entrevista nao repetiu (regra unica: o que nao se perguntou, preserva).
     let valor = novas[chave];
-    if (FUNDE_POR_CHAVE.indexOf(chave) !== -1 && ehObjeto(valor) && ehObjeto(base[chave])) {
+    const vazioSubstitui = VAZIO_SUBSTITUI.indexOf(chave) !== -1 && ehObjeto(valor) && Object.keys(valor).length === 0;
+    if (FUNDE_POR_CHAVE.indexOf(chave) !== -1 && ehObjeto(valor) && ehObjeto(base[chave]) && !vazioSubstitui) {
       valor = fundir(base[chave], valor);
     }
     if (JSON.stringify(base[chave]) === JSON.stringify(valor)) continue;
@@ -413,5 +422,5 @@ function motivoInerte(inertes) {
 
 module.exports = {
   MARCHAS, AMEACAS, CHAVES, TRAVAS, LISTAS_LIDAS, CHAVES_LIGA_DESLIGA, CHAVES_OPCIONAIS, TIPOS_REFERENCIA,
-  travasDe, avisosDeTipo, intocaveisInertes, motivoInerte, validar, montar, atualizar
+  travasDe, avisosDeTipo, intocaveisInertes, motivoInerte, validar, montar, atualizar, fundir
 };

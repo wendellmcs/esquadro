@@ -173,8 +173,8 @@ irmão acima.
 
 ### 4.2 Lentes distintas, não inspetores repetidos
 
-O fan-out usa **lentes diferentes**, uma por inspetor. Cópias do mesmo revisor encontram o mesmo
-problema várias vezes; lentes distintas encontram classes distintas de problema. São duas famílias,
+Mandar vários inspetores ao mesmo tempo (o *fan-out*) usa **lentes diferentes**, uma por inspetor.
+Cópias do mesmo revisor encontram o mesmo problema várias vezes; lentes distintas encontram classes distintas de problema. São duas famílias,
 que convivem e não se fundem: as **nove lentes de código**, em `LENTES`, e as **oito lentes de
 tela**, abaixo, em `LENTES_UI`, as duas listas em `scripts/lib/veredito.js` do plugin. Quais vão
 depende do que a mudança toca: só código, as nove de código; só tela, as oito de tela; código e

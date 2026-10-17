@@ -1,6 +1,7 @@
 'use strict';
 const glob = require('./glob.js');
 const caminhoLib = require('./caminho.js');
+const { entreAspas } = require('./texto.js');
 
 const EXTENSOES_ESTILO = ['.css', '.scss', '.sass', '.less', '.styl'];
 
@@ -264,12 +265,13 @@ function motivo(alvo, fora, sistema) {
     'esquadro - valor fora do design system deste projeto.',
     '',
     'Estes valores nao estao no sistema declarado (.claude/esquadro/design.json):',
-    '  - "' + alvo + '"'
+    '  - ' + entreAspas(alvo)
   ];
   for (const f of fora.slice(0, 12)) {
     linhas.push('      linha ' + f.linha + ': ' + f.valor + ' (' + f.tipo + ')');
   }
   if (fora.length > 12) linhas.push('      ... e mais ' + (fora.length - 12));
+  linhas.push('');
   linhas.push('O que existe no sistema:');
   linhas.push('  cores:   ' + (sistema.cores || []).slice(0, 10).join(' '));
   linhas.push('  raios:   ' + (sistema.raios || []).join(' '));
@@ -842,7 +844,7 @@ function motivoShell(alvos) {
     '',
     'Arquivo' + (alvos.length > 1 ? 's' : '') + ':'
   ];
-  for (const a of alvos.slice(0, 12)) linhas.push('  - "' + a + '"');
+  for (const a of alvos.slice(0, 12)) linhas.push('  - ' + entreAspas(a));
   if (alvos.length > 12) linhas.push('  - ... e mais ' + (alvos.length - 12));
   // D396 n. 14: o porque da negacao, sem ensinar desvio
   linhas.push('Por que: o esquadro nao le o conteudo que um comando de shell vai gravar, entao nao confere os tokens');

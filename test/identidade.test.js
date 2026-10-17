@@ -47,6 +47,26 @@ test('identidade: o mod repete as duas cores da lib (fonte unica conferida)', ()
   assert.deepStrictEqual(cruas, []);
 });
 
+// Plano 083 (p1-19): o texto com acento que o mod mostra (D532: faixa, status e resposta de comando desenham acento
+// inteiro). Cada um em NFC (o "a" + til combinante sai quebrado em terminal), sem mojibake e sem BOM, e cada um fixado
+// por igualdade em hooks/mods.test.ts, que roda contra o motor (claude plugin test).
+test('083 T5 (p1-19): as strings acentuadas do mod sao NFC, sem mojibake, e cada uma tem teste exato no mods.test.ts', () => {
+  const mod = ler('hooks/mods.tsx');
+  const testes = ler('hooks/mods.test.ts');
+  assert.ok(mod.charCodeAt(0) !== 0xfeff, 'mods.tsx sem BOM');
+  assert.strictEqual(mod, mod.normalize('NFC'), 'mods.tsx em NFC');
+  assert.doesNotMatch(mod, /Ã|Â|�/, 'mojibake no mods.tsx');
+  const literais = [];
+  for (const m of mod.matchAll(/'([^'\n]*)'/g)) if (/[^\x00-\x7F]/.test(m[1])) literais.push(m[1]);
+  assert.deepStrictEqual(literais, [
+    'medidor parado: o Node.js não respondeu. Rode node -v num terminal para conferir.',
+    'Medidor parado: o Node.js não respondeu. Rode **node -v** num terminal para conferir.',
+    'Painel do plano parado: o Node.js não respondeu. Rode **node -v** num terminal para conferir.',
+    'Não consegui escrever no prompt. Digite '
+  ]);
+  for (const l of literais) assert.ok(testes.indexOf(l) !== -1, 'sem teste exato no mods.test.ts: ' + l);
+});
+
 test('identidade: o README tem a secao "Aparencia" com as duas cores e a regra por tela', () => {
   const readme = ler('README.md');
   const i = readme.indexOf('### Aparência');

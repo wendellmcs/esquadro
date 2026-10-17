@@ -251,7 +251,11 @@ function lerVereditos(nomeRonda, partes, comReferencia, lentesDaOrdemNormal) {
   if (arquivos === null) return [];
   if (arquivos.length === 0) {
     // Plano 082, Tarefa 5 (p2-32): sem giria; diz o que e a ordem trocada, o pacote, as lentes que faltam e o efeito.
-    const lentes = (lentesDaOrdemNormal || []).filter(function (l) { return typeof l === 'string' && l; });
+    // p5-2: cada lente uma vez; o veredito da ordem normal que nao se leu (null) nao tem lente para dizer, e e contado.
+    const daOrdemNormal = lentesDaOrdemNormal || [];
+    const comLente = daOrdemNormal.filter(function (l) { return typeof l === 'string' && l; });
+    const lentes = comLente.filter(function (l, i) { return comLente.indexOf(l) === i; });
+    const semLente = daOrdemNormal.length - comLente.length;
     const pacote = [baseRel, nomeRonda].join('/') + '/';
     // p2-29: as duas pastas que se leem aqui sao ['N', 'vereditos'] e ['N', 'invertida', 'vereditos'] (A e B trocados).
     const daOrdemTrocada = partes[1] === 'invertida';
@@ -260,6 +264,9 @@ function lerVereditos(nomeRonda, partes, comReferencia, lentesDaOrdemNormal) {
         'nao tem nenhum .json. Esta ronda tem referencia (R.txt), e cada lente julga duas vezes: na ordem normal e com os ' +
         'lados trocados (o pacote ' + pacote + 'invertida/A.txt e invertida/B.txt). Sem os dois julgamentos, esta ronda ' +
         'nao se apura.' + (lentes.length ? ' Lentes que faltam com os lados trocados: ' + lentes.join(', ') + '.' : '') +
+        (semLente ? ' Falta tambem a lente de ' + (semLente === 1 ? '1 veredito' : semLente + ' vereditos') + ' da ordem ' +
+          'normal que nao se ' + (semLente === 1 ? 'leu' : 'leram') + ' (o ERRO de veredito ilegivel ou invalido, abaixo, ' +
+          'diz qual).' : '') +
         ' Grave o veredito de cada uma em ' + dirRel + ' (Passo 2 do /esquadro:revisar) e rode este comando de novo.'
       : 'ERRO: a ronda ' + Number(nomeRonda) + ' nao tem nenhum veredito: ' + dirRel + ' nao existe ou ' +
         'nao tem nenhum .json. Grave os vereditos dela (Passo 2 do /esquadro:revisar) ou, se a ronda foi preparada ' +
@@ -279,9 +286,17 @@ function lerVereditos(nomeRonda, partes, comReferencia, lentesDaOrdemNormal) {
   });
 }
 
-/** p2-28: a pasta tem ao menos um .json (pasta ausente ou que nao se le: nao tem). */
-function temVeredito(dir) {
-  try { return fs.readdirSync(dir).some(function (f) { return f.endsWith('.json'); }); } catch (err) { return false; }
+/**
+ * p2-28: a pasta tem ao menos um .json. So a pasta que nao existe (ENOENT) nao tem; a que nao se le por outra causa
+ * vai para os erros com a causa (p5-5), senao o voto dela sumiria calado, que e o que o p2-28 existe para evitar.
+ */
+function temVeredito(dir, dirRel) {
+  try { return fs.readdirSync(dir).some(function (f) { return f.endsWith('.json'); }); } catch (err) {
+    if (err && err.code === 'ENOENT') return false;
+    semVeredito.push('ERRO: nao consegui ler ' + dirRel + ' (' + textoLib.causaDoErro(err) + '). Confira essa pasta e ' +
+      'rode este comando de novo.');
+    return false;
+  }
 }
 
 const rondas = pastas
@@ -298,7 +313,8 @@ const rondas = pastas
     if (mapaInv && mj.identico === true) mapaInv = { A: 'trabalho', B: 'trabalho' };
     if (!mapa) semMapa.push(Number(e.name));
     // Plano 082 (p2-28): sem `invertida` no mapa.json a pasta invertida/vereditos/ nunca se le; o voto dela nao some calado.
-    if (!mapaInv && temVeredito(path.join(base, e.name, 'invertida', 'vereditos'))) {
+    if (!mapaInv && temVeredito(path.join(base, e.name, 'invertida', 'vereditos'),
+      [baseRel, e.name, 'invertida', 'vereditos'].join('/') + '/')) {
       const ronda = [baseRel, e.name].join('/') + '/';
       semVeredito.push('ERRO: a ronda ' + Number(e.name) + ' tem vereditos com A e B trocados em ' + ronda +
         'invertida/vereditos/, mas o mapa.json dela nao tem "invertida": eles nao entrariam na conta. Se a ronda tem ' +

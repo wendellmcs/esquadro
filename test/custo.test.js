@@ -67,3 +67,12 @@ test('custo: o portao passa a opinar exatamente no degraus.MINIMO, o limite que 
   assert.strictEqual(custo.permitido('agente-' + (MIN - 1), 'rapida', projeto(MIN)).ok, false,
     'com ' + MIN + ' nomes o do topo em marcha rapida e barrado');
 });
+
+// Plano 083 (p2-1): o nome do agente e os da escada com aspa ou quebra nao deformam o aviso.
+test('083 T6 (p2-1): tipo e nomes da escada com aspa ou quebra saem escapados, numa linha so', () => {
+  const r = custo.permitido('ca"ro\nx', 'rapida', { agentes: { escada: ['barato', 'me"dio', 'ca"ro\nx'] } });
+  assert.strictEqual(r.ok, false);
+  const l = r.motivo.split('\n');
+  assert.ok(l.some((x) => x.indexOf('Voce despachou "ca\\"ro x", da metade') === 0), r.motivo);
+  assert.ok(l.indexOf('  - "me\\"dio"') !== -1 && l.indexOf('  - "ca\\"ro x"') !== -1, r.motivo);
+});

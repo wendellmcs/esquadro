@@ -49,7 +49,8 @@ test('sessao.js: sem estado e sem projeto -> limiares padrao, nada cruzou', () =
   cenario(function (c) {
     const r = rodar(c, { uso: USO, amostras: [], sessao: 'nao-existe' });
     assert.strictEqual(r.cruzou, false);
-    assert.ok(/ · troca 0 de 7$/.test(r.curta), r.curta);
+    // D445: o contexto ao vivo (46.900 de 175.000) e o sinal mais perto - pedido 71 (D544).
+    assert.ok(/ · troca de chat em 128 mil tokens$/.test(r.curta), r.curta);
   });
 });
 
@@ -64,7 +65,7 @@ test('sessao.js: aviso ja dado na sessao aparece no medidor', () => {
 test('sessao.js: entrada que nao e JSON -> saida 0, curta mesmo assim e o erro dito', () => {
   cenario(function (c) {
     const r = rodar(c, 'isto nao e json');
-    assert.ok(typeof r.curta === 'string' && /(^| · )troca 0 de 7$/.test(r.curta), JSON.stringify(r));
+    assert.ok(typeof r.curta === 'string' && /(^| · )troca de chat em 15 respostas com trabalho real$/.test(r.curta), JSON.stringify(r));
     assert.ok(typeof r.erro === 'string' && r.erro.length > 0, JSON.stringify(r));
   });
 });

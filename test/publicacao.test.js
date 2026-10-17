@@ -43,7 +43,8 @@ const CHANGELOG = ler('CHANGELOG.md');
 const README = ler('README.md');
 
 const NUMEROS = {
-  'tres': 3, 'quatro': 4,
+  // Plano 083, Tarefa 7 (sobra 3): o CHANGELOG antigo ganhou acento ("teto de três rondas").
+  'tres': 3, 'três': 3, 'quatro': 4,
   'cinco': 5, 'seis': 6, 'sete': 7, 'oito': 8, 'nove': 9, 'dez': 10,
   'onze': 11, 'doze': 12, 'treze': 13, 'quatorze': 14, 'quinze': 15,
   'dezesseis': 16, 'dezessete': 17
@@ -374,7 +375,7 @@ test('publicacao: as perguntas do init sao as que o CHANGELOG e o README contam'
     'pergunta sem campo do projeto.json: ' + campos.join(', '));
   assert.strictEqual(new Set(campos).size, perguntas.length, 'duas perguntas gravam o mesmo campo');
 
-  const ch = CHANGELOG.match(/faz \*\*(\S+)\*\* perguntas[\s\S]*?a (\S+) e a escada de agentes/);
+  const ch = CHANGELOG.match(/faz \*\*(\S+)\*\* perguntas[\s\S]*?a (\S+) [eé] a escada de agentes/);
   assert.ok(ch, 'o CHANGELOG nao diz quantas perguntas o init faz');
   assert.strictEqual(NUMEROS[ch[1].toLowerCase()], perguntas.length, 'o CHANGELOG conta outras perguntas');
   assert.strictEqual(ORDINAIS[ch[2].toLowerCase()], campos.indexOf('agentes') + 1,
@@ -408,7 +409,7 @@ test('publicacao: o limite de unidades do portao de design esta escrito, com as 
   const naoPromete = README.split(/^## /m).filter((s) => s.indexOf('NÃO promete') !== -1)[0] || '';
   const item = naoPromete.split('\n').filter((l) => /^- \*\*/.test(l) && /design/.test(l))[0];
   assert.ok(item, 'o README nao declara o limite do portao de design no que nao promete');
-  const par = CHANGELOG.split(/\n\s*\n/).filter((p) => /^Modulo opcional/.test(p))[0];
+  const par = CHANGELOG.split(/\n\s*\n/).filter((p) => /^M[oó]dulo opcional/.test(p))[0];
   assert.ok(par, 'sumiu do CHANGELOG o paragrafo do modulo de design');
   for (const [nome, texto] of [['README', item], ['CHANGELOG', par]]) {
     for (const u of design.UNIDADES.concat(['%'])) {

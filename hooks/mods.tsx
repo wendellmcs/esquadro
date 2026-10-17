@@ -36,7 +36,8 @@ const amostras: Amostra[] = []
 let linhaDoPlano = ''
 let botoes: Botao[] = []
 const usados = new Set<string>()
-// Plano 082 (p5-25): o botao cujo clique nao preencheu o prompt; a faixa diz o comando a digitar ate o turno seguinte.
+// O botao cujo clique nao preencheu o prompt: a faixa diz o comando a digitar ate o turno seguinte, para a pessoa nao
+// ficar sem o passo quando o motor recusa o preenchimento.
 let falhou: Botao | null = null
 let ultimaResposta = ''
 let padraoCarregado = false
@@ -79,7 +80,7 @@ async function medir($: any): Promise<Medida | null> {
 /** Pedido 32: o botao a desenhar - o primeiro da lista (ordem de prioridade do script) ainda nao usado. */
 function botaoDaVez(): Botao | null {
   for (const b of botoes) {
-    // Plano 082 (p5-8): sem texto ou rotulo de verdade o botao saia sem nome e com "undefined "; fica de fora.
+    // Sem texto ou rotulo de verdade o botao sairia sem nome e com "undefined " na frente: fica de fora.
     if (b && typeof b.nome === 'string' && !usados.has(b.nome) && typeof b.comando === 'string' &&
       COMANDO_DO_ESQUADRO.test(b.comando) && typeof b.texto === 'string' && typeof b.rotulo === 'string' &&
       b.rotulo.trim() !== '') return b
@@ -87,7 +88,8 @@ function botaoDaVez(): Botao | null {
   return null
 }
 
-// Plano 082 (p5-10): o mesmo botao campo a campo (o que a faixa desenha), sem depender da ordem das chaves.
+// O mesmo botao campo a campo (o que a faixa desenha), sem depender da ordem das chaves: o script pode devolver o mesmo
+// botao com as chaves em outra ordem, e isso nao pode redesenhar a faixa.
 function mesmoBotao(a: Botao | null, b: Botao | null): boolean {
   if (!a || !b) return a === b
   return a.nome === b.nome && a.texto === b.texto && a.rotulo === b.rotulo && a.comando === b.comando
@@ -124,17 +126,20 @@ async function atualizar($: any) {
       let m: Medida | null = null
       try { m = await medir($) } catch (err) {}
       if (minha !== geracao) return
-      // Script que falhou (saida diferente de 0, JSON torto, ou a chamada lancou - prazo estourado): o status diz isso em vez de seguir com o numero velho. A faixa fica como
-      // estava; a proxima medida boa a acerta. Plano 082 (p5-17, mock D532): com acento e o passo concreto, sem jargao.
+      // Script que falhou (saida diferente de 0, JSON torto, ou a chamada lancou - prazo estourado): o status diz isso
+      // em vez de seguir com o numero velho. A faixa fica como estava; a proxima medida boa a acerta. O texto leva
+      // acento e o passo concreto, sem jargao (o status desenha acento inteiro: mock aprovado na D532).
       if (!m) {
         await $.ui.status('medidor parado: o Node.js não respondeu. Rode node -v num terminal para conferir.')
         continue
       }
       await $.ui.status(m.curta)
-      // Plano 082 (p5-3): so espacos nao desenha a faixa; quebra de linha e espaco repetido viram um espaco.
+      // So espacos nao desenha a faixa (sairia uma caixa vazia); quebra de linha e espaco repetido viram um espaco, senao
+      // a quebra partiria a linha do plano em duas.
       const plano = typeof m.plano === 'string' ? m.plano.replace(/\s+/g, ' ').trim() : ''
       const novos = Array.isArray(m.botoes) ? m.botoes : []
-      // Plano 082 (p5-4): o de antes e o que esta na tela, entao vem antes da poda dos usados.
+      // O de antes e o que esta na tela, entao vem antes da poda dos usados: depois dela, o usado que saiu da lista
+      // "voltaria" no calculo e a faixa redesenharia sem nada mudar.
       const antes = botaoDaVez()
       // O usado volta a valer quando o sinal dele passa (o nome some da lista): se acender de novo, aparece.
       const nomes = novos.map(b => b && b.nome)
@@ -155,7 +160,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
     // A doc manda: register que lanca (nome tomado) pula o resto do gancho - cada um no seu try.
-    // Plano 082 (p5-19): a descricao no menu sem jargao; em ASCII - a sonda da T1 nao provou acento no menu.
+    // A descricao no menu, sem jargao, fica em ASCII: a sonda que provou o acento na faixa (D532) nao o provou no menu.
     try {
       await $.command.register({ name: 'esquadro-sessao', description: 'esquadro: uso da conversa e dos limites de 5 horas e da semana, gasto e quando trocar de chat' })
     } catch (err) {}
@@ -172,22 +177,23 @@ export const register: Register = on => {
   })
 
   // Pedido 32: o botao do padrao some quando a skill do manual (esquadro:padrao, ou a do projeto com "padrao" no
-  // nome) e carregada pelo agente principal. So olha; a chamada segue igual.
+  // nome) e carregada pelo agente principal. So olha; a chamada segue igual. O `.catch` diz isso ao motor: se o gancho
+  // falhar, a chamada segue (next(e) repete o que ja rodou, sem rodar duas vezes) - quem so olha nunca recusa.
   on('tool.call', async ($, e: any, next) => {
     try {
-      // Plano 082 (p5-5): o campo conferido nos tipos do motor (2.1.301, ToolCallEnvelope) - os argumentos da ferramenta
-      // vem ao lado do `tool`, `e.skill`; nao ha `e.input`. Sem texto, nada (String(undefined) nao entra).
+      // O campo, conferido nos tipos do motor (2.1.301, ToolCallEnvelope): os argumentos da ferramenta vem ao lado do
+      // `tool`, `e.skill`; nao ha `e.input`. Sem texto, nada (String(undefined) nao entra).
       if (!e.agentId && e.tool === 'Skill' && typeof e.skill === 'string' && /padrao/i.test(e.skill)) padraoCarregado = true
     } catch (err) {}
     return next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   on('turn.complete', async ($, e, next) => {
     const r = await next(e)
     try {
       // Pedido 32: a resposta do agente principal vai ao sessao.js (o gatilho do paralelo); a de subagente, nao.
       if (!e.agentId) ultimaResposta = String(e.answer || '').slice(-MAX_RESPOSTA)
-      // Plano 082 (p5-25): o aviso do clique que falhou dura ate o turno seguinte; o botao volta, se o sinal seguir.
+      // O aviso do clique que falhou dura ate o turno seguinte do agente principal; o botao volta, se o sinal seguir.
       if (!e.agentId && falhou) { falhou = null; try { await $.ui.invalidate('ui.render') } catch (err) {} }
     } catch (err) {}
     try {
@@ -203,8 +209,8 @@ export const register: Register = on => {
   on('command.run', { command: 'esquadro-sessao' }, async $ => {
     let m: Medida | null = null
     try { m = await medir($) } catch (err) {}
-    // Sem "esquadro:" na frente: o motor ja escreve o nome do plugin antes da resposta. Plano 082 (achado da s60, mock
-    // S3): o passo concreto, como no status, com acento (D532: a resposta do comando desenha inteiro).
+    // Sem "esquadro:" na frente: o motor ja escreve o nome do plugin antes da resposta. O passo concreto, como no
+    // status, com acento (D532: a resposta do comando desenha acento inteiro).
     return { text: m ? m.longa : 'Medidor parado: o Node.js não respondeu. Rode **node -v** num terminal para conferir.' }
   })
 
@@ -248,13 +254,13 @@ export const register: Register = on => {
           <Box key="esquadro-botao">
             {linhaDoPlano ? null : marca}
             <Text>{b.texto + ' '}</Text>
-            {/* D532 (sonda da T1 do plano 082): todo botao `primary` - o `secondary` sai azul igual no VS Code. */}
+            {/* Todo botao `primary`: a sonda da D532 viu o `secondary` sair azul igual no VS Code. */}
             <Button
               key={'esquadro-' + b.nome}
               label={b.rotulo}
               variant="primary"
               onPress={async () => {
-                // So conta como usado depois de preencher. Prompt que falha (p5-25): a faixa diz o comando a digitar.
+                // So conta como usado depois de preencher. Prompt que falha: a faixa diz o comando a digitar.
                 try {
                   await $.prompt.fill({ text: b.comando, mode: 'replace' })
                   usados.add(b.nome)

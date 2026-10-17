@@ -192,6 +192,8 @@ function avaliar(estado, limiares, continuo) {
 
 /** Plano 082, Tarefa 5 (mock S10): o aviso de troca de chat na forma unica dos avisos. Vai ao usuario (systemMessage). */
 function avisoDeSaude(gatilhos, alarme) {
+  // p7-21: sem gatilho nao ha aviso, como no avaliar (a lista nula lancava; a vazia saia um alarme sem motivo).
+  if (!Array.isArray(gatilhos) || gatilhos.length === 0) return null;
   const lista = gatilhos.map(function (g) { return '  - ' + g; }).join('\n');
   return (alarme ? [
     'esquadro - ALARME: troque de chat agora; esta conversa ficou cara demais.',

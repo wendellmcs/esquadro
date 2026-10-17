@@ -360,3 +360,15 @@ test('design S5: fragmento que comeca no meio de um comentario de bloco', () => 
   assert.deepStrictEqual(crus('* { padding: 13px }'), ['13px@1'], 'seletor universal segue acusado (S52-des-1)');
   assert.deepStrictEqual(crus('a { color: #f00 }\n/* nota */ b { color: #0f0 }'), ['#f00@1', '#0f0@2'], 'primeiro delimitador `/*`: nao e fragmento');
 });
+
+// Plano 083 (p7-5, p7-6): o alvo com aspa ou quebra de linha nao deforma o aviso; linha em branco antes de "O que
+// existe no sistema:".
+test('083 T6 (p7-5, p7-6): alvo com aspa ou quebra fica numa linha so e escapado; branco antes do sistema', () => {
+  const r = design.conferir('.a{color:#00ff00;}', DESIGN);
+  const m = design.motivo('a"b\nc.css', r.fora, DESIGN).split('\n');
+  assert.ok(m.indexOf('  - "a\\"b c.css"') !== -1, m.join('\n'));
+  const i = m.indexOf('O que existe no sistema:');
+  assert.strictEqual(m[i - 1], '', m.join('\n'));
+  const s = design.motivoShell(['a"b.css', 'x\ny.scss']).split('\n');
+  assert.ok(s.indexOf('  - "a\\"b.css"') !== -1 && s.indexOf('  - "x y.scss"') !== -1, s.join('\n'));
+});

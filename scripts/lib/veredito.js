@@ -163,6 +163,11 @@ function linhaDoAchado(linha) {
   return Number.isSafeInteger(n) && n >= 1 ? n : null;
 }
 
+/** O comeco da descricao do achado descartado, para a mensagem; sem descricao, diz isso (e nao "undefined"). */
+function trechoDaDescricao(d) {
+  return d === undefined || d === null || String(d).trim() === '' ? '(sem descricao)' : String(d).slice(0, 60);
+}
+
 /**
  * Os erros do veredito e os achados (e lacunas) que valem. opcoes: as do errosDoVeredito - com comReferencia, as
  * lacunas sao conferidas e sobem em lacunasValidas; sem ela, lacunasValidas sai vazia mesmo que o veredito traga
@@ -184,7 +189,7 @@ function validarVeredito(vd, opcoes) {
     // RV-03 (D422): "42" e "40-45" tambem sao arquivo:linha - viram 42 e 40 (o menor do intervalo). Sem numero, segue descartado.
     const linha = linhaDoAchado(a.linha);
     if (!a.arquivo || linha === null) {
-      erros.push('achado sem arquivo:linha valido (a linha e um numero inteiro a partir de 1; "42" e "40-45" tambem valem; sem numero nenhum, nao conta), descartado: ' +String(a.descricao).slice(0, 60));
+      erros.push('achado sem arquivo:linha valido (a linha e um numero inteiro a partir de 1; "42" e "40-45" tambem valem; sem numero nenhum, nao conta), descartado: ' + trechoDaDescricao(a.descricao));
       continue;
     }
     if (!a.descricao || String(a.descricao).trim() === '') {
@@ -203,7 +208,7 @@ function validarVeredito(vd, opcoes) {
       const linha = linhaDoAchado(l.linha);
       if (rotuloDoArquivo(l.arquivo) === null || linha === null) {
         erros.push('lacuna sem arquivo:linha valido (o arquivo e A.txt ou B.txt, o lado que fica atras da referencia), ' +
-          'descartada: ' + String(l.descricao).slice(0, 60));
+          'descartada: ' + trechoDaDescricao(l.descricao));
         continue;
       }
       if (!l.descricao || String(l.descricao).trim() === '') {
@@ -290,14 +295,15 @@ const PESO_REFERENCIA = { vence: 0, empata: 1, perde: 2 };
 
 /**
  * D503 (E6): o resultado do lado trabalho contra a referencia numa passada: o pior dos lados que o mapa diz trabalho
- * (os dois, quando o arquivo e identico ao HEAD). null quando nenhum lado e trabalho.
+ * (os dois, quando o arquivo e identico ao HEAD). null quando nenhum lado e trabalho. O mapa chega sempre conferido:
+ * o apurar recusa a ronda com referencia cujo mapa nao passa no mapaDoTrabalho antes de chamar esta funcao.
  */
 function vsDoTrabalho(vs, mapa) {
   let pior = null;
-  ['A', 'B'].forEach(function (rot) {
-    if (!mapa || mapa[rot] !== 'trabalho') return;
+  for (const rot of ['A', 'B']) {
+    if (mapa[rot] !== 'trabalho') continue;
     if (pior === null || PESO_REFERENCIA[vs[rot]] > PESO_REFERENCIA[pior]) pior = vs[rot];
-  });
+  }
   return pior;
 }
 
@@ -450,12 +456,12 @@ function apurar(rondas, opcoes) {
         'a ordem trocada e metade do voto; grave os vereditos da 2a passada e rode de novo');
     }
     if (comReferencia) {
-      [[mapa, ''], [inv.mapa, ' (com A e B trocados)']].forEach(function (par) {
-        if (mapaDoTrabalho(par[0])) return;
-        throw new Error('ronda ' + (indice + 1) + par[1] + ' sem o mapa que diz qual lado e o trabalho ({ "A": "trabalho" ' +
+      for (const [mapaDaPassada, ordem] of [[mapa, ''], [inv.mapa, ' (com A e B trocados)']]) {
+        if (mapaDoTrabalho(mapaDaPassada)) continue;
+        throw new Error('ronda ' + (indice + 1) + ordem + ' sem o mapa que diz qual lado e o trabalho ({ "A": "trabalho" ' +
           'ou "HEAD", "B": ... }, com ao menos um trabalho): sem ele a comparacao com a referencia nunca fecha. Prepare ' +
           'a ronda de novo (Passo 1 do /esquadro:revisar) e rode de novo');
-      });
+      }
     }
     const mapaInv = comReferencia ? inv.mapa : null;
     const daRonda = new Map();

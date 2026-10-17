@@ -1452,6 +1452,39 @@ test('082 T6 (p2-28): vereditos com A e B trocados numa ronda sem `invertida` no
   }));
 });
 
+// Plano 083 (p5-5): so a pasta que nao existe (ENOENT) e "sem veredito"; a que nao se le por outra causa para, com a causa.
+test('083 T5 (p5-5): invertida/vereditos que nao se le (e um arquivo) numa ronda sem `invertida` para com a causa', () => {
+  comTmp((tmp) => comTmp((cwd) => {
+    gravarMapa(cwd, 1, { A: 'trabalho', B: 'HEAD' });
+    gravarRonda(cwd, 1, [{ lente: 'correcao', melhor: 'A', achados: [] }]);
+    const inv = path.join(cwd, '.claude', 'esquadro', 'revisao', '1', 'invertida');
+    fs.mkdirSync(inv, { recursive: true });
+    const r0 = rodar(['--sessao', 'ref10'], cwd, tmp);
+    assert.strictEqual(r0.status, 0, 'invertida/ sem vereditos/ (ENOENT) nao perde voto: ' + r0.stdout);
+    fs.writeFileSync(path.join(inv, 'vereditos'), 'nao e pasta', 'utf8');
+    const r = rodar(['--sessao', 'ref10'], cwd, tmp);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.ok(r.stdout.includes('ERRO: nao consegui ler .claude/esquadro/revisao/1/invertida/vereditos/ ('), r.stdout);
+    assert.match(r.stdout, /ENOTDIR/, r.stdout);
+  }));
+});
+
+// Plano 083 (p5-2): as lentes que faltam com os lados trocados saem sem repeticao, e o veredito da ordem normal que
+// nao se leu (ilegivel) e dito, em vez de sumir da lista.
+test('083 T5 (p5-2): lente repetida sai uma vez e o veredito ilegivel da ordem normal e contado na mensagem', () => {
+  comTmp((tmp) => comTmp((cwd) => {
+    gravarRondaRef(cwd, 1, { A: 'trabalho', B: 'HEAD' }, [vdRef('borda', 'vence', 'perde')], []);
+    const vds = path.join(cwd, '.claude', 'esquadro', 'revisao', '1', 'vereditos');
+    fs.writeFileSync(path.join(vds, 'borda-2.json'), JSON.stringify(vdRef('borda', 'vence', 'perde')), 'utf8');
+    fs.writeFileSync(path.join(vds, 'quebrado.json'), '{ nao e json', 'utf8');
+    const r = rodar(['--sessao', 'ref11'], cwd, tmp);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.ok(r.stdout.includes('Lentes que faltam com os lados trocados: borda. Falta tambem a lente de 1 veredito da ' +
+      'ordem normal que nao se leu (o ERRO de veredito ilegivel ou invalido, abaixo, diz qual).'), r.stdout);
+    assert.doesNotMatch(r.stdout, /borda, borda/, r.stdout);
+  }));
+});
+
 test('D503: pelo CLI, veredito sem vsReferencia na ronda com referencia e veredito invalido, nas duas passadas', () => {
   comTmp((tmp) => comTmp((cwd) => {
     gravarRondaRef(cwd, 1, { A: 'trabalho', B: 'HEAD' }, [{ lente: 'correcao', melhor: 'A', achados: [] }],

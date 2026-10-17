@@ -169,6 +169,27 @@ test('082 T6 (p6-2, p6-3): ilegiveis e semPreco saem do estimarMes, do cache e d
   }
 });
 
+// Plano 083 (p2-7): o arquivo que some entre o readdir e o stat tambem conta em `ilegiveis` (antes saia calado).
+test('083 T6 (p2-7): stat que falha conta em ilegiveis', () => {
+  const raiz = arvore();
+  const original = fs.statSync;
+  try {
+    const proj = path.join(raiz, 'c--proj');
+    fs.writeFileSync(path.join(proj, 's9.jsonl'), linha('m9', 'claude-opus-5-5', U, OUT));
+    const mes = { ms: Date.UTC(2026, 9, 1), chave: '2026-10' };
+    const antes = gasto.estimarMes({ raiz: raiz, mes: mes, cache: {}, excluir: [], prazoMs: 5000 });
+    fs.statSync = function (p) {
+      if (path.basename(String(p)) === 's9.jsonl') throw Object.assign(new Error('sumiu'), { code: 'ENOENT' });
+      return original.apply(fs, arguments);
+    };
+    const depois = gasto.estimarMes({ raiz: raiz, mes: mes, cache: {}, excluir: [], prazoMs: 5000 });
+    assert.strictEqual(depois.ilegiveis, antes.ilegiveis + 1, JSON.stringify([antes.ilegiveis, depois.ilegiveis]));
+  } finally {
+    fs.statSync = original;
+    fs.rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
 test('estimarMes: raiz que nao existe da zero, sem lancar', () => {
   const r = gasto.estimarMes({ raiz: path.join(os.tmpdir(), 'nao-existe-esquadro-gasto'), mes: { ms: 0, chave: 'x' },
     cache: {}, excluir: [], prazoMs: 100 });

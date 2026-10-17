@@ -824,6 +824,34 @@ test('T1/F3-03 (D332): funcao chamada antes de definida ainda nao existe e nao n
   assert.ok(shell.cdSolto('f() { cd x; }; f', 'Bash'));
 });
 
+// Plano 083 (p6-30, p6-25): linha em branco depois do "Comando:" e antes do texto que segue a tabela, nas duas
+// tentativas; a opcao 2 e a mesma frase nos dois ramos.
+test('083 T6 (p6-30, p6-25): motivo com linha em branco em volta da tabela e a opcao 2 igual nas duas tentativas', () => {
+  const p = [{ achado: 'head', sugestao: 'Select-Object -First', motivo: 'm' }];
+  const um = shell.motivo('head x', p, 1).split('\n');
+  const dois = shell.motivo('head x', p, 2).split('\n');
+  for (const [nome, l] of [['tentativa 1', um], ['tentativa 2', dois]]) {
+    const i = l.findIndex((x) => x.startsWith('Comando: '));
+    assert.strictEqual(l[i + 1], '', nome + ': linha em branco depois do Comando: ' + l.join('\n'));
+    assert.match(l[i + 2], /^Achado +Use no lugar$/, nome);
+    const fimDaTabela = l.findIndex((x, k) => k > i + 2 && !/^ {2}/.test(x));
+    assert.strictEqual(l[fimDaTabela], '', nome + ': linha em branco depois da tabela: ' + l.join('\n'));
+  }
+  assert.strictEqual(um[um.length - 1], dois[dois.length - 1], 'a opcao 2 e a mesma frase nos dois ramos');
+  assert.match(dois[dois.findIndex((x) => /^Esta e a tentativa 2/.test(x)) - 1], /^$/);
+});
+
+// Plano 083 (p6-24): as opcoes do cd solto saem numeradas 1, 2, 3 em sequencia, com e sem o teto, nos dois idiomas.
+test('083 T6 (p6-24): as opcoes do motivoCdSolto saem numeradas em sequencia nos 4 casos', () => {
+  for (const forma of ['bash', 'powershell']) {
+    for (const teto of [false, true]) {
+      const m = shell.motivoCdSolto('cd x', { forma: forma, achado: 'cd x', teto: teto });
+      const numeros = m.split('\n').filter((l) => /^ {2}\d+\. /.test(l)).map((l) => Number(/\d+/.exec(l)[0]));
+      assert.deepStrictEqual(numeros, teto ? [1, 2, 3] : [1, 2], forma + ' teto ' + teto + ': ' + m);
+    }
+  }
+});
+
 test('T10-7/5: motivo sem sugestao nao imprime undefined, e sem motivo nao ha a linha por que:', () => {
   const semSugestao = shell.motivo('x', [{ achado: 'head', motivo: 'm' }], 1);
   assert.ok(!/undefined/.test(semSugestao), semSugestao);

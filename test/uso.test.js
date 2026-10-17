@@ -17,6 +17,25 @@ test('uso: projeto sem contadores diz que ainda nao ha dado', () => {
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// Plano 083 (p4-30): valor que nao e numero no contadores.json nao entra no sort nem na soma; a linha diz que ele e
+// invalido, e o total e o dos numeros.
+test('083 T6 (p4-30): valor que nao e numero fica fora da soma e da ordem, e a linha diz por que', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-uso-'));
+  try {
+    fs.mkdirSync(path.join(dir, '.claude', 'esquadro'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'contadores.json'),
+      JSON.stringify({ texto: '3', nulo: null, bom: 5, outro: 2 }), 'utf8');
+    const r = spawnSync(process.execPath, [SCRIPT], { cwd: dir, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const linhas = r.stdout.split('\n').filter((l) => l.includes('|'));
+    assert.deepStrictEqual(linhas.map((l) => l.split('|')[1].trim().split(' ')[0]), ['bom', 'outro', 'texto', 'nulo', 'TOTAL']);
+    assert.match(r.stdout, /\| TOTAL\n/);
+    assert.ok(linhas[linhas.length - 1].trim().startsWith('7 |'), r.stdout);
+    assert.ok(linhas.some((l) => /\? \| texto \(nao e numero: "3"\)$/.test(l)), r.stdout);
+    assert.ok(linhas.some((l) => /\? \| nulo \(nao e numero: null\)$/.test(l)), r.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('uso: lista os disparos em ordem decrescente', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-uso-'));
   try {

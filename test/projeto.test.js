@@ -588,3 +588,40 @@ test('082 T6 (p1-33): a fusao por chave guarda a chave "__proto__" do JSON como 
   assert.deepStrictEqual(Object.keys(m).sort(), ['__proto__', 'aaa', 'padrao']);
   assert.deepStrictEqual(m.padrao, ['b/**']);
 });
+
+// Plano 083 (p4-3, SEGURANCA): no topo das respostas, o Object.assign({}, r) tratava a chave propria "__proto__" como o
+// setter. O prototipo das respostas virava o objeto do atacante, e `degraus` (que a pessoa nao mandou) era lido dele e
+// gerava `agentes`. O ataque: a resposta so com "__proto__" nao pode mudar nada alem do geradoEm.
+test('083 T6 (p4-3): "__proto__" no topo das respostas nao injeta degraus herdados nem troca agentes (ataque)', () => {
+  const antes = copia({ agentes: { escada: ['barato', 'caro'] } });
+  const resp = JSON.parse('{"__proto__": {"degraus": [{"nome": "atacante"}], "quemDecide": "atacante"}}');
+  const r = projeto.atualizar(antes, resp, '2026-10-16');
+  assert.deepStrictEqual(r.config.agentes, { escada: ['barato', 'caro'] }, 'agentes veio do prototipo: ' + JSON.stringify(r.config.agentes));
+  assert.notStrictEqual(r.config.quemDecide, 'atacante');
+  assert.deepStrictEqual(r.mudou, ['geradoEm']);
+  assert.deepStrictEqual(r.ignoradas, ['__proto__'], 'a chave estranha e dita, como as outras fora de CHAVES');
+  assert.strictEqual(Object.getPrototypeOf(r.config), Object.prototype);
+});
+
+// Plano 083 (p4-4): fundir se defende de lado nulo (hoje o unico chamador ja confere; a funcao nao dependia disso).
+test('083 T6 (p4-4): fundir com um lado nulo ou ausente devolve a copia do outro, sem TypeError', () => {
+  assert.deepStrictEqual(projeto.fundir(null, { a: 1 }), { a: 1 });
+  assert.deepStrictEqual(projeto.fundir({ a: 1 }, undefined), { a: 1 });
+  assert.deepStrictEqual(projeto.fundir(null, null), {});
+});
+
+// Plano 083 (sobra 2): no re-init, a resposta "nunca" (`referencias: {}`) troca a chave inteira por {} - antes a fusao
+// por tipo guardava os tipos gravados e o "nunca" nao mudava nada. O `{}` dos outros objetos (travas, marchas,
+// limiares) segue sem apagar nada.
+test('083 T6 (sobra 2): re-init com referencias {} vira "nunca" e apaga os tipos; nos outros objetos {} nao apaga', () => {
+  const antes = copia({ referencias: { tela: ['a.png'], codigo: ['b.js'] }, limiares: { x: 1 }, marchas: { aaa: ['c/**'] } });
+  const r = projeto.atualizar(antes, { referencias: {}, limiares: {}, marchas: {} }, '2026-10-16');
+  assert.deepStrictEqual(r.config.referencias, {});
+  assert.ok(r.mudou.includes('referencias'), JSON.stringify(r.mudou));
+  assert.deepStrictEqual(r.config.limiares, { x: 1 }, 'limiares {} nao apaga');
+  assert.deepStrictEqual(r.config.marchas, { aaa: ['c/**'] }, 'marchas {} nao apaga');
+  assert.ok(!r.mudou.includes('limiares') && !r.mudou.includes('marchas'), JSON.stringify(r.mudou));
+  // a resposta com algum tipo segue fundindo
+  const f = projeto.atualizar(copia({ referencias: { tela: ['a.png'] } }), { referencias: { texto: ['R.md'] } }, '2026-10-16');
+  assert.deepStrictEqual(f.config.referencias, { tela: ['a.png'], texto: ['R.md'] });
+});

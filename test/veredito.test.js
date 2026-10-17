@@ -107,6 +107,18 @@ test('veredito: achado sem arquivo:linha nao conta (anti-teatro)', () => {
   assert.ok(r.erros.some((e) => e.includes('arquivo')));
 });
 
+// Plano 083 (p5-20): o descarte sem descricao nao imprime "undefined"; com descricao, segue o trecho dela.
+test('083 T5 (p5-20): achado e lacuna sem arquivo:linha e sem descricao dizem "(sem descricao)", nao "undefined"', () => {
+  const r = v.validarVeredito(comRef('correcao', 'vence', 'empata',
+    [{ severidade: 'P1', arquivo: 'A.txt' }, { severidade: 'P1', descricao: 'esta feio' }],
+    [{ severidade: 'P1', arquivo: 'C.txt', linha: 2 }]), { comReferencia: true });
+  assert.ok(r.erros.length === 3, JSON.stringify(r.erros));
+  assert.ok(r.erros.every((e) => e.indexOf('undefined') === -1), JSON.stringify(r.erros));
+  assert.ok(/descartado: \(sem descricao\)$/.test(r.erros[0]), r.erros[0]);
+  assert.ok(/descartado: esta feio$/.test(r.erros[1]), r.erros[1]);
+  assert.ok(/descartada: \(sem descricao\)$/.test(r.erros[2]), r.erros[2]);
+});
+
 test('veredito: severidade fora dos tres niveis e descartada', () => {
   const r = v.validarVeredito(veredito('correcao', [achado('grave', 'A.txt', 3)]));
   assert.strictEqual(r.achadosValidos.length, 0);

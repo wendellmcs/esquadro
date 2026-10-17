@@ -76,8 +76,9 @@ Se não achou nada: `"achados": []`. Isso é resposta legítima e barata — **�
 
 `R.txt` é a **referência de topo**: a melhor peça do mesmo tipo, nomeada pelo projeto. Ela não é cega e
 não é A nem B: é a régua de acabamento. Leia-a também. Ela vem em blocos, um por entrada, cada um com o
-cabeçalho `=== referencia i de n: <entrada> ===`. Linha do conteúdo que começa com `===` vem com uma barra
-na frente, `\===`, para não se passar por cabeçalho: leia-a sem a barra. Bloco que não traz o conteúdo
+cabeçalho `=== referencia i de n: <entrada> ===`. Linha do conteúdo que começa com `===`, ou com barras e
+depois `===`, vem com uma barra a mais na frente (`===` vira `\===`, `\===` vira `\\===`), para não se passar
+por cabeçalho: leia-a sem a primeira barra. Bloco que não traz o conteúdo
 traz uma linha entre parênteses:
 
 - `(imagem ou binario: abra com Read em "<caminho>")` ou `(maior que o teto do R.txt, ...: abra com Read

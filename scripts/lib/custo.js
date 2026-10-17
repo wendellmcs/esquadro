@@ -1,6 +1,7 @@
 'use strict';
 const marchaLib = require('./marcha.js');
 const degraus = require('./degraus.js');
+const { entreAspas } = require('./texto.js');
 
 // Vazia por padrao: sem escada configurada, o portao nao opina.
 // A entrevista pergunta a escada deste projeto e grava em projeto.json:agentes.escada.
@@ -51,10 +52,10 @@ function permitido(tipo, marchaMax, projeto) {
     motivo: [
       'esquadro - agente caro demais para um trabalho simples.',
       '',
-      'Voce despachou "' + tipo + '", da metade mais cara da escada deste projeto, mas o escopo',
+      'Voce despachou ' + entreAspas(tipo) + ', da metade mais cara da escada deste projeto, mas o escopo',
       'declarado so toca caminho de marcha rapida (o nivel de rigor mais leve do projeto.json).',
       'Escada deste projeto, do mais barato ao mais caro:',
-      lista.map(function (a) { return '  - "' + a + '"'; }).join('\n'),
+      lista.map(function (a) { return '  - ' + entreAspas(a); }).join('\n'),
       '',
       'Faca uma destas:',
       '  1. despache um agente mais barato da escada: ele escala sozinho se a tarefa passar do alcance dele;',
