@@ -99,15 +99,21 @@ test('correcao: entrada que nao e texto nunca dispara nem estoura', () => {
   }
 });
 
-test('correcao: INSTRUCAO_DA_CORRECAO e ASCII, curta, e manda atender, oferecer o /esquadro:aprender e NAO gravar', () => {
+test('correcao: INSTRUCAO_DA_CORRECAO e ASCII, curta, e manda atender, RODAR o /esquadro:aprender e perguntar em 3 opcoes (D556/D559)', () => {
   const t = correcao.INSTRUCAO_DA_CORRECAO;
   assert.ok(/^[\x20-\x7E\n]+$/.test(t), 'tem de ser ASCII: ' + JSON.stringify(t));
   assert.ok(t.length < 900, 'instrucao longa demais: ' + t.length);
-  assert.ok(t.indexOf('/esquadro:aprender') !== -1, 'sem o comando');
-  assert.ok(/primeiro/i.test(t) && /atenda/i.test(t), 'nao manda atender o pedido primeiro');
-  assert.ok(/uma linha/i.test(t), 'nao manda oferecer em uma linha');
-  assert.ok(/nao grave|sem gravar|nao grav/i.test(t), 'nao proibe gravar');
-  assert.ok(/relato de bug/i.test(t) && /ignore/i.test(t), 'nao manda ignorar o que nao e correcao');
+  // Plano 091, Tarefa 3 (#2): o texto do mock aprovado (prints-091, D559), linha por linha.
+  assert.strictEqual(t, [
+    'esquadro: a mensagem do usuario parece uma CORRECAO ao seu comportamento.',
+    'Se for, e valer tambem para as proximas vezes, faca nesta mesma resposta:',
+    '1. Atenda o pedido.',
+    '2. Rode /esquadro:aprender: ele monta a regra (gatilho -> acao).',
+    '3. Pergunte pelo AskUserQuestion, em 3 opcoes: gravar como esta (recomendada),',
+    '   ajustar o texto antes, nao gravar.',
+    'So grave com o sim. Se nao for correcao do seu comportamento (relato de bug,',
+    'resposta a uma pergunta sua), ignore este aviso.'
+  ].join('\n'));
 });
 
 test('correcao: a chave sugerirAprender desliga so com false; ausente, outro valor ou sem projeto segue ligado', () => {
@@ -209,4 +215,24 @@ test('correcao (D429/4): linha gigante nao trava (regex linear)', () => {
     correcao.pareceCorrecao(lixo.slice(0, 30000));
   }
   assert.ok(Date.now() - t0 < 500, 'regex lenta: ' + (Date.now() - t0) + ' ms');
+});
+
+// Plano 091 T6: a sugestao do aprender e uma ordem: conta "dada" nos contadores do turno; a skill do aprender a cumpre.
+test('091 T6: a ordem do aprender conta dada no abrir-turno e cumprida quando a skill roda', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-correcao-ordem-'));
+  try {
+    abrirComEstado(dir, 'ord', 0, 'você errou');
+    const sessoes = path.join(dir, '_sessoes');
+    const ler = function () { return JSON.parse(fs.readFileSync(path.join(sessoes, 'esquadro', 'ord.json'), 'utf8')); };
+    assert.strictEqual(ler().contadores.ordem_aprender_dada, 1);
+    assert.deepStrictEqual(ler().ordensPendentes, ['aprender']);
+    const r = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'marcar-trabalho.js')], {
+      cwd: dir, encoding: 'utf8', env: Object.assign({}, process.env, { ESQUADRO_TMP: sessoes }),
+      input: JSON.stringify({ session_id: 'ord', cwd: dir, hook_event_name: 'PostToolUse', tool_name: 'Skill',
+        tool_input: { skill: 'esquadro:aprender' } })
+    });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(ler().contadores.ordem_aprender_cumprida, 1);
+    assert.deepStrictEqual(ler().ordensPendentes, []);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

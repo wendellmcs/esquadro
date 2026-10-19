@@ -108,12 +108,17 @@ function ligada(projeto) {
   return !(ehObjeto(projeto) && projeto[CHAVE] === false);
 }
 
-/** O que o modelo recebe quando o prompt parece uma correcao. ASCII puro: sai por hook. */
+/** O que o modelo recebe quando o prompt parece uma correcao. ASCII puro: sai por hook. Plano 091 (#2, D559): ordem
+ *  de rodar a skill na mesma resposta e perguntar em 3 opcoes; gravar segue so com o sim. */
 const INSTRUCAO_DA_CORRECAO = [
-  'esquadro: a mensagem do usuario parece uma CORRECAO ao seu comportamento. Se for, e valer tambem para as',
-  'proximas vezes: primeiro atenda o pedido; no fim da resposta, ofereca em uma linha transformar a correcao em',
-  'regra com /esquadro:aprender. Nao grave regra nenhuma agora - so a skill grava, depois que o usuario aprovar.',
-  'Se nao for correcao do seu comportamento (relato de bug, resposta a uma pergunta sua), ignore este aviso.'
+  'esquadro: a mensagem do usuario parece uma CORRECAO ao seu comportamento.',
+  'Se for, e valer tambem para as proximas vezes, faca nesta mesma resposta:',
+  '1. Atenda o pedido.',
+  '2. Rode /esquadro:aprender: ele monta a regra (gatilho -> acao).',
+  '3. Pergunte pelo AskUserQuestion, em 3 opcoes: gravar como esta (recomendada),',
+  '   ajustar o texto antes, nao gravar.',
+  'So grave com o sim. Se nao for correcao do seu comportamento (relato de bug,',
+  'resposta a uma pergunta sua), ignore este aviso.'
 ].join('\n');
 
 module.exports = { CHAVE, ESPERA_ENTRE_SUGESTOES, pareceCorrecao, ligada, INSTRUCAO_DA_CORRECAO };

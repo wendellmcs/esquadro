@@ -2,7 +2,9 @@
 
 /**
  * Bloco A2 (D426): a auditoria (lib/auditoria.js) roda sozinha na abertura da sessao, no maximo 1 vez a
- * cada N dias por projeto, e so fala do que passou do teto. Tudo certo = silencio (string vazia).
+ * cada N dias por projeto, e so fala do que passou do teto. Tudo certo = silencio (string vazia); desde o plano 091
+ * T6, com nada a cortar mas com ordens disparadas desde a auditoria anterior, sai so a retroalimentacao delas; e,
+ * quando a auditoria falha, a linha "falhou" sai com a retroalimentacao junto (a foto das ordens avanca na marca).
  *
  * Por que aqui e nao no abertura.js: o gancho so liga a funcao; o que decide "e hora?" e "vale avisar?"
  * mora em funcoes que recebem `agora` e `auditar` por parametro, para o teste nao esperar dias nem
@@ -11,7 +13,8 @@
  * Regras de desenho:
  * - So roda com projeto.json carregado. Sem ele a auditoria varreria o repositorio inteiro (caro) e a
  *   marca criaria .claude/esquadro/ num projeto que nunca foi configurado.
- * - A marca (.claude/esquadro/auditoria.json, { "ultima": "<ISO>" }) e gravada DEPOIS de auditar, tenha
+ * - A marca (.claude/esquadro/auditoria.json, { "ultima": "<ISO>", "ordens": { <foto dos contadores de ordem> } })
+ *   e gravada DEPOIS de auditar, tenha
  *   avisado ou nao, e tambem quando a auditoria falha: repetir o custo e o ruido a cada abertura seria
  *   pior que esperar os N dias. Marca ilegivel ou ausente = vencida. Data no futuro (relogio voltou) =
  *   vencida tambem: tratar como "nunca mais" calaria a auditoria ate o relogio alcancar a data.
@@ -80,13 +83,35 @@ function vencida(cwd, projeto, agora) {
   return t - ultima >= dias(projeto, 'diasEntreAuditorias') * DIA_MS;
 }
 
-/** Grava a marca. Falhar nao pode derrubar nem avisar nada: a proxima abertura apenas audita de novo. */
-function gravarMarca(cwd, agora) {
+/** Plano 091 T6: a foto dos contadores de ordem que a auditoria anterior guardou na marca; sem ela, null. */
+function lerFoto(cwd) {
+  try {
+    const m = JSON.parse(textoLib.semBom(fs.readFileSync(config.caminhoEmEsquadro(cwd, MARCA), 'utf8')));
+    return ehObjeto(m) && ehObjeto(m.ordens) ? m.ordens : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Grava a marca (e, desde o plano 091 T6, a foto `ordens` dos contadores de ordem). Falhar nao pode derrubar nem avisar
+ * nada: a proxima abertura apenas audita de novo.
+ */
+function gravarMarca(cwd, agora, ordens) {
   try {
     const alvo = config.caminhoEmEsquadro(cwd, MARCA);
     fs.mkdirSync(path.dirname(alvo), { recursive: true });
-    fs.writeFileSync(alvo, JSON.stringify({ ultima: new Date(emMs(agora)).toISOString() }) + '\n', 'utf8');
+    const marca = { ultima: new Date(emMs(agora)).toISOString() };
+    if (ehObjeto(ordens)) marca.ordens = ordens;
+    fs.writeFileSync(alvo, JSON.stringify(marca) + '\n', 'utf8');
   } catch (e) { /* sem marca: a proxima abertura audita de novo */ }
+}
+
+const ACHOU = ' achou o que cortar:';
+
+/** O aviso traz a ordem de cortar? (Retroalimentacao sozinha nao acende o botao do auditar nem conta a ordem.) */
+function pedeCorte(texto) {
+  return typeof texto === 'string' && texto.indexOf(ACHOU) !== -1;
 }
 
 /**
@@ -122,7 +147,7 @@ function lista(itens) {
 }
 
 /** Monta as linhas de aviso a partir do relatorio. Vazio quando nada passou do teto. */
-function itens(relatorio, paradas, limiteSkill) {
+function itens(relatorio, paradas, limiteSkill, semGatilho) {
   const r = relatorio || {};
   const saida = [];
   if (r.peso && r.peso.estourou) {
@@ -143,6 +168,11 @@ function itens(relatorio, paradas, limiteSkill) {
     saida.push('skills sem mudanca ha ' + ascii(limiteSkill) + ' dias ou mais (' + paradas.length + '): ' +
       lista(paradas.map(function (s) { return s.nome + ' (' + s.dias + ' dias)'; })));
   }
+  // Plano 091 #8 (mock D559): atalho sem "trocar quando" vira divida esquecida; entra no que cortar.
+  if (semGatilho.length) {
+    saida.push('atalhos sem gatilho (' + semGatilho.length + '): ' +
+      lista(semGatilho.map(function (a) { return a.arquivo + ':' + a.linha; })));
+  }
   return saida;
 }
 
@@ -158,22 +188,42 @@ function avisoDaAuditoria(cwd, projeto, opcoes) {
     if (!vencida(cwd, projeto, agora)) return '';
     const auditar = typeof o.auditar === 'function' ? o.auditar : require('./auditoria.js').auditar;
     const cada = dias(projeto, 'diasEntreAuditorias');
+    // Plano 091 T6 (mock D559, secao 5): as ordens dadas/cumpridas/recusadas desde a foto da auditoria anterior.
+    const ordensLib = require('./ordens.js');
+    const ultima = lerMarca(cwd);
+    const t = emMs(agora);
+    const totais = ordensLib.totaisDasOrdens(cwd);
+    const retro = ordensLib.linhasDasOrdens(lerFoto(cwd), totais,
+      ultima !== null && ultima <= t ? (t - ultima) / DIA_MS : null);
     let texto;
     try {
       const relatorio = auditar(cwd, projeto, {});
       const limiteSkill = dias(projeto, 'diasSkillParada');
       const nomes = relatorio && Array.isArray(relatorio.skills) ? relatorio.skills : [];
-      const linhas = itens(relatorio, skillsParadas(cwd, nomes, agora, limiteSkill), limiteSkill);
+      // `opcoes.atalhos` (cwd, projeto) -> achados existe para o teste; fora de repositorio git, nada.
+      const achados = typeof o.atalhos === 'function' ? o.atalhos(cwd, projeto)
+        : require('./atalhos.js').doRepositorio(cwd, projeto).achados;
+      const semGatilho = (Array.isArray(achados) ? achados : []).filter(function (a) { return ehObjeto(a) && !a.gatilho; });
+      const linhas = itens(relatorio, skillsParadas(cwd, nomes, agora, limiteSkill), limiteSkill, semGatilho);
+      // Plano 091 (#3, D559): o fim e ordem ao modelo (rodar a auditoria completa e levar os cortes em 3 opcoes),
+      // nao so informacao; cortar segue so com o sim do dono. Sem nada a cortar, so a retroalimentacao (se houver).
       texto = linhas.length ? [
-        'esquadro: auditoria automatica (a cada ' + ascii(cada) + ' dias):',
-        linhas.map(function (l) { return '- ' + l; }).join('\n'),
-        '/esquadro:auditar mostra o detalhe. Para desligar: "' + CHAVE + '": false em .claude/esquadro/projeto.json.'
-      ].join('\n') : '';
+        'esquadro: auditoria automatica (a cada ' + ascii(cada) + ' dias)' + ACHOU,
+        linhas.map(function (l) { return '- ' + l; }).join('\n')
+      ].concat(retro, [
+        'Faca no seu primeiro turno, depois de atender o pedido:',
+        '1. Rode /esquadro:auditar para ver o detalhe.',
+        '2. Leve os cortes ao usuario pelo AskUserQuestion, em 3 opcoes, com o',
+        '   recomendado primeiro e o custo de cada um. Nao corte nada sem o sim.',
+        'Desligar: "' + CHAVE + '": false em .claude/esquadro/projeto.json.'
+      ]).join('\n') : (retro.length ? ['esquadro: auditoria automatica (a cada ' + ascii(cada) + ' dias): nada a cortar.']
+        .concat(retro).join('\n') : '');
     } catch (e) {
-      texto = 'esquadro: auditoria automatica falhou (' + ascii(textoLib.causaDoErro(e)).slice(0, 120) +
-        '); rode /esquadro:auditar';
+      // A foto das ordens avanca na marca abaixo: a retroalimentacao do intervalo sai aqui, senao se perderia.
+      texto = ['esquadro: auditoria automatica falhou (' + ascii(textoLib.causaDoErro(e)).slice(0, 120) +
+        '); rode /esquadro:auditar'].concat(retro).join('\n');
     }
-    gravarMarca(cwd, agora);
+    gravarMarca(cwd, agora, totais);
     return texto;
   } catch (e) {
     return '';
@@ -182,5 +232,5 @@ function avisoDaAuditoria(cwd, projeto, opcoes) {
 
 module.exports = {
   CHAVE, MARCA, PADROES, MAX_POR_CATEGORIA, ligada, dias, lerMarca, vencida, gravarMarca, skillsParadas,
-  avisoDaAuditoria
+  avisoDaAuditoria, pedeCorte
 };

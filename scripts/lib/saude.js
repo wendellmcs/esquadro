@@ -86,7 +86,7 @@ const BALDES_DE_BLOQUEIO = [
   'fora_do_escopo', 'sem_escopo', 'comando_destrutivo', 'shell_idioma_errado',
   'fecho_sem_evidencia', 'subitem_pendente', 'outra_frente', 'intocavel',
   'token_fora_do_sistema', 'agente_caro_em_marcha_rapida',
-  'criou_sem_buscar', 'catraca_afrouxada', 'cd_solto',
+  'criou_sem_buscar', 'catraca_afrouxada', 'cd_solto', 'sem_manual', 'commit_sem_revisao',
   // T11-1: estilo escrito por comando de shell (modulo de design, como o token_fora_do_sistema).
   'estilo_por_shell',
   // F6-04: nome de frente invalido e "Fora" declarado tinham o balde fora_do_escopo; agora cada um tem o seu.

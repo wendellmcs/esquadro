@@ -51,3 +51,20 @@ test('uso: lista os disparos em ordem decrescente', () => {
     assert.ok(r.stdout.includes('49'), 'devia somar o total');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// Plano 091 T6: os contadores de ordem (ordem_<tipo>_<fase>) moram no mesmo arquivo, mas nao sao disparo de trava:
+// ficam fora da lista e do total; uma linha diz onde eles aparecem.
+test('091 T6: as chaves de ordem ficam fora da lista e do total das travas', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-uso-'));
+  try {
+    fs.mkdirSync(path.join(dir, '.claude', 'esquadro'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'contadores.json'),
+      JSON.stringify({ fora_do_escopo: 4, ordem_revisar_dada: 30, ordem_aprender_cumprida: 2 }), 'utf8');
+    const r = spawnSync(process.execPath, [SCRIPT], { cwd: dir, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const linhas = r.stdout.split('\n').filter((l) => l.includes('|'));
+    assert.deepStrictEqual(linhas.map((l) => l.split('|')[1].trim()), ['fora_do_escopo', 'TOTAL']);
+    assert.ok(linhas[1].trim().startsWith('4 |'), r.stdout);
+    assert.ok(r.stdout.includes('As ordens (dadas, cumpridas, recusadas) saem na auditoria automatica.'), r.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

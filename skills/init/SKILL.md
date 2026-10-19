@@ -451,7 +451,7 @@ pode parecer é verificável; dizer o que ela deve parecer, não é.
 
 O plugin traz o workflow `/esquadro:paralelo` (tarefas independentes em paralelo, com teto de 8
 agentes por disparo, modelo barato e isolamento para quem edita) e uma regra, na abertura de toda
-sessão, que manda o Claude **oferecê-lo** com o custo quando houver 3 ou mais tarefas independentes.
+sessão, que manda o Claude **rodá-lo direto**, dizendo o custo, quando houver 3 ou mais tarefas independentes.
 O Claude Code pede aprovação antes de rodar workflow; este passo deixa essa aprovação dada **uma vez**.
 
 **1. Confira antes de perguntar**, de dentro da raiz absoluta do Passo 0:
@@ -463,11 +463,11 @@ pergunte**: diga em uma linha o que já está valendo e siga. É isso que faz a 
 
 **2. Senão, pergunte com `AskUserQuestion`, em 3 opções, a recomendada primeiro:**
 
-- **(a) Autorizar neste projeto (recomendado)** — grava a permissão; daí em diante o Claude oferece o
-  paralelo com o custo e você só responde "sim". Custo: cada execução gasta os agentes que ela disparar.
+- **(a) Autorizar neste projeto (recomendado)** — grava a permissão; daí em diante o Claude roda o
+  paralelo direto e diz o custo numa linha. Custo: cada execução gasta os agentes que ela disparar.
 - **(b) Perguntar a cada execução** — nada é gravado; o Claude Code mostra a janela de aprovação toda
   vez (e um re-init pergunta de novo).
-- **(c) Não usar** — desliga a regra e a oferta: `"paralelismo": false` entra no `projeto.json` que o
+- **(c) Não usar** — desliga a regra: `"paralelismo": false` entra no `projeto.json` que o
   Passo 7 grava.
 
 **3. Na (a), grave pelo script, nunca pelo `Write`** (o arquivo pode ter outras permissões do dono, e o

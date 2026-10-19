@@ -134,7 +134,7 @@ release, decisão de difícil reversão.
    handoff.
 2. **Contagem antes do brief**: grepar o repositório inteiro, não só os arquivos que já se pretende
    tocar, e colocar a contagem por arquivo no brief. Brief com número errado gera escopo errado.
-3. **Loop de inspeção cega** — as lentes da mudança (nove de código, oito de tela), teto de 3
+3. **Loop de inspeção cega** — as lentes da mudança (dez de código, oito de tela), teto de 3
    rondas, parada em 2 rondas secas. Ver [03-inspecao-cega.md](03-inspecao-cega.md).
 4. **A prova de pronto completa** — `{{campo:provaDePronto}}`, sem parar no primeiro erro, para ver
    todas as falhas de uma vez. **Separar falha nova de falha pré-existente com evidência** — rodar

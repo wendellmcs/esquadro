@@ -147,6 +147,9 @@ test('T11-7: stdout ausente, nulo ou que nao e texto nao lanca e nao conta', () 
 test('T11-7: a contagem pela linha chega ao gatilho de saude - 3 commits sem gitOperation disparam o aviso', () => {
   const dir = temp('gatilho');
   try {
+    // Plano 091 (#9): modoContinuo false - o padrao ligado cala o gatilho de commits
+    fs.mkdirSync(path.join(dir, '.claude', 'esquadro'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'projeto.json'), JSON.stringify({ modoContinuo: false }), 'utf8');
     for (let i = 0; i < 3; i++) {
       marcar(dir, 'g1', { tool_name: 'PowerShell', tool_response: { stdout: '[master 43' + i + '7f01] x\n' } });
     }

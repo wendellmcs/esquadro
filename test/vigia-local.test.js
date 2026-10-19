@@ -54,6 +54,85 @@ test('ligado() so aceita vigia === true', () => {
   for (const p of [{ vigia: false }, { vigia: 'true' }, {}, null, [], 'x']) assert.strictEqual(vigia.ligado(p), false);
 });
 
+// Plano 091 #10 (D559): sem a chave, o vigia liga sozinho no repositorio do proprio plugin, reconhecido pelo
+// `.claude-plugin/plugin.json` com nome `esquadro` na raiz do git (a 1a pasta com `.git` subindo do cwd).
+function repoDoPlugin(base, nome, comoArquivo) {
+  const repo = path.join(base, 'repo');
+  fs.mkdirSync(path.join(repo, 'scripts', 'lib'), { recursive: true });
+  if (comoArquivo) fs.writeFileSync(path.join(repo, '.git'), 'gitdir: ../outro/.git/worktrees/repo\n', 'utf8');
+  else fs.mkdirSync(path.join(repo, '.git'));
+  if (nome !== undefined) {
+    fs.mkdirSync(path.join(repo, '.claude-plugin'));
+    fs.writeFileSync(path.join(repo, '.claude-plugin', 'plugin.json'), nome, 'utf8');
+  }
+  return repo;
+}
+
+test('091 #10: sem a chave, liga sozinho na raiz git do repositorio do plugin; a chave decide quando existe', () => {
+  const base = temp('plugin');
+  try {
+    const repo = repoDoPlugin(base, '{ "name": "esquadro", "version": "0.9.0" }');
+    const sub = path.join(repo, 'scripts', 'lib');
+    for (const projeto of [{}, null, undefined]) {
+      assert.strictEqual(vigia.ligado(projeto, repo), true, 'raiz: ' + JSON.stringify(projeto));
+      assert.strictEqual(vigia.ligado(projeto, sub), true, 'subpasta: ' + JSON.stringify(projeto));
+    }
+    // a chave declarada manda: false desliga, e valor de tipo errado segue desligado (como hoje)
+    for (const p of [{ vigia: false }, { vigia: 'true' }, { vigia: 1 }]) {
+      assert.strictEqual(vigia.ligado(p, repo), false, JSON.stringify(p));
+    }
+    assert.strictEqual(vigia.ligado({ vigia: true }, repo), true);
+    // a abertura passa o cwd: a novidade aparece sem a chave
+    const dir = path.join(base, 'vigia');
+    novidades(dir, RELATORIO);
+    const t = vigia.avisoDoVigia({}, { pasta: dir, agora: AGORA, cwd: sub });
+    assert.ok(t.indexOf('esquadro: vigia - novidade da semana de 2026-10-05') === 0, t);
+  } finally { fs.rmSync(base, { recursive: true, force: true }); }
+});
+
+test('091 #10: fora do repositorio do plugin segue desligado sem a chave, e nao toca o disco', () => {
+  const casos = [
+    ['outro nome', '{ "name": "outro-plugin" }', false],
+    ['sem plugin.json', undefined, false],
+    ['plugin.json invalido', '{ name: esquadro', false],
+    ['nome que nao e texto', '{ "name": ["esquadro"] }', false],
+    ['.git como arquivo (worktree)', '{ "name": "esquadro" }', true]
+  ];
+  for (const [rotulo, nome, comoArquivo] of casos) {
+    const base = temp('fora');
+    try {
+      const repo = repoDoPlugin(base, nome, comoArquivo);
+      const esperado = rotulo.indexOf('worktree') !== -1;
+      assert.strictEqual(vigia.ligado({}, repo), esperado, rotulo);
+      const dir = path.join(base, 'nao-existe');
+      if (!esperado) {
+        assert.strictEqual(vigia.avisoDoVigia({}, { pasta: dir, agora: AGORA, cwd: repo }), '', rotulo);
+        assert.ok(!fs.existsSync(dir), 'criou a pasta: ' + rotulo);
+      }
+    } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  }
+  // o plugin.json ACIMA da raiz git nao conta: a busca para na 1a pasta com .git
+  const base = temp('acima');
+  try {
+    fs.mkdirSync(path.join(base, '.claude-plugin'));
+    fs.writeFileSync(path.join(base, '.claude-plugin', 'plugin.json'), '{ "name": "esquadro" }', 'utf8');
+    const filho = path.join(base, 'filho');
+    fs.mkdirSync(path.join(filho, '.git'), { recursive: true });
+    assert.strictEqual(vigia.ligado({}, filho), false);
+  } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  // cwd que nao e texto nao lanca
+  for (const c of [null, 42, {}, '']) assert.strictEqual(vigia.ligado({}, c), false, JSON.stringify(c));
+});
+
+test('091 #10: o proprio repositorio do esquadro e reconhecido', () => {
+  assert.strictEqual(vigia.ligado({}, path.join(__dirname, '..', 'scripts')), true);
+});
+
+test('091 #10: a abertura passa ao vigia o cwd cru da sessao (nao a raiz do projeto.json)', () => {
+  const abertura = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'abertura.js'), 'utf8');
+  assert.ok(/avisoDoVigia\(projeto, \{ cwd: e\.cwd \|\| process\.cwd\(\) \}\)/.test(abertura), 'abertura sem o cwd cru');
+});
+
 test('pasta(env): ESQUADRO_VIGIA vence; sem ela cai em ~/.claude/esquadro/vigia', () => {
   assert.strictEqual(vigia.pasta({ ESQUADRO_VIGIA: path.join(os.tmpdir(), 'x', '..', 'y') }), path.join(os.tmpdir(), 'y'));
   assert.strictEqual(vigia.pasta({}), path.join(os.homedir(), '.claude', 'esquadro', 'vigia'));

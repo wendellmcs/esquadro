@@ -1,7 +1,7 @@
 'use strict';
 
-// Nove LENTES, nao nove copias do mesmo revisor.
-// Nove copias acham o mesmo problema nove vezes; nove lentes acham nove classes de problema.
+// Dez LENTES, nao dez copias do mesmo revisor.
+// Dez copias acham o mesmo problema dez vezes; dez lentes acham dez classes de problema.
 const LENTES = [
   { chave: 'correcao', titulo: 'Correcao e regressao',
     pergunta: 'Qual dos dois quebra? Entrada concreta que produz resultado errado, com arquivo:linha.' },
@@ -23,7 +23,12 @@ const LENTES = [
   { chave: 'medidor', titulo: 'Mexeram no medidor',
     pergunta: 'Teste, baseline, threshold, skip ou mock mudaram junto com o codigo que eles cobrem?' },
   { chave: 'design', titulo: 'Fidelidade ao design system (codigo)',
-    pergunta: 'Cite o token literal ou a tela irmã de referência. Valor cru, gradiente, sombra larga, card aninhado ou tipografia fluida onde o sistema nao os tem. Sem citar token ou coordenada, o veredito nao conta.' }
+    pergunta: 'Cite o token literal ou a tela irmã de referência. Valor cru, gradiente, sombra larga, card aninhado ou tipografia fluida onde o sistema nao os tem. Sem citar token ou coordenada, o veredito nao conta.' },
+  // D553/D554 (0.9.0): a ideia do /ponytail-review, texto nosso. Regra de saida no revisar/SKILL.md (como `escopo`).
+  { chave: 'enxuto', titulo: 'Codigo que nao precisava existir',
+    pergunta: 'O que dava para nao escrever, e o que o substitui? Cite arquivo:linha do que sobra e do que ja faz o ' +
+      'mesmo (funcao da linguagem, da plataforma, dependencia ja instalada, codigo do projeto). Validacao na ' +
+      'fronteira, perda de dados, seguranca e acessibilidade nunca sao excesso.' }
 ];
 
 // D121 mediu: 3 exatas, 1 parcial, 4 contra 4 sem contraparte. A causa nao e
@@ -82,7 +87,7 @@ function lenteCanonica(nome) {
 
 /**
  * A regra de despacho da spec (decisao 8), a mesma da tabela do /esquadro:revisar: so codigo,
- * as 9; so tela, as 8; os dois, as 17. Nada declarado e duvida, e na duvida vao as duas
+ * as 10; so tela, as 8; os dois, as 18. Nada declarado e duvida, e na duvida vao as duas
  * familias - nunca nenhuma, que seria uma revisao sem voto.
  */
 function familiasPara(tocaCodigo, tocaTela) {

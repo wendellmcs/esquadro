@@ -17,7 +17,8 @@
  * OPT-IN (`"vigia": true` no projeto.json), ao contrario da auditoria periodica, que e opt-out. Dois
  * motivos: os testes de fiacao rodam a abertura de verdade, e com opt-out a suite leria e marcaria como
  * vista a novidade real do mantenedor; e o vigia e so do mantenedor do plugin. Desligado (ou sem
- * projeto) devolve '' e NAO toca no disco: nem le, nem cria pasta.
+ * projeto) devolve '' e NAO toca no disco: nem le, nem cria pasta. Plano 091 #10: sem a chave, liga sozinho no
+ * repositorio do proprio plugin (`ehRepoDoPlugin`); os testes que rodam a abertura ali poem `ESQUADRO_VIGIA`.
  *
  * Pasta (`pasta(env)`): `ESQUADRO_VIGIA` se definida; senao `~/.claude/esquadro/vigia`. Arquivos:
  * `novidades.md` (vem da tarefa agendada), `visto.json` (o que esta abertura ja mostrou) e
@@ -65,9 +66,37 @@ function pasta(env) {
   return path.join(os.homedir(), '.claude', 'esquadro', 'vigia');
 }
 
-/** Opt-in: so `"vigia": true` liga. */
-function ligado(projeto) {
-  return ehObjeto(projeto) && projeto[CHAVE] === true;
+/**
+ * Plano 091 #10 (D559): `cwd` esta no repositorio do proprio plugin? Sobe ate a 1a pasta com `.git` (pasta ou
+ * arquivo, o de worktree) e confere `.claude-plugin/plugin.json` com `"name": "esquadro"` ali. So `fs`: a lib
+ * nao abre processo (teste D148). Qualquer falha = nao.
+ */
+function ehRepoDoPlugin(cwd) {
+  if (!cwd || typeof cwd !== 'string') return false;
+  try {
+    let atual = path.resolve(cwd);
+    for (;;) {
+      if (fs.existsSync(path.join(atual, '.git'))) {
+        const p = JSON.parse(textoLib.semBom(fs.readFileSync(path.join(atual, '.claude-plugin', 'plugin.json'), 'utf8')));
+        return ehObjeto(p) && p.name === 'esquadro';
+      }
+      const pai = path.dirname(atual);
+      if (pai === atual) return false;
+      atual = pai;
+    }
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Opt-in: `"vigia": true` liga. Plano 091 #10: sem a chave, liga sozinho no repositorio do plugin (`cwd`); a
+ * chave declarada, com qualquer valor, decide (so `true` liga, como antes).
+ */
+function ligado(projeto, cwd) {
+  if (ehObjeto(projeto) && Object.prototype.hasOwnProperty.call(projeto, CHAVE)) return projeto[CHAVE] === true;
+  if (projeto != null && !ehObjeto(projeto)) return false;
+  return ehRepoDoPlugin(cwd);
 }
 
 function emMs(agora) {
@@ -186,12 +215,13 @@ function corpoEmLinhas(corpo) {
 
 /**
  * Ponto de entrada da abertura. Devolve o texto a imprimir ('' = silencio). NUNCA lanca.
- * `opcoes.agora` (ms ou Date), `opcoes.pasta` e `opcoes.env` existem para o teste.
+ * `opcoes.cwd` e o cwd cru da sessao (plano 091 #10); `opcoes.agora` (ms ou Date), `opcoes.pasta` e `opcoes.env`
+ * existem para o teste.
  */
 function avisoDoVigia(projeto, opcoes) {
   try {
-    if (!ligado(projeto)) return '';
     const o = opcoes || {};
+    if (!ligado(projeto, o.cwd)) return '';
     const dir = o.pasta ? path.resolve(String(o.pasta)) : pasta(o.env);
     const agora = emMs(o.agora);
     const hoje = new Date(agora).toISOString().slice(0, 10);

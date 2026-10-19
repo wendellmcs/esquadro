@@ -141,4 +141,27 @@ function ultimasMudancas(cwd, pasta, opcoes) {
   return mapa;
 }
 
-module.exports = { modificados, prefixo, rastreados, ultimasMudancas, correr };
+/**
+ * D485 (s108): o diff do arquivo contra o HEAD, sem contexto (-U0), para medir a faixa da revisao. Devolve
+ * { removidas, acrescentadas, blocos: [{ antigoIni, antigoQtd, novoIni, novoQtd }] }, ou null quando nao da para
+ * medir (git que falha, binario, saida sem bloco): sem medida, a faixa e a completa. `:(literal)` para que um
+ * nome com `*` ou `?` nao vire padrao; --ignore-cr-at-eol porque o identico tambem ignora o CRLF. `rel` e relativo
+ * a `cwd`. Plano 091 (#1): saiu do preparar-revisao.js para o portao do commit medir a mesma faixa.
+ */
+function diffContraHead(cwd, rel) {
+  const saida = correr(cwd, ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '--ignore-cr-at-eol', '-U0',
+    'HEAD', '--', ':(literal)' + rel], { timeout: 10000, maxBuffer: 64 * 1024 * 1024 });
+  if (saida === null) return null;
+  const blocos = [];
+  const re = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm;
+  let m;
+  while ((m = re.exec(saida)) !== null) {
+    blocos.push({ antigoIni: Number(m[1]), antigoQtd: m[2] === undefined ? 1 : Number(m[2]),
+      novoIni: Number(m[3]), novoQtd: m[4] === undefined ? 1 : Number(m[4]) });
+  }
+  if (blocos.length === 0 && saida.trim() !== '') return null;
+  const soma = function (campo) { return blocos.reduce(function (t, b) { return t + b[campo]; }, 0); };
+  return { removidas: soma('antigoQtd'), acrescentadas: soma('novoQtd'), blocos: blocos };
+}
+
+module.exports = { modificados, prefixo, rastreados, ultimasMudancas, correr, diffContraHead };

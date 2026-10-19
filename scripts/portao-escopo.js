@@ -202,6 +202,16 @@ io.blindar(function () {
       return negar(escopoLib.motivoFora(alvo, marcha, esc, arquivoEmVigor));
     }
 
+    // 5b. Plano 091 (#6, D559): arquivo AAA so com o manual carregado na sessao (marcar-trabalho.js marca pela
+    // ferramenta Skill). Depois do escopo: "fora do escopo" e a resposta mais especifica. So `false` desliga.
+    if (marcha === 'aaa' && projeto.portaoManual !== false && s.manualCarregado !== true) {
+      try { estado.incrementar(e.session_id, 'sem_manual'); } catch (err) { contadorNaoGravou(); }
+      const ordens = require('./lib/ordens.js');
+      // Plano 091 T6: a negacao e a ordem de carregar o manual (dada uma vez por pendencia).
+      try { estado.alterar(e.session_id, function (st) { st.ordensPendentes = ordens.marcarDada(st, 'manual'); return st; }); } catch (err) { /* nega igual */ }
+      return negar(ordens.motivoSemManual(alvo));
+    }
+
     // 6. C9: arquivo NOVO exige ter procurado antes. Editar o que ja existe nao,
     // porque quem edita ja achou. Vem depois do escopo de proposito: "fora do
     // escopo" e a resposta mais especifica, e tem de ganhar quando as duas valem.

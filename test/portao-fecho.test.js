@@ -250,7 +250,8 @@ test('fecho: aviso de uma vez por sessao nao volta no turno seguinte', () => {
     fs.mkdirSync(path.join(torto, '.claude', 'esquadro'), { recursive: true });
     fs.writeFileSync(path.join(torto, '.claude', 'esquadro', 'projeto.json'), JSON.stringify({
       versaoConfig: 1, marchaPadrao: 'padrao', marchas: { rapida: ['notas/**'] }, intocaveis: 'cofre/**',
-      limiares: { turnosComTrabalho: 1 }
+      limiares: { turnosComTrabalho: 1 },
+      modoContinuo: false // Plano 091 (#9): o modo continuo e o padrao e calaria o gatilho de turnos deste ramo
     }), 'utf8');
     const aviso = escrita('av2', torto);
     assert.ok(aviso.json && /tipo errado/.test(aviso.json.systemMessage), 'controle: ' + aviso.stdout);
@@ -426,7 +427,8 @@ test('fecho: todo campo que um script grava no estado tem tempo de vida declarad
     const dispara = fs.mkdtempSync(path.join(tmp, 'dispara-'));
     fs.mkdirSync(path.join(dispara, '.claude', 'esquadro'), { recursive: true });
     fs.writeFileSync(path.join(dispara, '.claude', 'esquadro', 'projeto.json'),
-      JSON.stringify({ versaoConfig: 1, marchaPadrao: 'padrao', limiares: { turnosComTrabalho: 1 } }), 'utf8');
+      // Plano 091 (#9): modoContinuo false - sem ele (padrao ligado) o gatilho de turnos cala e o ramo da saude nao roda
+      JSON.stringify({ versaoConfig: 1, marchaPadrao: 'padrao', limiares: { turnosComTrabalho: 1 }, modoContinuo: false }), 'utf8');
     for (const [id, cwd, saude] of [['cheio-sem', sem, false], ['cheio-dispara', dispara, true]]) {
       fs.writeFileSync(path.join(tmp, 'esquadro', id + '.json'), JSON.stringify(cheio), 'utf8');
       const f = rodar('portao-fecho.js', { session_id: id, cwd: cwd, hook_event_name: 'Stop',
@@ -447,11 +449,13 @@ test('fecho: todo campo que um script grava no estado tem tempo de vida declarad
 // ------------------------------- T10-1 (D357): o aviso de saude chega ao MODELO, nao so a tela
 
 // Projeto com limiar de 1 turno: o primeiro turno com trabalho ja dispara a saude.
+// Plano 091 (#9): modoContinuo false de proposito - o padrao agora e ligado (cala turnos e sobe o aviso de tamanho a 250000).
 function projetoQueDispara(tmp, nome, limiares) {
   const dir = fs.mkdtempSync(path.join(tmp, nome + '-'));
   fs.mkdirSync(path.join(dir, '.claude', 'esquadro'), { recursive: true });
   fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'projeto.json'),
-    JSON.stringify({ versaoConfig: 1, marchaPadrao: 'padrao', limiares: limiares || { turnosComTrabalho: 1 } }), 'utf8');
+    JSON.stringify({ versaoConfig: 1, marchaPadrao: 'padrao', modoContinuo: false,
+      limiares: limiares || { turnosComTrabalho: 1 } }), 'utf8');
   return dir;
 }
 
@@ -653,7 +657,7 @@ test('D412: saude dispara no turno que gravou o handoff e colou o prompt -> nao 
 // D417: o README diz que, com o portao desligado e a resposta sem bloco, o aviso segue mandando colar.
 test('D417: portaoHandoff false, handoff gravado sem bloco e a saude dispara -> nao barra e manda colar', () => {
   comTmp((tmp) => {
-    const dir = projetoCom(tmp, 'h-desl-saude', { portaoHandoff: false, limiares: { turnosComTrabalho: 1 } });
+    const dir = projetoCom(tmp, 'h-desl-saude', { portaoHandoff: false, limiares: { turnosComTrabalho: 1 }, modoContinuo: false }); // Plano 091 (#9): sem modoContinuo false o gatilho de turnos cala
     gravar(tmp, 'h-desl-saude', dir, 'Write', HANDOFF);
     const r = fecho(tmp, 'h-desl-saude', dir, 'Handoff gravado no arquivo.');
     assert.ok(r.json && r.json.decision !== 'block', 'com o portao desligado nada barra: ' + r.stdout);
@@ -1024,11 +1028,17 @@ test('D468: o fecho le a chave modoContinuo do projeto e cala os gatilhos contav
   comTmp((tmp) => {
     const dir = projetoQueDispara(tmp, 'cont', { turnosComTrabalho: 1 });
     const pj = path.join(dir, '.claude', 'esquadro', 'projeto.json');
+    // Plano 091 (#9): projetoQueDispara grava modoContinuo false (controle: desligado dispara); true e chave ausente (padrao) calam
     const controle = turnoComTrabalho(tmp, 'cont0', dir);
-    assert.ok(controle.json && /chat novo/.test(controle.json.systemMessage), 'controle sem a chave: ' + controle.stdout);
-    fs.writeFileSync(pj, JSON.stringify(Object.assign(JSON.parse(fs.readFileSync(pj, 'utf8')), { modoContinuo: true })), 'utf8');
+    assert.ok(controle.json && /chat novo/.test(controle.json.systemMessage), 'controle com modoContinuo false: ' + controle.stdout);
+    const base = JSON.parse(fs.readFileSync(pj, 'utf8'));
+    fs.writeFileSync(pj, JSON.stringify(Object.assign({}, base, { modoContinuo: true })), 'utf8');
     const r = turnoComTrabalho(tmp, 'cont1', dir);
     assert.strictEqual(r.json, null, 'com a chave o gatilho de turnos cala: ' + r.stdout);
+    delete base.modoContinuo;
+    fs.writeFileSync(pj, JSON.stringify(base), 'utf8');
+    const padrao = turnoComTrabalho(tmp, 'cont2', dir);
+    assert.strictEqual(padrao.json, null, 'sem a chave (padrao ligado) o gatilho de turnos cala: ' + padrao.stdout);
   });
 });
 

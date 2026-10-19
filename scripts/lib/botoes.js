@@ -14,9 +14,8 @@ const calibracao = require('./calibracao.js');
 // R5 tinha texto e rotulo em ASCII; a faixa e excecao desde a D532 (a sonda da Tarefa 1 do plano 082 viu o acento
 // inteiro). Plano 082 (p5-36): frase inteira, sem jargao, dizendo o que fazer.
 
-const ORDEM = ['handoff', 'revisar', 'aprender', 'init', 'auditar', 'calibrar', 'paralelo', 'padrao'];
-
-const RE_PARALELO = /\/esquadro:paralelo\b/;
+// Plano 091 #5 (D557): o paralelo roda direto, entao o botao "o agente ofereceu" saiu.
+const ORDEM = ['handoff', 'revisar', 'aprender', 'init', 'auditar', 'calibrar', 'padrao'];
 
 function botao(nome, texto, rotulo, comando) {
   return { nome: nome, texto: texto, rotulo: rotulo, comando: comando || '/esquadro:' + nome };
@@ -36,7 +35,7 @@ function temArquivoAaa(arquivos, projeto, raiz) {
  * - `cruzou`: o gatilho contavel da troca de chat (medidor);
  * - `s`: o estado da sessao (arquivosTocados, contadores, esperaAprender, auditoriaAvisou);
  * - `projeto`, `raiz`, `temProjeto` (existe .claude/esquadro/projeto.json);
- * - `resposta`: a ultima resposta do agente principal (o mod manda); `padraoCarregado`: o mod viu a skill carregada;
+ * - `padraoCarregado`: o mod viu a skill carregada;
  * - `contarConversas()`: as conversas do projeto, chamada so quando o resto do calibrar ja vale (custa um readdir).
  */
 function daSessao(entrada) {
@@ -78,10 +77,6 @@ function daSessao(entrada) {
     if (n >= calibracao.AMOSTRA_MINIMA.sessoes) {
       lista.push(botao('calibrar', 'Já há ' + n + ' conversas salvas: dá para calibrar quando trocar de chat.', 'calibrar'));
     }
-  }
-
-  if (RE_PARALELO.test(String(e.resposta || ''))) {
-    lista.push(botao('paralelo', 'O agente ofereceu rodar as tarefas em paralelo.', 'rodar em paralelo'));
   }
 
   if (e.padraoCarregado !== true && temArquivoAaa(s.arquivosTocados, projeto, e.raiz)) {

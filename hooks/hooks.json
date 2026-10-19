@@ -52,6 +52,12 @@
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/portao-estilo.js"],
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/portao-commit.js"],
+            "timeout": 30
           }
         ]
       },
@@ -86,7 +92,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Write|Edit|Bash|PowerShell|Grep|Glob|Read|AskUserQuestion",
+        "matcher": "Write|Edit|Bash|PowerShell|Grep|Glob|Read|AskUserQuestion|Skill",
         "hooks": [
           {
             "type": "command",
@@ -103,6 +109,18 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/gravar-veredito.js"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/abrir-subagente.js"],
             "timeout": 10
           }
         ]

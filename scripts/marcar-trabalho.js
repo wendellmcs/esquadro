@@ -56,6 +56,17 @@ io.blindar(function () {
         return s;
       }
 
+      // Plano 091 (#6, D559): o manual carregado libera o portao do manual (portao-escopo.js, passo 5b). Mesma regra
+      // do mod (mods.tsx, botao do padrao): skill do agente principal com "padrao" no nome. Carregar skill nao e
+      // trabalho a provar: sai antes de ligar trabalhoReal.
+      if (nome === 'skill') {
+        const skill = (e.tool_input || {}).skill;
+        if (!e.agent_id && typeof skill === 'string' && /padrao/i.test(skill)) s.manualCarregado = true;
+        // Plano 091 T6: a skill do agente principal cumpre a ordem pendente dela (lib/ordens.js).
+        if (!e.agent_id) s.ordensPendentes = require('./lib/ordens.js').marcarCumprida(s, skill);
+        return s;
+      }
+
       // C9: quem procurou pode criar arquivo novo neste turno.
       if (busca.ehBusca(e.tool_name, e.tool_input)) s.buscouNesteTurno = true;
 
@@ -85,6 +96,8 @@ io.blindar(function () {
         if (arquivo) {
           s.arquivosTocados = s.arquivosTocados || [];
           if (s.arquivosTocados.indexOf(arquivo) === -1) s.arquivosTocados.push(arquivo);
+          // Plano 091 (#1): editado depois de aprovado volta para a lista do portao do commit (lib/commit.js).
+          if (Array.isArray(s.revisadosAprovados)) s.revisadosAprovados = require('./lib/commit.js').semAprovado(s.revisadosAprovados, arquivo);
           // D412: marca do TURNO (arquivosTocados e da sessao): o fecho cobra o prompt no chat.
           // Hoje so Write e Edit chegam aqui com file_path: e o matcher do hooks.json que garante
           // (o Read saiu acima, como so leitura). Ferramenta nova no matcher com file_path tambem marca.

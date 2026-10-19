@@ -467,6 +467,12 @@ if (r.encerrar) {
         s.contadores = s.contadores || {};
         s.contadores.revisao_fechada = (s.contadores.revisao_fechada || 0) + 1;
         if (r.referencia) s.contadores.revisao_referencia_fechada = (s.contadores.revisao_referencia_fechada || 0) + 1;
+        // Plano 091 (#1, D559): so o "aprovado" (nao o teto) libera o arquivo no portao do commit; o marcar-trabalho.js
+        // o tira da lista quando ele e editado de novo.
+        if (arquivoRevisado && /aprovado/.test(String(r.motivo))) {
+          s.revisadosAprovados = require('./lib/commit.js').comAprovado(s.revisadosAprovados,
+            path.resolve(process.cwd(), arquivoRevisado));
+        }
         return s;
       }).contadores.revisao_fechada;
     } catch (err) {

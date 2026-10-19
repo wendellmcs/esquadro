@@ -57,10 +57,10 @@ a de código julga código, a de UI julga tela. Não se fundem.
 
 | O que mudou | Quantos inspetores | Onde estão as lentes |
 |---|---|---|
-| Só lógica (não é de estilo e não monta tela) | **6** | `scripts/lib/veredito.js` → `LENTES` sem as de `SAEM_SO_LOGICA` (`design`, `medidor`, `escopo`) |
-| Só código | **9** | `scripts/lib/veredito.js` → `LENTES` |
+| Só lógica (não é de estilo e não monta tela) | **7** | `scripts/lib/veredito.js` → `LENTES` sem as de `SAEM_SO_LOGICA` (`design`, `medidor`, `escopo`) |
+| Só código | **10** | `scripts/lib/veredito.js` → `LENTES` |
 | Só tela | **8** | `scripts/lib/veredito.js` → `LENTES_UI` |
-| Código e tela | **17** | as duas listas |
+| Código e tela | **18** | as duas listas |
 
 **A mudança toca tela** quando o escopo declarado inclui arquivo de estilo
 (`scripts/lib/design.js` → `ehArquivoDeEstilo`) ou markup que o projeto renderiza.
@@ -68,9 +68,15 @@ Na dúvida, **as duas famílias** — a marcha mais rigorosa ganha.
 
 **Arquivo só de lógica** — que não é de estilo e não monta tela — dispensa a lente `design` (decisão
 do dono, 2026-09-29) e, desde 2026-10-11, também `medidor` e `escopo` (na ronda 1 de 41 revisões, 11 de 13 e
-5 de 6 achados delas foram refutados na fonte): são 6 inspetores, as de `LENTES` sem as de
-`SAEM_SO_LOGICA`. Na dúvida, as 9 — elas só saem quando é claro que o arquivo não é de estilo e não
+5 de 6 achados delas foram refutados na fonte): são 7 inspetores, as de `LENTES` sem as de
+`SAEM_SO_LOGICA`. Na dúvida, as 10 — elas só saem quando é claro que o arquivo não é de estilo e não
 monta tela.
+
+**Lente `enxuto` (código que não precisava existir, desde a 0.9.0)** — nasce em observação, porque lente
+que julga "a mais" já foi refutada na fonte em 5 de 6 achados (`escopo`). **Regra de saída:** depois de 10
+revisões com ela, se 2 de cada 3 achados dela tiverem sido refutados na fonte, ela entra em
+`SAEM_SO_LOGICA` e sai do arquivo só de lógica, como `escopo`. Validação na fronteira, perda de dados,
+segurança e acessibilidade nunca são excesso: achado dela contra isso é refutado.
 
 Leia as lentes do arquivo, **não de memória**. Despache todos no mesmo disparo, **um subagente
 `esquadro:inspetor` por lente**.
@@ -164,7 +170,7 @@ fechou começa **revisão nova**: o `preparar-revisao.js` move a base inteira pa
 
 - **Ronda 1 descobre; as seguintes verificam.**
 - A ronda 2 chama **só as lentes que acharam P0 ou P1**, com o briefing reformulado em pergunta
-  específica sobre o próprio achado. Ordem de grandeza, na faixa `completa`: **9 → 4 → 2**.
+  específica sobre o próprio achado. Ordem de grandeza, na faixa `completa`: **10 → 4 → 2**.
 - Com referência, ela chama também as lentes de `referencia.lentesAtras`, nas duas passadas.
 - Se nenhuma lente achou P0 ou P1, a ronda seguinte chama **ao menos uma** (a de correção): ronda sem
   nenhum veredito não é ronda seca, e o `apurar-ronda.js` para com erro.

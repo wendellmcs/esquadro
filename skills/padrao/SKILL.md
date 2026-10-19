@@ -1,6 +1,6 @@
 ---
 name: padrao
-description: Manual de execução portátil para qualquer projeto. Use no início de toda tarefa que não seja conversa pura — implementar, corrigir bug, planejar, revisar, auditar, mexer em UI, escrever doc, versionar, publicar, executar plano longo. Define a marcha de rigor (Rápida/Padrão/AAA), as lentes de inspeção (nove de código e oito de tela), o loop de julgamento cego com teto de rondas, os gatilhos contáveis de troca de chat, o formato obrigatório de decisão do dono e o que um "pronto" precisa provar. Adapta-se ao projeto por um adaptador declarado; sem ele, roda em modo degradado e declara o que não consegue verificar. Sobrepõe-se ao improviso; nunca ao pedido explícito do usuário.
+description: Manual de execução portátil para qualquer projeto. Use no início de toda tarefa que não seja conversa pura — implementar, corrigir bug, planejar, revisar, auditar, mexer em UI, escrever doc, versionar, publicar, executar plano longo. Define a marcha de rigor (Rápida/Padrão/AAA), as lentes de inspeção (dez de código e oito de tela), o loop de julgamento cego com teto de rondas, os gatilhos contáveis de troca de chat, o formato obrigatório de decisão do dono e o que um "pronto" precisa provar. Adapta-se ao projeto por um adaptador declarado; sem ele, roda em modo degradado e declara o que não consegue verificar. Sobrepõe-se ao improviso; nunca ao pedido explícito do usuário.
 ---
 
 # Padrão AAA Universal
@@ -175,9 +175,9 @@ irmão acima.
 
 Mandar vários inspetores ao mesmo tempo (o *fan-out*) usa **lentes diferentes**, uma por inspetor.
 Cópias do mesmo revisor encontram o mesmo problema várias vezes; lentes distintas encontram classes distintas de problema. São duas famílias,
-que convivem e não se fundem: as **nove lentes de código**, em `LENTES`, e as **oito lentes de
+que convivem e não se fundem: as **dez lentes de código**, em `LENTES`, e as **oito lentes de
 tela**, abaixo, em `LENTES_UI`, as duas listas em `scripts/lib/veredito.js` do plugin. Quais vão
-depende do que a mudança toca: só código, as nove de código; só tela, as oito de tela; código e
+depende do que a mudança toca: só código, as dez de código; só tela, as oito de tela; código e
 tela, as duas famílias; na dúvida, as duas. É a regra do `/esquadro:revisar`, na tabela do Passo 2
 de `skills/revisar/SKILL.md`. Antes da família vem a faixa: mudança pequena vai a menos inspetores, pelo
 tamanho do diff, na outra tabela do mesmo Passo 2.
@@ -310,8 +310,8 @@ Handoff em `{{texto:ondeHandoff}}`. Conteúdo obrigatório em
 (Claude in Chrome ou CDP), ler o resultado. Pedir a `{{campo:quemDecide}}` só o que só ele pode —
 credencial, publicar ou implantar, tela com dado de cliente no login dele — e juntar tudo num pedido só.
 
-**Modo contínuo (chave `modoContinuo` no `projeto.json`).** Só o booleano `true` liga; sem a chave, com
-outro valor ou sem o arquivo, fica desligado. A abertura da sessão diz se está ligado. Ligado, só quatro
+**Modo contínuo (chave `modoContinuo` no `projeto.json`).** Ligado por padrão: só o booleano `false`
+desliga; sem a chave, com outro valor ou sem o arquivo, fica ligado. A abertura da sessão diz se está ligado. Ligado, só quatro
 coisas pedem troca de chat: o tamanho da conversa (o aviso dos 250 mil, no lugar dos 175 mil, e o
 alarme dos 450 mil); o
 aviso de bloqueios de portão, que o plugin dá no fim de turno quando a sessão chega ao limiar (6 por
@@ -336,9 +336,10 @@ abertura de toda sessão; desligar: `"paralelismo": false` no `projeto.json`.
 - **Relatório de agente é alegação**, não fato: confira o crítico na fonte antes de dar por pronto.
 - **Freio de custo:** o modelo mais barato que resolve a tarefa (o mapa de modelos do projeto manda);
   no máximo 8 agentes por disparo. Rigor continua sendo eixo separado do custo.
-- **3 ou mais tarefas independentes: ofereça o `/esquadro:paralelo`**, dizendo quantos agentes, qual
-  modelo e o custo aproximado, e só rode depois do sim. Rodar um workflow sem pedido explícito é
-  proibido pelo próprio Claude Code. Chamada: a ferramenta Workflow com `name: "esquadro:paralelo"` e
+- **3 ou mais tarefas independentes: rode o `/esquadro:paralelo` direto**, sem perguntar, e diga numa
+  linha quantos agentes, qual modelo e o custo aproximado. O Claude Code só roda workflow com
+  pedido: a autorização dada uma vez no `/esquadro:init` é esse pedido; se ainda assim a ferramenta
+  recusar, diga ao dono em vez de contornar. Chamada: a ferramenta Workflow com `name: "esquadro:paralelo"` e
   `args` = lista de tarefas (`[{"tarefa": "...", "edita": false}]`). Ele aplica o freio sozinho: 8 por
   disparo (diz quais ficaram de fora), Haiku para quem só lê, Sonnet para quem edita, isolamento para
   quem edita, e devolve cada resultado com a evidência que o agente colou.

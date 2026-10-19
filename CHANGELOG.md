@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.9.0 — menos código: a escada antes de escrever, a lente que acha o que sobra e o registro de atalhos
+
+Ideias do [ponytail](https://github.com/DietrichGebert/ponytail), de Dietrich Gebert (licença MIT), com texto
+próprio. Desenho aprovado por imagem antes do código.
+
+**Novo**
+
+- **Toda sessão abre com o bloco "menos código".** Antes de escrever código, o Claude sobe uma escada de 7 degraus e
+  para no primeiro que resolve: precisa existir? já existe no projeto? a linguagem já faz? a plataforma já faz? uma
+  dependência já instalada faz? cabe em uma linha? só então, o mínimo que funciona. Nunca se corta validação na
+  fronteira, perda de dados, segurança nem acessibilidade. Atalho de propósito leva o comentário
+  `atalho: <o que>. limite: <até onde vale>. trocar quando: <gatilho>.` São 720 caracteres a mais em toda abertura
+  (~200 tokens). Desliga com `"menosCodigo": false` no `projeto.json`. O mesmo bloco chega aos subagentes que podem
+  escrever código, pelo gancho `SubagentStart` (o da abertura não chega a eles); os que só leem (`inspetor`,
+  `juiz-mesmo`, `leitor`, `Explore`, `Plan`) ficam de fora.
+- **`/esquadro:atalhos`: o registro dos atalhos deliberados.** Lista os comentários de atalho do repositório
+  (`atalho:`, e também `ponytail:` e `shortcut:` para quem já usa), agrupados por arquivo, com o que foi simplificado,
+  o limite e quando trocar; marca `sem-gatilho` o que não diz quando trocar, que é o atalho que vira permanente sem
+  ninguém ver. Só lê; pula o que o git ignora, binário e arquivo acima de 1 MB. A marca muda pela chave
+  `marcaDeAtalho`. A auditoria automática lista os atalhos sem gatilho, e a revisão antes do commit aponta o atalho
+  novo sem gatilho nos arquivos que ela já barrou (só aponta, não nega por isso).
+- **Lente nova na revisão cega: `enxuto`, código que não precisava existir.** Ela pede o que dava para não escrever e
+  o que substitui, com `arquivo:linha`. O revisar passa a mandar **dez** de código, **oito** de
+  tela, e **dezoito** quando a mudança é de código e de tela; **sete** quando é só lógica. As faixas pequenas seguem sem ela. Nasce em
+  observação: depois de 10 revisões, se 2 de cada 3 achados dela forem refutados na fonte, ela sai do arquivo só de
+  lógica.
+- **Arquivo de rigor máximo só com o manual carregado.** Editar arquivo da marcha AAA sem ter carregado o manual de
+  execução na sessão (o `esquadro:padrao`, ou a skill do projeto com "padrao" no nome) é negado com o motivo e o que
+  fazer; carregado uma vez, vale a sessão inteira. Desliga com `"portaoManual": false` no `projeto.json`.
+- **Revisão antes do commit.** O `git commit` com arquivo de código mudado na sessão sem revisão aprovada é negado
+  com a lista, a faixa de cada arquivo e quantos inspetores ela pede, e a ordem de rodar o `/esquadro:revisar`. Texto
+  fica fora; arquivo editado de novo depois de aprovado volta para a lista. Commit sem revisão só com o seu sim, pela
+  marca `# esquadro: sem-revisao` no comando. Desliga com `"portaoCommit": false` no `projeto.json`. São
+  **26 baldes** de contador: 20 que negam, 6 que só contam.
+- **O que nunca é usado aparece em número.** Cada ordem que o esquadro dá ao Claude (aprender, auditar, calibrar,
+  init, revisar antes do commit, carregar o manual) conta como dada, cumprida (a skill rodou depois) ou recusada pelo
+  dono (o commit com `sem-revisao` depois de negado). A auditoria automática mostra o que mudou desde a vez anterior,
+  e quais nunca dispararam. Esses contadores ficam fora dos baldes e do total do `uso.js`.
+
+**Muda**
+
+- **Os comandos rodam no momento certo, sem você lembrar.** A correção ao jeito do Claude trabalhar faz ele rodar o
+  `/esquadro:aprender` na mesma resposta e perguntar em 3 opções (antes, só oferecia). A auditoria de 7 dias que
+  passou do limite manda rodar o `/esquadro:auditar` no primeiro turno e levar os cortes em 3 opções. Com 30 conversas
+  do projeto e o limiar nunca calibrado, o Claude roda o `/esquadro:calibrar` e pergunta (no máximo uma vez a cada 30
+  dias). Sem `projeto.json`, pergunta no primeiro turno se configura com o `/esquadro:init`, depois ou nunca. Gravar
+  segue só com o seu sim.
+- **O modo contínuo vem ligado.** Sem a chave (e sem `projeto.json`), a troca de chat só é pedida pelo tamanho da
+  conversa (aviso a 250 mil tokens) e pelos bloqueios; revisões, decisões, commits, turnos e arquivos não encerram a
+  sessão. Desliga com `"modoContinuo": false` no `projeto.json`.
+- **O trabalho em paralelo roda direto.** Com 3 ou mais tarefas independentes, o Claude roda o `/esquadro:paralelo`
+  sem perguntar e diz numa linha quantos agentes, qual modelo e o custo; o teto de 8 agentes e o modelo mais barato
+  seguem. Sai da faixa o botão "o agente ofereceu rodar em paralelo": não há mais oferta.
+- **O vigia liga sozinho no repositório do próprio plugin** (a raiz do git com `.claude-plugin/plugin.json` de nome
+  `esquadro`), para quem mantém o plugin não precisar lembrar da chave. Nos outros projetos segue desligado sem
+  `"vigia": true`; `"vigia": false` desliga em qualquer lugar.
+
 ## 0.8.4 — aviso antes de gastar ao voltar a um chat grande parado
 
 **Novo** (pedido do dono; aviso aprovado por imagem antes do código)

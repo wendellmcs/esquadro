@@ -139,7 +139,16 @@ test('A2: tudo dentro do teto = silencio, e a marca e gravada mesmo assim', () =
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('A2: cada categoria avisa sozinha, em ASCII, com o prefixo, o detalhe e como desligar', () => {
+// Plano 091 (#3, D559): o fim do aviso deixa de ser informacao e vira ordem ao modelo, no texto do mock aprovado.
+const ORDEM_DO_MOCK = [
+  'Faca no seu primeiro turno, depois de atender o pedido:',
+  '1. Rode /esquadro:auditar para ver o detalhe.',
+  '2. Leve os cortes ao usuario pelo AskUserQuestion, em 3 opcoes, com o',
+  '   recomendado primeiro e o custo de cada um. Nao corte nada sem o sim.',
+  'Desligar: "auditarNaAbertura": false em .claude/esquadro/projeto.json.'
+].join('\n');
+
+test('A2: cada categoria avisa sozinha, em ASCII, com o prefixo, o detalhe e a ordem de auditar (D559)', () => {
   const casos = [
     ['peso', limpo({ peso: { total: 227, teto: 200, estourou: true } }), /peso de instrucao 227 acima do teto 200/],
     ['sobreposicao', limpo({ sobreposicoes: [{ a: 'revisar', b: 'inspecionar', termos: ['x', 'y'] }] }),
@@ -151,15 +160,51 @@ test('A2: cada categoria avisa sozinha, em ASCII, com o prefixo, o detalhe e com
     const dir = temp('cat-' + nome);
     try {
       const t = ap.avisoDaAuditoria(dir, PROJETO, { agora: AGORA, auditar: stub(relatorio) });
-      assert.ok(t.startsWith('esquadro: auditoria automatica (a cada 7 dias):\n'), nome + ': ' + t);
+      assert.ok(t.startsWith('esquadro: auditoria automatica (a cada 7 dias) achou o que cortar:\n'), nome + ': ' + t);
       assert.ok(esperado.test(t), nome + ': ' + t);
-      assert.ok(/\/esquadro:auditar mostra o detalhe\./.test(t) && t.indexOf('"auditarNaAbertura": false') !== -1 &&
-        t.indexOf('.claude/esquadro/projeto.json') !== -1, nome + ' sem a linha final: ' + t);
+      assert.ok(t.endsWith('\n' + ORDEM_DO_MOCK), nome + ' sem a ordem do mock no fim: ' + t);
       assert.ok(/^[\x20-\x7E\n]+$/.test(t), nome + ' nao e ASCII: ' + JSON.stringify(t));
-      // so a categoria do caso aparece: 1 item + prefixo + linha final
-      assert.strictEqual(t.split('\n').length, 3, nome + ' trouxe mais que um item: ' + t);
+      // so a categoria do caso aparece: prefixo + 1 item + as 5 linhas da ordem
+      assert.strictEqual(t.split('\n').length, 7, nome + ' trouxe mais que um item: ' + t);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
+});
+
+// Plano 091 #8 (mock D559, secao 2): atalho sem gatilho e motivo de corte; o que tem gatilho nao conta.
+test('091 #8: atalhos sem gatilho entram na lista do que cortar, com arquivo:linha', () => {
+  const dir = temp('atalhos');
+  const ok = temp('atalhos-ok');
+  try {
+    const achados = [
+      { arquivo: 'scripts/lib/gasto.js', linha: 42, oque: 'a', limite: null, gatilho: null },
+      { arquivo: 'scripts/lib/gasto.js', linha: 50, oque: 'b', limite: null, gatilho: 'c' },
+      { arquivo: 'scripts/abrir-turno.js', linha: 77, oque: 'd', limite: 'e', gatilho: null }
+    ];
+    const t = ap.avisoDaAuditoria(dir, PROJETO, { agora: AGORA, auditar: stub(limpo({})), atalhos: function () { return achados; } });
+    assert.strictEqual(t, [
+      'esquadro: auditoria automatica (a cada 7 dias) achou o que cortar:',
+      '- atalhos sem gatilho (2): scripts/lib/gasto.js:42; scripts/abrir-turno.js:77',
+      ORDEM_DO_MOCK
+    ].join('\n'));
+    const so = ap.avisoDaAuditoria(ok, PROJETO, { agora: AGORA, auditar: stub(limpo({})),
+      atalhos: function () { return [achados[1]]; } });
+    assert.strictEqual(so, '', 'atalho com gatilho nao e corte: ' + so);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(ok, { recursive: true, force: true });
+  }
+});
+
+test('091 #8: sem stub, a auditoria varre o repositorio de verdade (rastreado e novo nao ignorado)', () => {
+  const dir = temp('atalhos-git');
+  try {
+    git(dir, ['init', '-q']);
+    escrever(dir, '.gitignore', 'fora.js\n');
+    escrever(dir, 'a.js', 'x\n// atalho: sem gatilho\n');
+    escrever(dir, 'fora.js', '// atalho: ignorado\n');
+    const t = ap.avisoDaAuditoria(dir, PROJETO, { agora: AGORA, auditar: stub(limpo({})) });
+    assert.ok(t.indexOf('\n- atalhos sem gatilho (1): a.js:2\n') !== -1, t);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('A2: o prefixo diz o N configurado; nome com acento sai ASCII; lista grande corta em 5 com "e mais K"', () => {
@@ -169,7 +214,7 @@ test('A2: o prefixo diz o N configurado; nome com acento sai ASCII; lista grande
     for (let i = 0; i < 8; i++) pares.push({ a: 'skill-' + i, b: 'skill-é' + i, termos: [] });
     const t = ap.avisoDaAuditoria(dir, { limiares: { diasEntreAuditorias: 3 } },
       { agora: AGORA, auditar: stub(limpo({ sobreposicoes: pares })) });
-    assert.ok(t.startsWith('esquadro: auditoria automatica (a cada 3 dias):'), t);
+    assert.ok(t.startsWith('esquadro: auditoria automatica (a cada 3 dias) achou o que cortar:'), t);
     assert.ok(/skills que se sobrepoem \(8\)/.test(t) && /; e mais 3\n/.test(t), t);
     assert.ok(t.indexOf('skill-0 x skill-?0') !== -1, 'acento nao virou ?: ' + t);
     assert.strictEqual((t.match(/ x /g) || []).length, 5, 'passou de 5 nomes: ' + t);
@@ -551,5 +596,72 @@ test('A2-16: apagado no git e recriado SEM commit usa o mtime (nao a data antiga
     git(dir, ['commit', '-q', '-m', 'recria r'], AGORA - 3 * DIA);
     assert.strictEqual(gitLib.ultimasMudancas(dir, '.claude/skills').get('.claude/skills/r/SKILL.md'),
       Math.floor((AGORA - 3 * DIA) / 1000) * 1000);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Plano 091, Tarefa 6 (mock D559, secao 5): a auditoria le os contadores de ordem, mostra a diferenca contra a foto
+// que guardou na marca da vez anterior e grava a foto nova. Nada disparado e nada a cortar segue em silencio.
+function contadores(dir, obj) {
+  escrever(dir, '.claude/esquadro/contadores.json', JSON.stringify(obj));
+}
+
+test('091 T6: nada a cortar, com ordens na janela - so a retroalimentacao, sem a ordem de auditar; foto na marca', () => {
+  const dir = temp('retro');
+  try {
+    escrever(dir, '.claude/esquadro/auditoria.json', JSON.stringify({ ultima: new Date(AGORA - 7 * DIA).toISOString(),
+      ordens: { ordem_aprender_dada: 1 } }));
+    contadores(dir, { ordem_aprender_dada: 3, ordem_aprender_cumprida: 2, fecho_sem_evidencia: 4 });
+    const t = ap.avisoDaAuditoria(dir, PROJETO, { agora: AGORA, auditar: stub(limpo()) });
+    assert.strictEqual(t, [
+      'esquadro: auditoria automatica (a cada 7 dias): nada a cortar.',
+      '- ordens dos ultimos 7 dias (dadas / cumpridas / recusadas pelo dono):',
+      '  aprender 2/2/-',
+      '  nunca disparadas: auditar, calibrar, init, revisar, manual',
+      '  (-: o esquadro nao ve essa recusa; dada e nao cumprida foi ignorada ou recusada na conversa)'
+    ].join('\n'));
+    assert.strictEqual(ap.pedeCorte(t), false, 'nada a cortar nao pode acender o botao nem contar a ordem');
+    assert.deepStrictEqual(lerMarcaBruta(dir).ordens, { ordem_aprender_dada: 3, ordem_aprender_cumprida: 2 });
+    assert.strictEqual(lerMarcaBruta(dir).ultima, new Date(AGORA).toISOString());
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('091 T6: com o que cortar, a retroalimentacao entra entre a lista e a ordem de auditar', () => {
+  const dir = temp('retro-corte');
+  try {
+    contadores(dir, { ordem_revisar_dada: 2, ordem_revisar_cumprida: 1, ordem_revisar_recusada: 1 });
+    const t = ap.avisoDaAuditoria(dir, PROJETO, { agora: AGORA,
+      auditar: stub(limpo({ peso: { total: 227, teto: 200, estourou: true } })) });
+    assert.strictEqual(t, [
+      'esquadro: auditoria automatica (a cada 7 dias) achou o que cortar:',
+      '- peso de instrucao 227 acima do teto 200',
+      '- ordens desde o comeco (dadas / cumpridas / recusadas pelo dono):',
+      '  revisar antes do commit 2/1/1',
+      '  nunca disparadas: aprender, auditar, calibrar, init, manual',
+      ORDEM_DO_MOCK
+    ].join('\n'));
+    assert.strictEqual(ap.pedeCorte(t), true);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('091 T6: nada disparado desde a foto e nada a cortar = silencio; a foto segue gravada', () => {
+  const dir = temp('retro-calada');
+  try {
+    escrever(dir, '.claude/esquadro/auditoria.json', JSON.stringify({ ultima: new Date(AGORA - 8 * DIA).toISOString(),
+      ordens: { ordem_aprender_dada: 3 } }));
+    contadores(dir, { ordem_aprender_dada: 3 });
+    assert.strictEqual(ap.avisoDaAuditoria(dir, PROJETO, { agora: AGORA, auditar: stub(limpo()) }), '');
+    assert.deepStrictEqual(lerMarcaBruta(dir).ordens, { ordem_aprender_dada: 3 });
+    assert.strictEqual(ap.pedeCorte(''), false);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('091 T6: auditar que lanca com ordens na janela - a retroalimentacao sai junto, porque a foto avanca (revisao cega 0.9.0)', () => {
+  const dir = temp('retro-falha');
+  try {
+    contadores(dir, { ordem_aprender_dada: 2 });
+    const t = ap.avisoDaAuditoria(dir, PROJETO, { agora: AGORA, auditar: function () { throw new Error('quebrou'); } });
+    assert.ok(t.startsWith('esquadro: auditoria automatica falhou (Error: quebrou); rode /esquadro:auditar\n'), t);
+    assert.ok(t.includes('  aprender 2/0/-'), t);
+    assert.deepStrictEqual(lerMarcaBruta(dir).ordens, { ordem_aprender_dada: 2 });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

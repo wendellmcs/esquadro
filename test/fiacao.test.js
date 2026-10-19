@@ -797,15 +797,28 @@ const TITULO_P = '# esquadro - trabalho em paralelo';
 const continuo = require('../scripts/lib/continuo.js');
 const TITULO_C = '# esquadro - menos paradas';
 
+const enxuto = require('../scripts/lib/enxuto.js');
+const TITULO_E = '# esquadro - menos codigo';
+
+// Plano 091 (#7, D559): sem projeto.json a abertura termina com a ordem de perguntar o init (lib/ordens.js). O comando
+// do "nunca" leva caminhos desta maquina: sai da ultima linha e entra de volta no texto esperado.
+const ordensLib = require('../scripts/lib/ordens.js');
+function comOrdemDoInit(stdout, dir, rotulo) {
+  const m = /\nCom "nunca", rode: (node .*recusar-init\.js.*)\n$/.exec(stdout);
+  assert.ok(m, rotulo + ': sem a ordem do init no fim: ' + JSON.stringify(stdout));
+  return '\n' + ordensLib.ordemDoInit(dir, null, { comandoNunca: m[1] }) + '\n';
+}
+
 // D451 (0.6.2): o bloco de paralelismo sai antes do de qualidade, e os dois so eles quando nao ha projeto.
-// D467 (0.7.0): entre os dois, o de menos paradas.
-test('fiacao: sem projeto.json a abertura imprime os blocos de paralelismo, menos paradas e qualidade, e so eles, nas 4 origens', () => {
+// D467 (0.7.0): entre os dois, o de menos paradas. D554 (0.9.0): por ultimo, o de menos codigo. 091 #7: e a ordem do init.
+test('fiacao: sem projeto.json a abertura imprime os blocos de paralelismo, menos paradas, qualidade e menos codigo, e so eles, nas 4 origens', () => {
   for (const origem of ORIGENS_Q) {
     const dir = temp('qualidade-sem-projeto');
     try {
       const r = rodar('abertura.js', dir, { session_id: 'q1-' + origem, cwd: dir, source: origem });
       assert.strictEqual(r.status, 0, r.stderr);
-      assert.strictEqual(r.stdout, paralelismo.BLOCO + '\n' + continuo.bloco(null) + '\n' + qualidade.BLOCO, origem + ': ' + JSON.stringify(r.stdout));
+      assert.strictEqual(r.stdout, paralelismo.BLOCO + '\n' + continuo.bloco(null) + '\n' + qualidade.BLOCO + '\n' + enxuto.BLOCO +
+        comOrdemDoInit(r.stdout, dir, origem), origem + ': ' + JSON.stringify(r.stdout));
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 });
@@ -862,10 +875,11 @@ test('fiacao: qualidadeDeResposta false some com o bloco, e ligado e desligado +
       const ligado = rodar('abertura.js', dir, { session_id: 'q3l-' + origem, cwd: dir, source: origem });
       assert.strictEqual(ligado.status, 0, ligado.stderr);
 
-      // i = fim do texto que a reinjecao monta (as regras e, em resume/clear/compact, o ESTADO): e onde o bloco
-      // entra. O que vem depois (o aviso do plano de outra sessao) tem de sair igual.
-      const i = desligado.stdout.indexOf('\n# esquadro - ATENCAO');
+      // i = onde o bloco de qualidade entra: logo antes do de menos codigo (D554), que vem depois dele. O que vem
+      // depois (o bloco de menos codigo e o aviso do plano de outra sessao) tem de sair igual.
+      const i = desligado.stdout.indexOf('\n' + TITULO_E);
       assert.ok(i > desligado.stdout.indexOf(REGRA_Q), origem + ': nao achei o fim do texto montado: ' + desligado.stdout);
+      assert.ok(i < desligado.stdout.indexOf('\n# esquadro - ATENCAO'), origem + ': o bloco de menos codigo saiu depois do aviso');
       assert.strictEqual(ligado.stdout,
         desligado.stdout.slice(0, i) + '\n' + qualidade.BLOCO + desligado.stdout.slice(i), origem);
     }
@@ -912,13 +926,14 @@ test('fiacao: sessao numa subpasta herda o false do projeto acima (e sem o false
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('fiacao: abertura com stdin vazio ou JSON invalido sai com 0 e imprime os blocos de paralelismo, menos paradas e qualidade', () => {
+test('fiacao: abertura com stdin vazio ou JSON invalido sai com 0 e imprime os blocos de paralelismo, menos paradas, qualidade e menos codigo', () => {
   for (const [nome, bruto] of [['vazio', ''], ['invalido', '{isso nao e json']]) {
     const dir = temp('qualidade-stdin-' + nome);
     try {
       const r = abrirComStdinCru(dir, bruto);
       assert.strictEqual(r.status, 0, nome + ': ' + r.stderr);
-      assert.strictEqual(r.stdout, paralelismo.BLOCO + '\n' + continuo.bloco(null) + '\n' + qualidade.BLOCO, nome + ': ' + JSON.stringify(r.stdout));
+      assert.strictEqual(r.stdout, paralelismo.BLOCO + '\n' + continuo.bloco(null) + '\n' + qualidade.BLOCO + '\n' + enxuto.BLOCO +
+        comOrdemDoInit(r.stdout, dir, nome), nome + ': ' + JSON.stringify(r.stdout));
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 });
@@ -930,13 +945,37 @@ test('fiacao: o bloco de menos paradas sai entre paralelismo e qualidade, e com 
     const r = rodar('abertura.js', dir, { session_id: 'c1', cwd: dir, source: 'startup' });
     assert.strictEqual(r.status, 0, r.stderr);
     assert.ok(r.stdout.includes(continuo.bloco({ modoContinuo: true })), r.stdout);
+    // Plano 091 (#9): sem a chave o modo continuo e o padrao (ligado); so modoContinuo false o tira
     projetoComRegras(dir);
+    const p = rodar('abertura.js', dir, { session_id: 'c3', cwd: dir, source: 'startup' });
+    assert.ok(p.stdout.includes('Modo continuo ligado'), 'sem a chave o padrao e ligado: ' + p.stdout);
+    projetoComRegras(dir, { modoContinuo: false });
     const l = rodar('abertura.js', dir, { session_id: 'c2', cwd: dir, source: 'startup' });
     const iP = l.stdout.indexOf(TITULO_P);
     const iC = l.stdout.indexOf(TITULO_C);
     const iQ = l.stdout.indexOf(TITULO_Q);
     assert.ok(iP !== -1 && iP < iC && iC < iQ, 'ordem: paralelismo, menos paradas, qualidade: ' + l.stdout);
-    assert.ok(!l.stdout.includes('Modo continuo ligado'), 'sem a chave nao diz que esta ligado: ' + l.stdout);
+    assert.ok(!l.stdout.includes('Modo continuo ligado'), 'com modoContinuo false nao diz que esta ligado: ' + l.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// D554 (0.9.0): o bloco de menos codigo sai por ultimo, depois do de qualidade; so `menosCodigo: false` o tira,
+// e o resto da abertura sai igual.
+test('fiacao: menosCodigo false some so com o bloco de menos codigo; ligado, ele vem depois do de qualidade', () => {
+  const dir = temp('enxuto-chave');
+  try {
+    projetoComRegras(dir, { [enxuto.CHAVE]: false });
+    const d = rodar('abertura.js', dir, { session_id: 'e1', cwd: dir, source: 'startup' });
+    assert.strictEqual(d.status, 0, d.stderr);
+    assert.ok(!d.stdout.includes(TITULO_E), 'o false nao desligou: ' + d.stdout);
+    assert.ok(d.stdout.includes(REGRA_Q) && d.stdout.includes(TITULO_P) && d.stdout.includes(TITULO_Q), d.stdout);
+    projetoComRegras(dir, { [enxuto.CHAVE]: 'nao' });
+    const l = rodar('abertura.js', dir, { session_id: 'e2', cwd: dir, source: 'startup' });
+    assert.ok(l.stdout.includes(enxuto.BLOCO), 'tipo errado segue ligado: ' + l.stdout);
+    const iQ = l.stdout.indexOf(TITULO_Q);
+    const iE = l.stdout.indexOf(TITULO_E);
+    assert.ok(iQ !== -1 && iQ < iE, 'ordem: qualidade, menos codigo: ' + l.stdout);
+    assert.ok(l.stdout.includes('menosCodigo tem de ser true ou false'), 'o tipo errado avisa: ' + l.stdout);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -1116,26 +1155,35 @@ test('T10-2/3: os dois contadores sobrevivem ao fecho', () => {
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('T10-5: sem /esquadro:init (sem projeto.json) os dois gatilhos disparam com o limiar padrao', () => {
+// Plano 091 (#9): sem projeto.json o modo continuo e o padrao (ligado) e CALA os dois gatilhos contaveis; o limiar
+// padrao (3) so dispara com "modoContinuo": false gravado no projeto.json (o comportamento de antes).
+test('T10-5: sem /esquadro:init (sem projeto.json) o modo continuo padrao cala os dois gatilhos; com modoContinuo false disparam com o limiar padrao', () => {
   for (const [nome, quando] of [
     ['decisoes', { tool_name: 'AskUserQuestion', tool_response: respostas({ 'a?': '1', 'b?': '2', 'c?': '3' }) }],
     ['commits', { tool_name: 'Bash', tool_response: { gitOperation: { commit: { sha: 'abc1234' } } } }]
   ]) {
-    const dir = temp('sem-init-' + nome);
-    try {
-      assert.ok(!fs.existsSync(path.join(dir, '.claude')), 'controle: a pasta nao tem .claude');
-      const id = 'si-' + nome;
-      const vezes = nome === 'commits' ? 3 : 1;
-      for (let i = 0; i < vezes; i++) rodar('marcar-trabalho.js', dir, Object.assign({ session_id: id, cwd: dir }, quando));
-      rodar('marcar-trabalho.js', dir, { session_id: id, cwd: dir, tool_name: 'Write', tool_input: { file_path: 'a.js' } });
-      const f = rodar('portao-fecho.js', dir, { session_id: id, cwd: dir, hook_event_name: 'Stop',
-        last_assistant_message: 'Anotado.' });
-      assert.strictEqual(f.status, 0, f.stderr);
-      const j = JSON.parse(f.stdout);
-      const dito = nome === 'commits' ? '3 commits nesta sessao (limiar 3)' : '3 decisoes do dono respondidas (limiar 3)';
-      assert.ok(j.systemMessage.indexOf(dito) !== -1, nome + ': ' + f.stdout);
-      assert.ok(j.hookSpecificOutput.additionalContext.indexOf(dito) !== -1, nome + ': ' + f.stdout);
-    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    for (const desligado of [false, true]) {
+      const dir = temp('sem-init-' + nome + (desligado ? '-off' : ''));
+      try {
+        assert.ok(!fs.existsSync(path.join(dir, '.claude')), 'controle: a pasta nao tem .claude');
+        if (desligado) escrever(dir, path.join('.claude', 'esquadro', 'projeto.json'), JSON.stringify({ modoContinuo: false }));
+        const id = 'si-' + nome + (desligado ? '-off' : '');
+        const vezes = nome === 'commits' ? 3 : 1;
+        for (let i = 0; i < vezes; i++) rodar('marcar-trabalho.js', dir, Object.assign({ session_id: id, cwd: dir }, quando));
+        rodar('marcar-trabalho.js', dir, { session_id: id, cwd: dir, tool_name: 'Write', tool_input: { file_path: 'a.js' } });
+        const f = rodar('portao-fecho.js', dir, { session_id: id, cwd: dir, hook_event_name: 'Stop',
+          last_assistant_message: 'Anotado.' });
+        assert.strictEqual(f.status, 0, f.stderr);
+        const dito = nome === 'commits' ? '3 commits nesta sessao (limiar 3)' : '3 decisoes do dono respondidas (limiar 3)';
+        if (!desligado) {
+          assert.ok(f.stdout.indexOf(dito) === -1 && !/chat novo/.test(f.stdout), nome + ': o modo continuo padrao tinha de calar: ' + f.stdout);
+          continue;
+        }
+        const j = JSON.parse(f.stdout);
+        assert.ok(j.systemMessage.indexOf(dito) !== -1, nome + ': ' + f.stdout);
+        assert.ok(j.hookSpecificOutput.additionalContext.indexOf(dito) !== -1, nome + ': ' + f.stdout);
+      } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    }
   }
 });
 
@@ -1245,7 +1293,7 @@ test('T10-4/T10-5: a pergunta funciona sem /esquadro:init (pasta sem .claude)', 
 
 // ------------------------------- Bloco A1 (D426): corrigir o agente sugere virar regra (/esquadro:aprender)
 
-test('A1: prompt que corrige o agente devolve additionalContext oferecendo /esquadro:aprender, sem gravar nada', () => {
+test('A1: prompt que corrige o agente devolve additionalContext mandando rodar o /esquadro:aprender, sem gravar nada', () => {
   const dir = temp('correcao');
   try {
     assert.ok(!fs.existsSync(path.join(dir, '.claude')), 'controle: a pasta nao tem .claude (vale sem init)');
@@ -1253,7 +1301,8 @@ test('A1: prompt que corrige o agente devolve additionalContext oferecendo /esqu
     assert.ok(j && j.hookSpecificOutput, 'nao disparou');
     assert.strictEqual(j.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
     const t = j.hookSpecificOutput.additionalContext;
-    assert.ok(t.indexOf('/esquadro:aprender') !== -1 && /uma linha/.test(t) && /relato de bug/.test(t), t);
+    // Plano 091 (#2, D559): ordem de rodar a skill e perguntar em 3 opcoes, nao mais "oferecer em uma linha".
+    assert.ok(t.indexOf('Rode /esquadro:aprender') !== -1 && /AskUserQuestion, em 3 opcoes/.test(t) && /relato de bug/.test(t), t);
     assert.ok(/^[\x20-\x7E\n]+$/.test(t), 'additionalContext tem de ser ASCII: ' + JSON.stringify(t));
     assert.ok(!fs.existsSync(path.join(dir, '.claude')), 'o gancho nao pode criar nada no projeto');
     // relato de bug e resposta a pergunta seguem calados (e nao gastam a janela da sugestao)
@@ -1355,9 +1404,10 @@ test('A2: a abertura avisa o peso estourado quando a auditoria esta vencida, e a
     assert.ok(!fs.existsSync(path.join(dir, MARCA_A2)), 'controle: sem marca no comeco');
     const r1 = abrirA2(dir, 'a2-1');
     assert.strictEqual(r1.status, 0, r1.stderr);
-    assert.ok(/esquadro: auditoria automatica \(a cada 7 dias\):/.test(r1.stdout), r1.stdout);
+    assert.ok(/esquadro: auditoria automatica \(a cada 7 dias\) achou o que cortar:/.test(r1.stdout), r1.stdout);
     assert.ok(/peso de instrucao 205 acima do teto 200/.test(r1.stdout), r1.stdout);
-    assert.ok(/\/esquadro:auditar/.test(r1.stdout) && r1.stdout.indexOf('"auditarNaAbertura": false') !== -1, r1.stdout);
+    // Plano 091 (#3, D559): a abertura entrega a ordem de rodar a auditoria, nao so o aviso.
+    assert.ok(/1\. Rode \/esquadro:auditar para ver o detalhe\./.test(r1.stdout) && r1.stdout.indexOf('"auditarNaAbertura": false') !== -1, r1.stdout);
     assert.ok(/qualidade de resposta/.test(r1.stdout), 'o resto da abertura sumiu: ' + r1.stdout);
     const marca = JSON.parse(fs.readFileSync(path.join(dir, MARCA_A2), 'utf8'));
     assert.ok(Math.abs(Date.now() - Date.parse(marca.ultima)) < 60000, JSON.stringify(marca));
@@ -1379,8 +1429,26 @@ test('A2 + pedido 32: a abertura que avisou da auditoria marca a sessao; a calad
     projetoComPesoEstourado(dir);
     assert.ok(/auditoria automatica/.test(abrirA2(dir, 'a2b-1').stdout));
     assert.strictEqual((lerSessao(dir, 'a2b-1') || {}).auditoriaAvisou, true);
+    // 091 T6: a ordem de cortar conta como ordem do auditar dada
+    assert.strictEqual(((lerSessao(dir, 'a2b-1') || {}).contadores || {}).ordem_auditar_dada, 1);
     assert.strictEqual(abrirA2(dir, 'a2b-2').stdout.indexOf('auditoria automatica'), -1, 'controle: dentro do prazo, calada');
     assert.strictEqual((lerSessao(dir, 'a2b-2') || {}).auditoriaAvisou, undefined);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// 091 T6: so a retroalimentacao (nada a cortar) sai na abertura, mas nao acende o botao nem conta a ordem do auditar.
+test('091 T6: a abertura com so a retroalimentacao nao marca auditoriaAvisou nem conta a ordem', () => {
+  const dir = temp('a2-retro');
+  try {
+    escrever(dir, '.claude/esquadro/projeto.json', '{}');
+    escrever(dir, '.claude/esquadro/contadores.json', JSON.stringify({ ordem_revisar_dada: 2, ordem_revisar_cumprida: 2 }));
+    const r = abrirA2(dir, 'a2r-1');
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(r.stdout.indexOf('esquadro: auditoria automatica (a cada 7 dias): nada a cortar.\n' +
+      '- ordens desde o comeco (dadas / cumpridas / recusadas pelo dono):\n  revisar antes do commit 2/2/0') !== -1, r.stdout);
+    const s = lerSessao(dir, 'a2r-1') || {};
+    assert.strictEqual(s.auditoriaAvisou, undefined);
+    assert.strictEqual((s.contadores || {}).ordem_auditar_dada, undefined);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -1393,6 +1461,85 @@ test('A2: abertura com tudo dentro do teto fica calada e mesmo assim grava a mar
     assert.strictEqual(r.stdout.indexOf('auditoria automatica'), -1, r.stdout);
     assert.ok(fs.existsSync(path.join(dir, MARCA_A2)), 'nao gravou a marca');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Plano 091 (#4, D559): a abertura manda calibrar quando o projeto tem 30+ conversas salvas e nunca calibrou.
+function abrirComConversas(dir, id, n, projeto) {
+  const cfg = path.join(dir, '_cfg');
+  const pasta = path.join(cfg, 'projects', require(path.join(RAIZ, 'scripts', 'lib', 'calibracao.js')).nomeDaPasta(dir));
+  fs.mkdirSync(pasta, { recursive: true });
+  for (let i = 0; i < n; i++) fs.writeFileSync(path.join(pasta, 'c' + i + '.jsonl'), '{}\n');
+  fs.mkdirSync(path.join(dir, '.claude', 'esquadro'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'projeto.json'), JSON.stringify(projeto));
+  return spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'abertura.js')], {
+    cwd: dir, encoding: 'utf8', input: JSON.stringify({ session_id: id, cwd: dir, source: 'startup' }),
+    env: Object.assign({}, process.env, { ESQUADRO_TMP: path.join(dir, '_sessoes'), CLAUDE_CONFIG_DIR: cfg })
+  });
+}
+
+test('091 #4: 30 conversas e nunca calibrado -> a abertura manda rodar o /esquadro:calibrar; a 2a abertura fica calada', () => {
+  const dir = temp('ordem-cal');
+  try {
+    const r1 = abrirComConversas(dir, 'oc1', 30, { auditarNaAbertura: false });
+    assert.strictEqual(r1.status, 0, r1.stderr);
+    assert.ok(r1.stdout.indexOf('esquadro: ja ha 30 conversas salvas neste projeto') !== -1 &&
+      r1.stdout.indexOf('1. Rode /esquadro:calibrar (so mede; nao grava).') !== -1, r1.stdout);
+    assert.ok(/qualidade de resposta/.test(r1.stdout), 'o resto da abertura sumiu: ' + r1.stdout);
+    assert.strictEqual(abrirComConversas(dir, 'oc2', 30, { auditarNaAbertura: false }).stdout.indexOf('/esquadro:calibrar'), -1,
+      'repetiu dentro de 30 dias');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('091 #4: controles - 29 conversas, ou limiar ja gravado, calam a ordem', () => {
+  const dir = temp('ordem-cal-c');
+  try {
+    assert.strictEqual(abrirComConversas(dir, 'occ1', 29, { auditarNaAbertura: false }).stdout.indexOf('/esquadro:calibrar'), -1);
+    const dir2 = temp('ordem-cal-c2');
+    try {
+      const r = abrirComConversas(dir2, 'occ2', 40, { auditarNaAbertura: false, limiares: { tokensDeContexto: 200000 } });
+      assert.strictEqual(r.stdout.indexOf('/esquadro:calibrar'), -1, r.stdout);
+    } finally { fs.rmSync(dir2, { recursive: true, force: true }); }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Plano 091 (#7, D559): sem projeto.json a abertura manda perguntar o init em 3 opcoes; "nunca" cala pelo comando.
+test('091 #7: sem projeto.json a abertura manda perguntar o init; a reabertura da mesma sessao e o "nunca" calam', () => {
+  const dir = temp('ordem-init');
+  const cfg = temp('ordem-init-cfg');
+  const abrir = function (id, source) {
+    return spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'abertura.js')], {
+      cwd: dir, encoding: 'utf8', input: JSON.stringify({ session_id: id, cwd: dir, source: source || 'startup' }),
+      env: Object.assign({}, process.env, { ESQUADRO_TMP: path.join(cfg, '_sessoes'), CLAUDE_CONFIG_DIR: cfg })
+    });
+  };
+  try {
+    const r1 = abrir('oi1');
+    assert.strictEqual(r1.status, 0, r1.stderr);
+    assert.ok(r1.stdout.indexOf('esquadro: este projeto ainda nao tem o esquadro configurado') !== -1 &&
+      r1.stdout.indexOf('configurar agora com /esquadro:init') !== -1, r1.stdout);
+    const linha = r1.stdout.split('\n').filter(function (l) { return l.indexOf('Com "nunca", rode: ') === 0; })[0];
+    assert.ok(linha && linha.indexOf('recusar-init.js') !== -1, 'sem o comando do nunca: ' + r1.stdout);
+    const sessao = function (id) { return JSON.parse(fs.readFileSync(path.join(cfg, '_sessoes', 'esquadro', id + '.json'), 'utf8')); };
+    // 091 T6: a ordem do init conta dada uma vez; a reabertura da mesma sessao nao conta de novo
+    assert.strictEqual(sessao('oi1').contadores.ordem_init_dada, 1);
+    assert.ok(!fs.existsSync(path.join(dir, '.claude')), 'a ordem nao pode criar nada no projeto');
+    assert.strictEqual(abrir('oi1', 'compact').stdout.indexOf('/esquadro:init na mesma resposta'), -1, 'repetiu na mesma sessao');
+    assert.strictEqual(sessao('oi1').contadores.ordem_init_dada, 1, 'a reabertura contou de novo');
+    const g = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'recusar-init.js'), dir], {
+      encoding: 'utf8', env: Object.assign({}, process.env, { CLAUDE_CONFIG_DIR: cfg }) });
+    assert.strictEqual(g.status, 0, g.stdout + g.stderr);
+    assert.strictEqual(abrir('oi2').stdout.indexOf('/esquadro:init na mesma resposta'), -1, 'o nunca nao calou a sessao nova');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(cfg, { recursive: true, force: true }); }
+});
+
+test('091 #7: recusar-init.js sem pasta sai 1 e nao grava', () => {
+  const cfg = temp('ordem-init-sem');
+  try {
+    const g = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'recusar-init.js')], {
+      encoding: 'utf8', env: Object.assign({}, process.env, { CLAUDE_CONFIG_DIR: cfg }) });
+    assert.strictEqual(g.status, 1, g.stdout);
+    assert.ok(!fs.existsSync(path.join(cfg, 'esquadro')), 'gravou sem pasta');
+  } finally { fs.rmSync(cfg, { recursive: true, force: true }); }
 });
 
 test('A2: auditarNaAbertura: false desliga (sem aviso, sem marca); sem projeto.json nao audita nem cria .claude', () => {
@@ -1574,7 +1721,9 @@ test('V: sem a chave (ou com vigia: false) a abertura nao fala do vigia e nao cr
     const sem = temp('vigia-sem-projeto');
     try {
       const s = abrirVigia(sem, 'v-sem', pastaVigia);
-      assert.strictEqual(s.stdout.indexOf('vigia'), -1, s.stdout);
+      // 091 #7: a ordem do init cita a pasta temporaria (que tem "vigia" no nome) no comando do "nunca"; fora ela.
+      const semOrdem = s.stdout.split('\n').filter(function (l) { return l.indexOf('Com "nunca", rode: ') !== 0; }).join('\n');
+      assert.strictEqual(semOrdem.indexOf('vigia'), -1, s.stdout);
       assert.ok(!fs.existsSync(pastaVigia));
     } finally { fs.rmSync(sem, { recursive: true, force: true }); }
   } finally {

@@ -99,6 +99,9 @@ io.blindar(function () {
     process.stdout.write((texto || paralelo ? '\n' : '') + continuo);
     const qualidade = require('./lib/qualidade.js').bloco(projeto);
     if (qualidade) process.stdout.write('\n' + qualidade);
+    // D554 (0.9.0): menos codigo, por ultimo, no mesmo molde; so `menosCodigo: false` desliga.
+    const enxuto = require('./lib/enxuto.js').bloco(projeto);
+    if (enxuto) process.stdout.write('\n' + enxuto);
     const heranca = require('./lib/escopo.js').avisoHeranca(cwd, estado.ler(e.session_id).frente);
     if (heranca) process.stdout.write('\n' + heranca + '\n');
 
@@ -133,21 +136,53 @@ io.blindar(function () {
     // nada da auditoria derrube o resto da abertura.
     try {
       const auditoriaTexto = require('./lib/auditoria-periodica.js').avisoDaAuditoria(cwd, projeto);
-      if (auditoriaTexto) {
-        process.stdout.write('\n' + auditoriaTexto + '\n');
-        // Pedido 32 (Tarefa 4 subitem 3): a marca da sessao que acende o botao do /esquadro:auditar na faixa do mod.
-        estado.alterar(e.session_id, function (s) { s.auditoriaAvisou = true; return s; });
+      if (auditoriaTexto) process.stdout.write('\n' + auditoriaTexto + '\n');
+      // Pedido 32 (Tarefa 4 subitem 3): a marca da sessao que acende o botao do /esquadro:auditar na faixa do mod. Plano
+      // 091 T6: so com a ordem de cortar (a retroalimentacao sozinha nao pede nada), e ai conta a ordem dada.
+      if (require('./lib/auditoria-periodica.js').pedeCorte(auditoriaTexto)) {
+        estado.alterar(e.session_id, function (s) { s.auditoriaAvisou = true; s.ordensPendentes = require('./lib/ordens.js').marcarDada(s, 'auditar'); return s; });
       }
     } catch (erro) {
-      // S8/A2-3: aqui so chega falha do `require` da lib (ela propria ja nao lanca). Calar deixava a
-      // auditoria morta para sempre sem ninguem saber; uma linha diz que nao rodou e por que. A abertura segue.
-      process.stdout.write('\nesquadro: auditoria automatica nao rodou (' +
+      // S8/A2-3: aqui chega falha do `require` da lib (ela propria ja nao lanca) ou, desde o plano 091 T6, da marca
+      // da sessao depois do aviso impresso. Calar deixava a auditoria morta para sempre sem ninguem saber; uma linha
+      // diz que nao rodou inteira e por que. A abertura segue.
+      process.stdout.write('\nesquadro: auditoria automatica nao rodou inteira (' +
+        escopoLib.ascii(textoLib.causaDoErro(erro)).slice(0, 120) + '). O resto da abertura segue igual.\n');
+    }
+    // Plano 091 (#4, D559): ordem de calibrar (30+ conversas, nunca calibrado). A lib nao lanca; a rede e a do vigia.
+    try {
+      const calibrar = require('./lib/ordens.js').ordemDoCalibrar(cwd, projeto);
+      if (calibrar) {
+        process.stdout.write('\n' + calibrar + '\n');
+        estado.alterar(e.session_id, function (s) { s.ordensPendentes = require('./lib/ordens.js').marcarDada(s, 'calibrar'); return s; });
+      }
+    } catch (erro) {
+      // Como a auditoria (S8/A2-3): calar esconderia a ordem morta. O botao do calibrar segue na faixa.
+      process.stdout.write('\nesquadro: ordem do calibrar nao rodou inteira (' +
+        escopoLib.ascii(textoLib.causaDoErro(erro)).slice(0, 120) + '). O resto da abertura segue igual.\n');
+    }
+    // Plano 091 (#7, D559): sem projeto.json, ordem de perguntar o init. Uma vez por sessao: a reabertura (compact,
+    // resume) nao repete; o "depois" e a sessao seguinte.
+    try {
+      if (!estado.ler(e.session_id).ordemDoInit) {
+        const init = require('./lib/ordens.js').ordemDoInit(cwd, projeto, {
+          comandoNunca: 'node ' + caminhoParaShell(path.join(__dirname, 'recusar-init.js')) + ' ' + caminhoParaShell(cwd)
+        });
+        if (init) {
+          process.stdout.write('\n' + init + '\n');
+          estado.alterar(e.session_id, function (s) { s.ordemDoInit = true; s.ordensPendentes = require('./lib/ordens.js').marcarDada(s, 'init'); return s; });
+        }
+      }
+    } catch (erro) {
+      // Idem; se a marca da sessao nao gravou, a ordem pode sair de novo na reabertura, e esta linha diz por que.
+      process.stdout.write('\nesquadro: ordem do init nao rodou inteira (' +
         escopoLib.ascii(textoLib.causaDoErro(erro)).slice(0, 120) + '). O resto da abertura segue igual.\n');
     }
     // Bloco V (D426/D437): a novidade da semana do vigia. So le o disco (D148: gancho nenhum abre rede);
-    // opt-in por `"vigia": true`, entao sem a chave nao toca em nada. Mesma segunda rede da auditoria.
+    // opt-in por `"vigia": true`; sem a chave so liga no repositorio do plugin (plano 091 #10, pelo cwd cru: a raiz
+    // do projeto.json pode ser outra pasta acima). Mesma segunda rede da auditoria.
     try {
-      const vigiaTexto = require('./lib/vigia-local.js').avisoDoVigia(projeto);
+      const vigiaTexto = require('./lib/vigia-local.js').avisoDoVigia(projeto, { cwd: e.cwd || process.cwd() });
       if (vigiaTexto) process.stdout.write('\n' + vigiaTexto + '\n');
     } catch (erro) {
       process.stdout.write('\nesquadro: vigia nao rodou (' +

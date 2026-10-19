@@ -35,7 +35,8 @@ const USO = { startedAt: 0, context: { tokens: 46900, window: 1000000, percent: 
 
 test('sessao.js: soma turno + sessao e usa o limiar do projeto (a conta do portao-fecho)', () => {
   cenario(function (c) {
-    fs.writeFileSync(path.join(c.projeto, '.claude', 'esquadro', 'projeto.json'), JSON.stringify({ limiares: { revisoesFechadas: 5 } }));
+    // Plano 091 (#9): modoContinuo false - o gatilho de revisoes so conta com o modo continuo desligado
+    fs.writeFileSync(path.join(c.projeto, '.claude', 'esquadro', 'projeto.json'), JSON.stringify({ limiares: { revisoesFechadas: 5 }, modoContinuo: false }));
     fs.writeFileSync(path.join(c.base, 'esquadro', 'sess-1.json'),
       JSON.stringify({ contadoresSessao: { revisao_fechada: 3 }, contadores: { revisao_fechada: 2 } }));
     const r = rodar(c, { uso: USO, amostras: [], sessao: 'sess-1' });
@@ -49,8 +50,15 @@ test('sessao.js: sem estado e sem projeto -> limiares padrao, nada cruzou', () =
   cenario(function (c) {
     const r = rodar(c, { uso: USO, amostras: [], sessao: 'nao-existe' });
     assert.strictEqual(r.cruzou, false);
-    // D445: o contexto ao vivo (46.900 de 175.000) e o sinal mais perto - pedido 71 (D544).
-    assert.ok(/ · troca de chat em 128 mil tokens$/.test(r.curta), r.curta);
+    // Plano 091 (#9): sem projeto o modo continuo e o padrao (ligado): o contexto ao vivo (46.900 de 250.000) e o
+    // sinal mais perto - pedido 71 (D544); os gatilhos contaveis ficam calados.
+    assert.ok(/ · troca de chat em 203 mil tokens$/.test(r.curta), r.curta);
+    assert.ok(r.longa.indexOf('- tamanho do contexto: 46.900 de 250.000 tokens') !== -1, r.longa);
+    // controle: com modoContinuo false o padrao antigo volta (D445: 46.900 de 175.000).
+    fs.writeFileSync(path.join(c.projeto, '.claude', 'esquadro', 'projeto.json'), JSON.stringify({ modoContinuo: false }));
+    const antigo = rodar(c, { uso: USO, amostras: [], sessao: 'nao-existe' });
+    assert.strictEqual(antigo.cruzou, false);
+    assert.ok(/ · troca de chat em 128 mil tokens$/.test(antigo.curta), antigo.curta);
   });
 });
 
@@ -65,14 +73,22 @@ test('sessao.js: aviso ja dado na sessao aparece no medidor', () => {
 test('sessao.js: entrada que nao e JSON -> saida 0, curta mesmo assim e o erro dito', () => {
   cenario(function (c) {
     const r = rodar(c, 'isto nao e json');
-    assert.ok(typeof r.curta === 'string' && /(^| · )troca de chat em 15 respostas com trabalho real$/.test(r.curta), JSON.stringify(r));
+    // Plano 091 (#9): sem projeto o modo continuo e o padrao: o turno nao e gatilho, o mais perto e o bloqueio de portao
+    assert.ok(typeof r.curta === 'string' && /(^| · )troca de chat em 6 bloqueios de portão$/.test(r.curta), JSON.stringify(r));
     assert.ok(typeof r.erro === 'string' && r.erro.length > 0, JSON.stringify(r));
+    // controle: com modoContinuo false o turno volta a ser o sinal mais perto
+    fs.writeFileSync(path.join(c.projeto, '.claude', 'esquadro', 'projeto.json'), JSON.stringify({ modoContinuo: false }));
+    const antigo = rodar(c, 'isto nao e json');
+    assert.ok(typeof antigo.curta === 'string' && /(^| · )troca de chat em 15 respostas com trabalho real$/.test(antigo.curta), JSON.stringify(antigo));
+    assert.ok(typeof antigo.erro === 'string' && antigo.erro.length > 0, JSON.stringify(antigo));
   });
 });
 
 // D445 (0.6.2): o medidor usa o contexto ao vivo (uso.context.tokens) no 7o gatilho.
 test('sessao.js: o gatilho de contexto usa uso.context.tokens ao vivo', () => {
   cenario(function (c) {
+    // Plano 091 (#9): modoContinuo false - o limiar de 175.000 e o do modo continuo desligado (ligado e 250.000)
+    fs.writeFileSync(path.join(c.projeto, '.claude', 'esquadro', 'projeto.json'), JSON.stringify({ modoContinuo: false }));
     const alto = Object.assign({}, USO, { context: { tokens: 260000, window: 1000000, percent: 26 } });
     const r = rodar(c, { uso: alto, amostras: [], sessao: 'nao-existe' });
     assert.strictEqual(r.cruzou, true, JSON.stringify(r));
@@ -150,7 +166,8 @@ test('sessao.js: devolve `botoes` na ordem de prioridade, com a resposta e o pad
     fs.writeFileSync(path.join(c.base, 'esquadro', 'sess-b.json'), JSON.stringify({
       arquivosTocados: [path.join(c.projeto, 'src', 'a.js')], esperaAprender: 4, auditoriaAvisou: true }));
     const r = rodar(c, { uso: USO, amostras: [], sessao: 'sess-b', resposta: 'ofereco o /esquadro:paralelo', padrao: false });
-    assert.deepStrictEqual(nomes(r), ['aprender', 'auditar', 'paralelo', 'padrao'], JSON.stringify(r.botoes));
+    // 091 #5 (D557): a resposta que cita o paralelo nao acende botao (roda direto)
+    assert.deepStrictEqual(nomes(r), ['aprender', 'auditar', 'padrao'], JSON.stringify(r.botoes));
     assert.deepStrictEqual(nomes(rodar(c, { uso: USO, amostras: [], sessao: 'sess-b', padrao: true })), ['aprender', 'auditar']);
     // calibrar: 30 conversas na pasta de transcricoes do projeto e limiar nunca calibrado
     const calibracao = require('../scripts/lib/calibracao.js');
@@ -164,7 +181,7 @@ test('sessao.js: devolve `botoes` na ordem de prioridade, com a resposta e o pad
 
 test('sessao.js: cruzou acende o botao do handoff, em primeiro', () => {
   cenario(function (c) {
-    fs.writeFileSync(path.join(c.projeto, '.claude', 'esquadro', 'projeto.json'), JSON.stringify({ limiares: { revisoesFechadas: 1 } }));
+    fs.writeFileSync(path.join(c.projeto, '.claude', 'esquadro', 'projeto.json'), JSON.stringify({ limiares: { revisoesFechadas: 1 }, modoContinuo: false })); // Plano 091 (#9): sem modoContinuo false a revisao nao cruza
     fs.writeFileSync(path.join(c.base, 'esquadro', 'sess-h.json'), JSON.stringify({ contadores: { revisao_fechada: 1 } }));
     const r = rodar(c, { uso: USO, amostras: [], sessao: 'sess-h' });
     assert.strictEqual(r.cruzou, true);

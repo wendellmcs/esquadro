@@ -28,8 +28,9 @@ test('botoes: nada aceso, nenhum botao', () => {
   assert.deepStrictEqual(botoes.daSessao(base()), []);
 });
 
-test('botoes: a ordem de prioridade e a do plano (handoff > revisar > aprender > init > auditar > calibrar > paralelo > padrao)', () => {
-  assert.deepStrictEqual(botoes.ORDEM, ['handoff', 'revisar', 'aprender', 'init', 'auditar', 'calibrar', 'paralelo', 'padrao']);
+test('botoes: a ordem de prioridade e a do plano (handoff > revisar > aprender > init > auditar > calibrar > padrao)', () => {
+  // Plano 091 #5 (D557): o paralelo roda direto, entao o botao "o agente ofereceu" saiu.
+  assert.deepStrictEqual(botoes.ORDEM, ['handoff', 'revisar', 'aprender', 'init', 'auditar', 'calibrar', 'padrao']);
 });
 
 test('botao handoff: o gatilho contavel cruzou', () => {
@@ -92,11 +93,9 @@ test('botao calibrar: amostra minima de conversas e o limiar de contexto nunca c
     contarConversas: function () { return minimo; } }))), ['init']);
 });
 
-test('botao paralelo: a ultima resposta do agente ofereceu /esquadro:paralelo', () => {
+test('091 #5: sem botao paralelo - a resposta que cita /esquadro:paralelo nao acende nada (roda direto, D557)', () => {
   const b = botoes.daSessao(base({ resposta: 'Sao 3 tarefas independentes: ofereco o /esquadro:paralelo com 3 agentes Haiku.' }));
-  assert.deepStrictEqual(nomes(b), ['paralelo']);
-  assert.strictEqual(b[0].comando, '/esquadro:paralelo');
-  assert.deepStrictEqual(botoes.daSessao(base({ resposta: 'Pronto, sem paralelo.' })), []);
+  assert.deepStrictEqual(b, []);
 });
 
 test('botao padrao: arquivo AAA mudado e o manual de execucao nao carregado na sessao', () => {
@@ -114,7 +113,7 @@ test('botoes: tudo aceso sai na ordem de prioridade', () => {
     auditoriaAvisou: true };
   const b = botoes.daSessao(base({ cruzou: true, s: s, projeto: COM_REF, resposta: '/esquadro:paralelo',
     contarConversas: function () { return 999; } }));
-  assert.deepStrictEqual(nomes(b), ['handoff', 'revisar', 'aprender', 'auditar', 'calibrar', 'paralelo', 'padrao']);
+  assert.deepStrictEqual(nomes(b), ['handoff', 'revisar', 'aprender', 'auditar', 'calibrar', 'padrao']);
   b.forEach(function (x) {
     assert.match(x.comando, /^\/esquadro:[a-z]+( \S.*)?$/, 'comando do esquadro: ' + x.comando);
   });
@@ -122,7 +121,7 @@ test('botoes: tudo aceso sai na ordem de prioridade', () => {
 
 // Plano 082, Tarefa 2 (p5-36; mock D532, S1-S2): texto e rotulo sem jargao, dizendo o que fazer, com acento (D532: a
 // faixa e excecao a R5). handoff, calibrar e padrao como no mock; os outros 5 na mesma voz.
-test('plano 082 (p5-36): os 8 textos e rotulos, sem jargao e com acento', () => {
+test('plano 082 (p5-36): os 7 textos e rotulos (8 menos o paralelo, 091 #5), sem jargao e com acento', () => {
   const s = { arquivosTocados: [path.join(RAIZ, 'src', 'a.js')], esperaAprender: correcao.ESPERA_ENTRE_SUGESTOES,
     auditoriaAvisou: true };
   const tudo = botoes.daSessao(base({ cruzou: true, s: s, projeto: COM_REF, resposta: '/esquadro:paralelo',
@@ -136,7 +135,6 @@ test('plano 082 (p5-36): os 8 textos e rotulos, sem jargao e com acento', () => 
     init: 'Este projeto ainda não tem o esquadro configurado. [configurar]',
     auditar: 'A auditoria automática achou regras ou skills para cortar. [ver o que cortar]',
     calibrar: 'Já há 557 conversas salvas: dá para calibrar quando trocar de chat. [calibrar]',
-    paralelo: 'O agente ofereceu rodar as tarefas em paralelo. [rodar em paralelo]',
     padrao: 'Você mudou arquivo de rigor máximo sem carregar o manual. [carregar o manual]'
   });
   for (const x of tudo) {
@@ -166,7 +164,7 @@ test('082 T6 (p5-33): a lista sai na ordem de ORDEM, nao na ordem dos if', () =>
   const antes = botoes.ORDEM.slice();
   try {
     botoes.ORDEM.reverse();
-    assert.deepStrictEqual(nomes(botoes.daSessao(entrada)), ['padrao', 'paralelo', 'calibrar', 'auditar', 'aprender', 'revisar', 'handoff']);
+    assert.deepStrictEqual(nomes(botoes.daSessao(entrada)), ['padrao', 'calibrar', 'auditar', 'aprender', 'revisar', 'handoff']);
   } finally { botoes.ORDEM.splice(0, botoes.ORDEM.length, ...antes); }
   assert.deepStrictEqual(botoes.ORDEM, antes);
 });

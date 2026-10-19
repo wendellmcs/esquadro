@@ -29,7 +29,7 @@ function encerrarTurno(e, s, avisoExtra) {
   // D445: o tamanho do contexto vem do transcript; sem leitura, fica a ultima gravada (o medidor a mostra).
   const lido = saude.contextoDoTranscript(e.transcript_path);
   const tokensDeContexto = lido !== null ? lido : s.tokensDeContexto;
-  // D468: com "modoContinuo": true no projeto, os gatilhos de continuo.CALADOS nao pedem troca.
+  // D468: com o modo continuo ligado (padrao; "modoContinuo": false desliga), os gatilhos de continuo.CALADOS nao pedem troca.
   const vs = saude.avaliar(Object.assign({}, s, { contadores: acumulados, tokensDeContexto: tokensDeContexto }), projeto && projeto.limiares,
     require('./lib/continuo.js').ativo(projeto));
 

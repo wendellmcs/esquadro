@@ -79,7 +79,7 @@ achado bem evidenciado vale mesmo que o inspetor tenha adivinhado os lados.
 ## 2. Despachar as lentes
 
 Uma lente por inspetor, **lentes distintas**, nunca cópias do mesmo revisor. São duas famílias: as
-oito lentes de tela, com lista e critérios em [02-rubrica-aaa.md](02-rubrica-aaa.md), e as nove
+oito lentes de tela, com lista e critérios em [02-rubrica-aaa.md](02-rubrica-aaa.md), e as dez
 lentes de código do `/esquadro:revisar`. Só as lentes aplicáveis ao tipo de mudança — tabela no
 fim daquele arquivo.
 

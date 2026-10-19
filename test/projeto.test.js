@@ -541,13 +541,24 @@ test('D442/5: re-init aceita as chaves de liga/desliga em vez de ignorar', () =>
 // D503 (plano d503, Tarefa 1): `referencias` e a peca de topo contra a qual a revisao compara. Opcional: sem ela,
 // nada muda. Por tipo (tela, codigo, texto), cada um uma lista de caminho ou URL - por isso fora de conferirCaminhos.
 test('D503: referencias e opcional e aceita listas de caminho ou URL por tipo', () => {
-  assert.deepStrictEqual(projeto.CHAVES_OPCIONAIS, ['referencias']);
+  assert.deepStrictEqual(projeto.CHAVES_OPCIONAIS, ['referencias', 'marcaDeAtalho']);
   assert.deepStrictEqual(projeto.TIPOS_REFERENCIA, ['tela', 'codigo', 'texto']);
   assert.strictEqual(projeto.CHAVES.indexOf('referencias'), -1, 'opcional nao entra nas obrigatorias');
   const com = copia({ referencias: { tela: ['docs/ref.png', 'https://exemplo.com/painel'], codigo: [], texto: ['README.md'] } });
   const v = projeto.validar(com);
   assert.strictEqual(v.ok, true, v.erros.join(' | '));
   assert.strictEqual(projeto.validar(copia({ referencias: {} })).ok, true, 'objeto vazio e config valida');
+});
+
+// Plano 090 Tarefa 5: a marca do /esquadro:atalhos. Opcional; quando vem, e uma palavra (a varredura monta a regex com ela).
+test('plano 090: marcaDeAtalho e opcional e palavra; torta vira erro e aviso', () => {
+  assert.strictEqual(projeto.validar(copia({ marcaDeAtalho: 'divida' })).ok, true);
+  for (const torta of ['duas palavras', '', 7, 'a:b', null]) {
+    const v = projeto.validar(copia({ marcaDeAtalho: torta }));
+    assert.ok(v.erros.some((e) => e.startsWith('marcaDeAtalho')), JSON.stringify(torta) + ': ' + v.erros.join(' | '));
+    assert.ok(projeto.avisosDeTipo({ marcaDeAtalho: torta }).some((a) => a.startsWith('marcaDeAtalho')), JSON.stringify(torta));
+  }
+  assert.deepStrictEqual(projeto.avisosDeTipo({ marcaDeAtalho: 'divida' }), []);
 });
 
 test('D503: referencias de tipo errado e recusada com erro nomeado, nunca estoura', () => {

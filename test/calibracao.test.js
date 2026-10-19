@@ -241,8 +241,13 @@ test('083 T6 (sobra 5): limiarAtual e o em vigor - gravado, modo continuo ou pad
   const casos = [
     [{ shell: 'bash', modoContinuo: true }, 250000, 'modo continuo'],
     [{ shell: 'bash', modoContinuo: true, limiares: { tokensDeContexto: 300000 } }, 300000, 'projeto.json'],
-    [{ shell: 'bash', modoContinuo: 'true' }, saude.LIMIARES_PADRAO.tokensDeContexto, 'padrao do plugin'],
-    [{ shell: 'bash', limiares: { tokensDeContexto: 0 } }, saude.LIMIARES_PADRAO.tokensDeContexto, 'padrao do plugin']
+    // Plano 091 (#9): o modo continuo e ligado por padrao - chave ausente ou de outro tipo valem o do modo continuo;
+    // so o booleano false volta ao padrao do plugin
+    [{ shell: 'bash', modoContinuo: 'true' }, 250000, 'modo continuo'],
+    [{ shell: 'bash' }, 250000, 'modo continuo'],
+    [{ shell: 'bash', limiares: { tokensDeContexto: 0 } }, 250000, 'modo continuo'],
+    [{ shell: 'bash', modoContinuo: false }, saude.LIMIARES_PADRAO.tokensDeContexto, 'padrao do plugin'],
+    [{ shell: 'bash', modoContinuo: false, limiares: { tokensDeContexto: 0 } }, saude.LIMIARES_PADRAO.tokensDeContexto, 'padrao do plugin']
   ];
   for (const [cfg, limiar, de] of casos) {
     const dir = pasta();

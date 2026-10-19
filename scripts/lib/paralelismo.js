@@ -15,7 +15,8 @@ const BLOCO = [
   '1. Agente em segundo plano: siga com a proxima tarefa que nao depende dele; espere so quando a proxima precisar do resultado.',
   '2. Agentes que editam ao mesmo tempo: cada um isolado (isolation: worktree). Relatorio de agente e alegacao: confira o critico na fonte.',
   '3. Freio de custo: o modelo mais barato que resolve; no maximo 8 agentes por disparo.',
-  '4. 3 ou mais tarefas independentes: ofereca o /esquadro:paralelo dizendo quantos agentes, qual modelo e o custo; so rode depois do sim.',
+  // Plano 091 #5 (D557): direto, sem perguntar, em qualquer projeto (sem condicao de init); o texto e o do mock (D559).
+  '4. 3 ou mais tarefas independentes: rode o /esquadro:paralelo direto, sem perguntar; diga numa linha quantos agentes, qual modelo e o custo. Teto de 8 agentes e o modelo mais barato que resolve seguem valendo.',
   '',
   'Desligar neste projeto: "' + CHAVE + '": false em .claude/esquadro/projeto.json.'
 ].join('\n') + '\n';

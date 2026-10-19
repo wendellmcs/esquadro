@@ -10,9 +10,10 @@ regra que se contradiz, e item que ninguém invoca — e cada um continua **comp
 os que importam**. Esta skill não acrescenta: ela poda.
 
 **Uma parte desta auditoria roda sozinha.** Na abertura da sessão, a cada 7 dias por padrão (contados
-da última rodada automática; rodar esta skill à mão não mexe na contagem), o plugin confere quatro
+da última rodada automática; rodar esta skill à mão não mexe na contagem), o plugin confere cinco
 coisas e só fala se alguma passou do limite: peso de instrução acima do teto, skills que se sobrepõem,
-regras que se contradizem e skills sem mudança há 90 dias ou mais (também por padrão). O aviso aparece no contexto da
+regras que se contradizem, skills sem mudança há 90 dias ou mais (também por padrão) e atalho deliberado
+sem "trocar quando:", com `arquivo:linha` (o detalhe vem do `/esquadro:atalhos`, não deste relatório). O aviso aparece no contexto da
 abertura, com a lista do que passou. Para peso, sobreposição e contradição, rode esta skill: o
 relatório traz o detalhe e a proposta de corte. Skill parada **não** aparece no relatório desta
 skill (ela não mede idade): abra a skill apontada e decida se ainda vale como está; "parada" quer

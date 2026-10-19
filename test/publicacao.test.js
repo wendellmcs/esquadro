@@ -47,7 +47,7 @@ const NUMEROS = {
   'tres': 3, 'três': 3, 'quatro': 4,
   'cinco': 5, 'seis': 6, 'sete': 7, 'oito': 8, 'nove': 9, 'dez': 10,
   'onze': 11, 'doze': 12, 'treze': 13, 'quatorze': 14, 'quinze': 15,
-  'dezesseis': 16, 'dezessete': 17
+  'dezesseis': 16, 'dezessete': 17, 'dezoito': 18
 };
 
 // ── a licenca ────────────────────────────────────────────────────────────
@@ -260,7 +260,7 @@ test('publicacao: a padrao aponta, na secao do pronto, para o bloco de qualidade
 // T2/item 13 da D257 (decisao do dono, 2026-09-29): arquivo so de logica - nao e de estilo e nao
 // monta tela - e revisado sem a `design`. D448 (2026-10-11): saem tambem `medidor` e `escopo` (11 de 13 e
 // 5 de 6 achados refutados na ronda 1 de 41 revisoes). O numero nao e escrito a mao: e LENTES.length menos
-// SAEM_SO_LOGICA, e cada lente que sai tem de existir em LENTES. Na duvida, as 9.
+// SAEM_SO_LOGICA, e cada lente que sai tem de existir em LENTES. Na duvida, todas (LENTES.length; D554: 10).
 test('publicacao: a linha "So logica" do revisar diz LENTES menos SAEM_SO_LOGICA, e cada lente que sai existe', () => {
   const saem = veredito.SAEM_SO_LOGICA;
   assert.deepStrictEqual(saem, ['design', 'medidor', 'escopo'], 'D448: saem design, medidor e escopo');
@@ -272,7 +272,8 @@ test('publicacao: a linha "So logica" do revisar diz LENTES menos SAEM_SO_LOGICA
   assert.ok(linha.includes('**' + n + '**'), 'so logica tem de dizer LENTES menos SAEM_SO_LOGICA: ' + linha);
   saem.forEach((k) => assert.ok(linha.includes('`' + k + '`'), 'a linha tem de nomear a lente que sai (' + k + '): ' + linha));
   assert.match(linha, /SAEM_SO_LOGICA/, 'a linha tem de apontar a constante, nao a lista de memoria: ' + linha);
-  assert.match(revisar.join('\n'), /na d[uú]vida, as 9/i, 'o revisar tem de dizer que na duvida vao as 9');
+  assert.match(revisar.join('\n'), new RegExp('na d[uú]vida, as ' + veredito.LENTES.length + '\\b', 'i'),
+    'o revisar tem de dizer que na duvida vao as ' + veredito.LENTES.length);
   const m = README.match(/\*\*(\S+)\*\* quando [ée] s[oó] l[oó]gica/);
   assert.ok(m, 'a linha do /esquadro:revisar no README nao diz o caso so logica');
   assert.strictEqual(NUMEROS[m[1].toLowerCase()], n, 'o README conta so logica errado');
@@ -335,7 +336,11 @@ const TRAVA_DO_BALDE = {
   // D412/D415: portao proprio do prompt do handoff, com chave propria como o de decisao: fora da conta das travas
   handoff_sem_prompt: null,
   // D503 (0.8.1): portao proprio da referencia de topo, com chave propria (portaoReferencia) como o do handoff
-  fecho_sem_referencia: null
+  fecho_sem_referencia: null,
+  // Plano 091 (#6, D559): portao proprio do manual antes de arquivo AAA, com chave propria (portaoManual)
+  sem_manual: null,
+  // Plano 091 (#1, D558/D559): portao proprio da revisao antes do commit, com chave propria (portaoCommit)
+  commit_sem_revisao: null
 };
 const TRAVA_DO_COMANDO = { init: 1, revisar: 2 };
 

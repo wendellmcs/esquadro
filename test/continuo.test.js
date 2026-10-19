@@ -10,17 +10,19 @@ const c = require('../scripts/lib/continuo.js');
 const saude = require('../scripts/lib/saude.js');
 const projetoLib = require('../scripts/lib/projeto.js');
 
-test('continuo: o bloco padrao manda validar antes de pedir acao manual e diz como ligar a chave', () => {
-  const b = c.bloco(null);
+// Plano 091 (#9, D556/D559): o modo continuo passa a vir ligado; so o booleano false desliga.
+test('continuo: com false, o bloco so manda validar antes de pedir acao manual e diz como ligar a chave', () => {
+  const b = c.bloco({ modoContinuo: false });
   assert.ok(/^# esquadro - menos paradas/.test(b), 'titulo');
   assert.ok(/valide voce mesmo/.test(b), 'validar pelo proprio agente');
   assert.ok(/credencial/.test(b) && /num pedido so/.test(b), 'o que pedir ao dono, junto');
-  assert.ok(!/Modo continuo ligado/.test(b), 'sem a chave o bloco nao diz que esta ligado');
+  assert.ok(!/Modo continuo ligado/.test(b), 'desligado o bloco nao diz que esta ligado');
   assert.ok(b.indexOf('"' + c.CHAVE + '": true') !== -1, 'diz como ligar com a chave que o codigo le');
 });
 
-test('continuo: com a chave, o bloco diz o que para e o que nao para, e manda decidir o tecnico', () => {
-  const b = c.bloco({ modoContinuo: true });
+test('continuo: sem a chave (e sem projeto), o bloco diz o que para e o que nao para, e manda decidir o tecnico', () => {
+  assert.strictEqual(c.bloco(null), c.bloco({ modoContinuo: true }), 'sem a chave = ligado');
+  const b = c.bloco(null);
   assert.ok(/Modo continuo ligado/.test(b), b);
   assert.ok(/tamanho da conversa/.test(b) && /bloqueios/.test(b), 'o que ainda pede troca');
   assert.ok(/Releia o trecho do plano/.test(b), 'reler o plano antes de cada subitem');
@@ -29,13 +31,13 @@ test('continuo: com a chave, o bloco diz o que para e o que nao para, e manda de
   assert.ok(b.indexOf('"' + c.CHAVE + '": false') !== -1, 'diz como desligar');
 });
 
-test('continuo: so o booleano true liga; ASCII puro e dentro do teto', () => {
-  for (const v of [null, undefined, {}, { modoContinuo: 'true' }, { modoContinuo: 1 }, { modoContinuo: false }, [], 'x']) {
-    assert.strictEqual(c.ativo(v), false, JSON.stringify(v));
+test('continuo: so o booleano false desliga; ASCII puro e dentro do teto', () => {
+  for (const v of [null, undefined, {}, { modoContinuo: 'false' }, { modoContinuo: 0 }, { modoContinuo: true }, [], 'x']) {
+    assert.strictEqual(c.ativo(v), true, JSON.stringify(v));
     assert.strictEqual(c.bloco(v), c.bloco(null), JSON.stringify(v));
   }
-  assert.strictEqual(c.ativo({ modoContinuo: true }), true);
-  for (const b of [c.bloco(null), c.bloco({ modoContinuo: true })]) {
+  assert.strictEqual(c.ativo({ modoContinuo: false }), false);
+  for (const b of [c.bloco(null), c.bloco({ modoContinuo: false })]) {
     assert.ok(/^[\x20-\x7E\n]+$/.test(b), 'caractere fora de ASCII');
     assert.ok(b.length <= c.TETO, 'bloco com ' + b.length + ' caracteres, teto ' + c.TETO);
   }

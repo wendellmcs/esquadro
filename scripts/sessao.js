@@ -3,7 +3,8 @@
 // Bloco M / M1 (D435): o medidor da sessao, chamado pelo mod (hooks/mods.ts) por $.process.run.
 // Entrada no stdin: { uso, amostras, sessao, historico, gastoReal, resposta, padrao } - uso = $.session.usage() sem
 // breakdown (D148); historico e gastoReal sao o que o mod guardou no $.store (pedido 31); resposta e a ultima do
-// agente principal e padrao diz se o mod viu a skill do manual carregada (pedido 32, botoes).
+// agente principal (sem uso desde o plano 091 #5, que tirou o botao do paralelo) e padrao diz se o mod viu a skill
+// do manual carregada (pedido 32, botoes).
 // Saida: JSON { curta, longa, cruzou, plano, guardar, botoes } e, se a entrada veio torta, `erro`. Saida 0 sempre:
 // o medidor nunca derruba a sessao.
 const fs = require('node:fs');
@@ -59,7 +60,6 @@ try {
   resposta.botoes = require('./lib/botoes.js').daSessao({
     cruzou: resposta.cruzou, s: s, projeto: projeto, raiz: raiz,
     temProjeto: fs.existsSync(config.caminhoEmEsquadro(raiz, 'projeto.json')),
-    resposta: typeof entrada.resposta === 'string' ? entrada.resposta : '',
     padraoCarregado: entrada.padrao === true,
     contarConversas: function () {
       return require('./lib/botoes.js').conversasDoProjeto(require('./lib/calibracao.js').pastaDasTranscricoes(raiz),

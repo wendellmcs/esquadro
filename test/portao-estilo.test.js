@@ -645,9 +645,11 @@ test('hooks.json: o portao-estilo e o SEGUNDO gancho da entrada Bash|PowerShell,
   const grupo = hooks.PreToolUse.filter(function (g) { return g.matcher === 'Bash|PowerShell'; });
   assert.strictEqual(grupo.length, 1, 'tem de haver uma entrada Bash|PowerShell so');
   const scripts = grupo[0].hooks.map(function (h) { return h.args[0]; });
+  // Plano 091 (#1): o portao do commit vem por ultimo (so ele roda git, e so no comando de commit).
   assert.deepStrictEqual(scripts, [
     '${CLAUDE_PLUGIN_ROOT}/scripts/portao-destrutivo.js',
-    '${CLAUDE_PLUGIN_ROOT}/scripts/portao-estilo.js'
+    '${CLAUDE_PLUGIN_ROOT}/scripts/portao-estilo.js',
+    '${CLAUDE_PLUGIN_ROOT}/scripts/portao-commit.js'
   ]);
   for (const h of grupo[0].hooks) {
     assert.strictEqual(h.type, 'command');

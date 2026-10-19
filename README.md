@@ -7,7 +7,7 @@
 
 <p align="center">
   <strong>Um plugin do Claude Code que força o agente a provar em vez de afirmar.</strong><br>
-  Oito travas: seis portões de custo zero e dois dos seis comandos. Todo portão é um script determinístico: nenhum modelo no meio.
+  Oito travas: seis portões de custo zero e dois dos sete comandos. Todo portão é um script determinístico: nenhum modelo no meio.
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
   <a href="#como-instalar">Instalar</a> ·
   <a href="#um-exemplo-do-começo-ao-fim">Exemplo</a> ·
   <a href="#as-oito-travas">As travas</a> ·
-  <a href="#os-seis-comandos">Os comandos</a> ·
+  <a href="#os-sete-comandos">Os comandos</a> ·
   <a href="#o-que-ele-já-pegou-em-uso-real">Casos reais</a> ·
   <a href="#o-que-o-esquadro-não-promete">O que não promete</a>
 </p>
@@ -262,17 +262,18 @@ token, e um modelo julgando se houve evidência é o mesmo modelo que inventou a
 portão nega, a mensagem diz o motivo e as saídas possíveis — o agente lê e corrige o rumo no mesmo
 turno.
 
-O plugin se pendura em dez pontos do ciclo de uma sessão:
+O plugin se pendura em onze pontos do ciclo de uma sessão:
 
 | Quando | Script | O que faz |
 |---|---|---|
 | a sessão abre, reabre ou compacta | `scripts/abertura.js` | fotografa o `git status` (o que já estava modificado é de outra frente), reinjeta as suas regras e o escopo em vigor, avisa escopo herdado de outra tarefa, `intocaveis` que não pegam nada e plano ativo de outra sessão; a cada 7 dias, roda a auditoria do `/esquadro:auditar` e avisa só o que passou do limite |
-| você manda um pedido | `scripts/abrir-turno.js` | zera as marcas do turno anterior: trabalho feito, busca feita, bloqueio; se você perguntar se o contexto está bom, manda o Claude trocar de chat com o handoff (o texto de continuação que leva o trabalho a um chat novo); se você corrigir o jeito dele trabalhar ("eu já te disse", "da próxima vez…"), manda o Claude oferecer, no fim da resposta, virar regra com `/esquadro:aprender` |
+| você manda um pedido | `scripts/abrir-turno.js` | zera as marcas do turno anterior: trabalho feito, busca feita, bloqueio; se você perguntar se o contexto está bom, manda o Claude trocar de chat com o handoff (o texto de continuação que leva o trabalho a um chat novo); se você corrigir o jeito dele trabalhar ("eu já te disse", "da próxima vez…"), manda o Claude rodar o `/esquadro:aprender` na mesma resposta e perguntar a você, em 3 opções, se grava |
 | antes de `Write` e `Edit` | `scripts/portao-escopo.js` | intocáveis, outra frente, "Fora", marcha, escopo, criar sem buscar, catraca (régua que só aperta: teto que não sobe e piso que não desce) e, com design system declarado, token fora do sistema |
-| antes de `Bash` e `PowerShell` | `scripts/portao-destrutivo.js` · `scripts/portao-estilo.js` | comando destrutivo, idioma de shell errado e `cd` solto (no `Bash`, corrige sozinho: o comando roda num subshell); avisa, sem negar, quando a tabela de idioma do PowerShell não se lê. Com design system declarado, nega arquivo de estilo escrito por comando de shell e manda usar `Write` ou `Edit` |
+| antes de `Bash` e `PowerShell` | `scripts/portao-destrutivo.js` · `scripts/portao-estilo.js` · `scripts/portao-commit.js` | comando destrutivo, idioma de shell errado e `cd` solto (no `Bash`, corrige sozinho: o comando roda num subshell); avisa, sem negar, quando a tabela de idioma do PowerShell não se lê. Com design system declarado, nega arquivo de estilo escrito por comando de shell e manda usar `Write` ou `Edit`. Nega o `git commit` com código mudado na sessão sem revisão aprovada |
 | antes de `Task` e `Agent` | `scripts/portao-agente.js` · `scripts/portao-apelido.js` | agente caro em marcha rápida; `model:` do agente contra o apelido gravado no projeto |
 | antes de `AskUserQuestion` | `scripts/portao-decisao.js` | barra pergunta ao dono sem exatamente 3 opções ou sem a recomendada em primeiro; pergunta de fato (sintoma, dado que só você tem) passa com `(fato)` no título curto (`header`); desliga com `"portaoDecisao": false` no `projeto.json` |
 | depois de cada ferramenta | `scripts/marcar-trabalho.js` | marca trabalho real, busca feita e arquivos tocados; conta as decisões suas respondidas e os commits que passaram |
+| um subagente abre | `scripts/abrir-subagente.js` | entrega a ele o bloco "menos código" (o da abertura não chega ao subagente); os que só leem (`inspetor`, `juiz-mesmo`, `leitor`, `Explore`, `Plan`) ficam de fora; `"menosCodigo": false` desliga |
 | um inspetor da revisão cega termina | `scripts/gravar-veredito.js` | grava o veredito dele em `vereditos/<lente>.json` da ronda; não barra nada, não sobrescreve, e avisa o que não gravou (essa lente volta a ser gravada à mão) |
 | o turno termina | `scripts/portao-fecho.js` | cobra evidência, barra etapa com subitem aberto, barra o turno que gravou um handoff sem colar o prompt em bloco de código na resposta final, grava os contadores, avisa quando é hora de trocar de chat |
 | a sessão fecha | `scripts/fim-sessao.js` | apaga os arquivos de sessão parados há mais de 7 dias, nunca o da sessão que está fechando; o orçamento é de 1,5 s (o `timeout` do `hooks.json` não o aumenta), e a limpeza para antes disso: o que sobrar sai na próxima |
@@ -282,13 +283,13 @@ Cinco coisas acontecem sem você pedir:
 - **As suas regras voltam em toda sessão.** O `regras.md` do projeto e o escopo em vigor são
   reinjetados também ao retomar e depois de compactar o contexto — que é justamente quando a regra
   se perde.
-- **Ele avisa quando é hora de abrir chat novo.** Por gatilho contável, não por palpite: 15 turnos
-  com trabalho, 2 revisões independentes fechadas, 6 bloqueios de portão, 25 arquivos tocados,
-  3 decisões suas respondidas ou 3 commits. Basta um, e os limiares se ajustam em `limiares`, no
-  `projeto.json`. O aviso não fica só na tela: chega também ao Claude, que roda o handoff e cola o
-  prompt pronto na mesma resposta (detalhe abaixo). Funciona sem o `/esquadro:init`. Com o modo contínuo
-  ligado, turnos, revisões, decisões, commits e arquivos deixam de avisar; seguem o tamanho da conversa e os
-  bloqueios ([a seção da chave](#menos-paradas-e-modo-contínuo)).
+- **Ele avisa quando é hora de abrir chat novo.** Por gatilho contável, não por palpite. Com o modo
+  contínuo, ligado por padrão desde a 0.9.0, avisam o tamanho da conversa e 6 bloqueios de portão
+  ([a seção da chave](#menos-paradas-e-modo-contínuo)). Com `"modoContinuo": false`, avisam também 15 turnos
+  com trabalho, 2 revisões independentes fechadas, 25 arquivos tocados, 3 decisões suas respondidas ou
+  3 commits. Basta um, e os limiares se ajustam em `limiares`, no `projeto.json`. O aviso não fica só na
+  tela: chega também ao Claude, que roda o handoff e cola o prompt pronto na mesma resposta (detalhe
+  abaixo). Funciona sem o `/esquadro:init`.
 - **Etapa com subitem aberto não fecha.** Com um plano ativo, dizer que a etapa terminou enquanto ela
   ainda tem caixa aberta é barrado pelo fecho. Para ativar um plano, rode na pasta do projeto:
   `node "<plugin>/scripts/plano.js" --abrir <caminho do plano>`. O `<plugin>` é a pasta onde o plugin
@@ -301,11 +302,13 @@ Cinco coisas acontecem sem você pedir:
   `session_id` que os hooks recebem, igual ao nome do arquivo `<id>.jsonl` da conversa, na pasta
   `.claude/projects/` da sua pasta pessoal. Sem a flag, o plano fica registrado como `sem-sessao`, e
   toda sessão recebe o aviso.
-- **Correção vira sugestão de regra.** Quando você corrige o jeito de o Claude trabalhar, ele oferece,
-  no fim da resposta, transformar a correção em regra com `/esquadro:aprender`. Só grava com o seu sim.
+- **Correção vira regra proposta.** Quando você corrige o jeito de o Claude trabalhar, ele atende o pedido,
+  roda o `/esquadro:aprender` na mesma resposta e pergunta em 3 opções: gravar, ajustar o texto ou não gravar.
+  Só grava com o seu sim.
 - **A auditoria roda sozinha.** A cada 7 dias, na abertura, o plugin confere peso de instrução,
-  skills repetidas, regras que se contradizem e skills paradas, e só fala se algo passou do limite
-  (detalhe em `/esquadro:auditar`, abaixo).
+  skills repetidas, regras que se contradizem, skills paradas e atalhos sem gatilho, e só fala se algo passou
+  do limite; aí o Claude roda o `/esquadro:auditar` no primeiro turno e leva os cortes a você em 3 opções
+  (detalhe abaixo).
 
 **Como o fecho lê o que o agente diz.** Intenção não é alegação: "vou concluir a tarefa", "antes de fechar a etapa"
 e "concluindo a fase" não disparam a cobrança; "Tarefa 3: concluída", "tarefa nº 3", "a tarefa 3 já está concluída",
@@ -378,11 +381,11 @@ leitura do handoff na abertura como se fosse a escrita, e a troca saía mais car
 escrita, nas 444 sessões do autor (414 trocas medidas) cada troca custa US$ 1,56. Entre os limiares testados de 25 em 25 mil (150,
 175, 200 mil...), 175 mil é o menor em que trocar no fim de turno não sai mais caro que não trocar (a 150 mil
 sai mais caro): o custo total fica 1,6% abaixo do de não trocar. Mais alto, a economia cresce devagar: 200 mil,
-2,6% abaixo; 250 mil, 3,2%; 350 mil, 3,5%. O padrão é o menor limiar que não encarece, não o que mais
+2,6% abaixo; 250 mil, 3,2%; 350 mil, 3,5%. O padrão sem o modo contínuo é o menor limiar que não encarece, não o que mais
 economiza: a conversa troca mais cedo sem pagar mais por isso (escolha do autor). Quem prefere economizar mais
 grava um limiar maior, abaixo do alarme (por exemplo `250000`), em `limiares.tokensDeContexto`. Com o modo
-contínuo ligado (desde a 0.7.4), o padrão já é 250 mil: a sessão longa é o objetivo dele; o número que você
-gravar continua mandando. Para medir no
+contínuo, ligado por padrão desde a 0.9.0, o aviso sai a 250 mil: a sessão longa é o objetivo dele; o número que
+você gravar continua mandando. Para medir no
 seu projeto, rode `/esquadro:calibrar`. O erro de ferramenta não subiu com o contexto até 500 mil. O aviso sai só no fim de turno, nunca no meio da
 tarefa. **O alarme** (`tokensAlarme`) é o segundo aviso, mais firme, que sai uma vez mesmo depois do
 primeiro. Ele sai a 450 mil, antes da faixa acima de 500 mil, onde cada chamada custa cerca de 4 vezes a de
@@ -393,8 +396,7 @@ primeiro. Ele sai a 450 mil, antes da faixa acima de 500 mil, onde cada chamada 
 diz o aviso e o alarme com os números em vigor: o `limiares.tokensDeContexto` gravado (se for número positivo) ou
 250 mil, e o `limiares.tokensAlarme`. O medidor `/esquadro-sessao` mostra o mesmo limiar que vale, e a linha curta
 (por exemplo "troca de chat em 180 mil tokens") diz quanto falta pelo gatilho mais perto entre os que podem
-disparar, sem os cinco que a chave cala. Sem a chave
-`modoContinuo`, nada disso muda.
+disparar, sem os cinco que a chave cala. Com `"modoContinuo": false`, nada disso muda.
 
 **Voltar a um chat grande parado** (desde a 0.8.4). O Claude Code guarda a conversa em cache por 1 hora; depois disso,
 a mensagem seguinte regrava a conversa inteira, a preço de escrita de cache (o dobro da entrada). Nas conversas do
@@ -457,9 +459,8 @@ botão por vez, o do comando do esquadro que está na hora:
 | `/esquadro:revisar <arquivo>` | revisar | um arquivo mudado na sessão é da marcha AAA com `referencias` declarada e nenhuma revisão contra ela fechou (a mesma condição do portão da referência de topo) |
 | `/esquadro:aprender` | virar regra | o seu último prompt pareceu uma correção (a mesma conta da sugestão, no máximo 1 a cada 5 prompts) |
 | `/esquadro:init` | configurar | o projeto não tem `.claude/esquadro/projeto.json` |
-| `/esquadro:auditar` | ver o que cortar | a auditoria automática da abertura avisou nesta sessão |
+| `/esquadro:auditar` | ver o que cortar | a auditoria automática da abertura achou o que cortar nesta sessão |
 | `/esquadro:calibrar` | calibrar | o limiar de contexto nunca foi calibrado e já há 30 conversas do projeto (contadas uma vez por dia) |
-| `/esquadro:paralelo` | rodar em paralelo | a última resposta do agente ofereceu o `/esquadro:paralelo` |
 | `/esquadro:padrao` | carregar o manual | um arquivo da marcha AAA mudou e o agente não carregou o manual (skill com "padrao" no nome) |
 
 Com mais de um aceso, vale a ordem da tabela. O botão põe o comando no prompt, sem enviar, e some; volta se o sinal
@@ -728,14 +729,15 @@ um módulo opcional, ou têm a própria chave. Cada um abaixo diz o que faz e co
 | Prompt do handoff (`scripts/portao-fecho.js`, no fim do turno) | barra o turno que gravou um arquivo de handoff e não colou o prompt em bloco de código na resposta final | `"portaoHandoff": false` (ver "Como desligar uma trava") |
 | Referência de topo (`scripts/portao-fecho.js`, no fim do turno) | barra a resposta que alega entrega quando um arquivo mudado na sessão é da marcha AAA, o tipo dele tem `referencias` declarada e nenhuma revisão contra ela fechou na sessão; a mensagem diz o comando, `/esquadro:revisar <arquivo>` | `"portaoReferencia": false` (ver "Como desligar uma trava") |
 | Qualidade de resposta (a abertura) | injeta as seis regras de clareza das respostas no chat; não barra nada | `"qualidadeDeResposta": false` (ver "Qualidade de resposta") |
-| Vigia (a abertura) | mostra uma vez a "novidade da semana" do plugin; só para quem mantém o plugin | **desligado por padrão**; `"vigia": true` liga |
+| Vigia (a abertura) | mostra uma vez a "novidade da semana" do plugin; só para quem mantém o plugin | **desligado por padrão**, menos no repositório do próprio plugin; `"vigia": true` liga, `false` desliga |
 
 **A pergunta de fato passa.** O portão de decisão existe para a decisão. A pergunta de sintoma, ou de um dado que só
 você tem, não é decisão: ponha `(fato)` (exata, entre parênteses, em maiúscula ou minúscula) no `header`, o título curto da
 pergunta, e ela passa sem a regra das 3 opções. A marca só vale no `header`: no texto da pergunta ou num rótulo, não.
 A decisão sem a marca segue barrada, e a mensagem de bloqueio ensina a marca.
 
-**O vigia, por inteiro.** É opt-in: `"vigia": true` no `projeto.json`. A abertura mostra o arquivo `novidades.md`
+**O vigia, por inteiro.** É opt-in: `"vigia": true` no `projeto.json`. Sem a chave, liga sozinho só no
+repositório do próprio plugin (a raiz do git com `.claude-plugin/plugin.json` de nome `esquadro`). A abertura mostra o arquivo `novidades.md`
 que o `scripts/vigia-puxar.js` trouxe para `~/.claude/esquadro/vigia` (ou para a pasta da variável
 `ESQUADRO_VIGIA`), marcado como dado, não como instrução. Quem busca o arquivo é uma tarefa agendada, rodando o
 `vigia-puxar.js`, que traz `vigia/novidades.md` do ramo `claude/vigia` de um repositório privado pelo `git`;
@@ -755,8 +757,7 @@ esquadro: ATENCAO - valor de tipo errado em .claude/esquadro/projeto.json: porta
 ~~~
 
 E a conferência final do `/esquadro:init` (`scripts/validar.js`) reprova o arquivo com a mesma frase, `<chave> tem
-de ser true ou false`. O `vigia` e o `modoContinuo` são o contrário (só `true` liga), e `"true"` entre aspas também
-não liga. A lista das nove chaves, com o padrão de cada uma, está em "O `projeto.json` chave por chave".
+de ser true ou false`. O `vigia` é o contrário (só `true` liga), e `"true"` entre aspas também não liga. A lista das treze chaves, com o padrão de cada uma, está em "O `projeto.json` chave por chave".
 
 ---
 
@@ -826,13 +827,13 @@ Desde a 0.7.0, a abertura de toda sessão injeta, entre o bloco de paralelismo e
 CDP), ler o resultado, e pedir a você só o que só você pode — credencial, publicar ou implantar, tela com dado de
 cliente no seu login —, tudo num pedido só.
 
-O **modo contínuo** fica numa chave, `modoContinuo`, desligada por padrão (só o booleano `true` liga). Com ela,
-só quatro coisas pedem troca de chat: o tamanho da conversa (aviso a 250 mil no lugar dos 175 mil, alarme a
+O **modo contínuo** fica numa chave, `modoContinuo`, ligada por padrão desde a 0.9.0, com ou sem `projeto.json` (só o
+booleano `false` desliga). Ligado, só quatro coisas pedem troca de chat: o tamanho da conversa (aviso a 250 mil no lugar dos 175 mil, alarme a
 450 mil), os bloqueios de portão (quando chegam ao limiar `bloqueios`, 6 por padrão), o incidente que exigiu
 cirurgia e a sua pergunta sobre o contexto; revisões, decisões, commits, turnos e arquivos não encerram a sessão (o medidor os mostra com "modo
 contínuo: não dispara"). Em troca, o Claude relê o trecho do plano antes de cada subitem, decide sozinho a escolha
 técnica dentro do escopo (registra o motivo e lista no fecho) e só pergunta o irreversível, o externo, credencial,
-permissão ou segurança, o de custo e o de produto. Ligar: `"modoContinuo": true` em `.claude/esquadro/projeto.json`.
+permissão ou segurança, o de custo e o de produto. Desligar: `"modoContinuo": false` em `.claude/esquadro/projeto.json`.
 
 ---
 
@@ -844,8 +845,9 @@ tempo rodam isolados (`isolation: worktree`); relatório de agente é alegação
 que resolve, no máximo 8 agentes por disparo). A versão completa está na skill `padrao`. Desligar neste projeto: a
 chave `paralelismo` com `false` em `.claude/esquadro/projeto.json` (só o booleano `false` desliga).
 
-Com 3 ou mais tarefas independentes, o Claude **oferece** o workflow `/esquadro:paralelo`, dizendo quantos agentes,
-qual modelo e o custo, e só roda depois do seu sim — o Claude Code não deixa workflow rodar sem pedido. O workflow
+Com 3 ou mais tarefas independentes, o Claude **roda direto** o workflow `/esquadro:paralelo`, sem perguntar, e diz
+numa linha quantos agentes, qual modelo e o custo (desde a 0.9.0; antes, oferecia e esperava o sim). O Claude Code só
+roda workflow com pedido: a autorização dada uma vez no `/esquadro:init` (abaixo) é esse pedido. O workflow
 recebe a lista de tarefas (`[{"tarefa": "...", "edita": false}]`) e aplica o freio sozinho: 8 agentes por disparo
 (diz quais ficaram de fora), Haiku para quem só lê e Sonnet para quem edita (cada tarefa pode pedir outro), cópia
 isolada do repositório para quem edita, e cada resultado volta com a evidência que o agente colou, como alegação a
@@ -873,6 +875,28 @@ ilegível ou de forma inesperada **não** é sobrescrito (sai 1 e diz por quê),
 vence a de `allow`. No Windows, o repositório fixa o fim de linha (`.gitattributes`), porque o Git para Windows
 trocava o fim de linha de cada arquivo e o VS Code recusava o workflow antes da janela de aprovação; um teste
 reprova se o workflow tiver caractere de controle.
+
+---
+
+## Menos código
+
+Desde a 0.9.0, a abertura de toda sessão injeta, por último, o bloco "menos código": antes de escrever código, o
+Claude sobe uma escada de 7 degraus e para no primeiro que resolve — precisa existir? já existe no projeto (citar
+`arquivo:linha`)? a linguagem já faz? a plataforma já faz? uma dependência já instalada faz? cabe em uma linha? só
+então, o mínimo que funciona. Nunca se corta validação na fronteira, perda de dados, segurança nem acessibilidade.
+Vale para código; texto de documento fica fora. São 720 caracteres em toda abertura.
+
+O mesmo bloco chega aos subagentes que podem escrever código, pelo gancho `SubagentStart` (o texto da abertura fica
+só na conversa principal). Os que só leem não recebem: `inspetor`, `juiz-mesmo` e `leitor` do esquadro, `Explore` e
+`Plan` do Claude Code.
+
+Atalho de propósito leva o comentário `atalho: <o que>. limite: <até onde vale>. trocar quando: <gatilho>.`, e o
+`/esquadro:atalhos` lista todos. Na revisão cega, a lente `enxuto` pergunta o que dava para não escrever. Não há
+número de redução medido aqui: a 0.9.0 não promete um. Desligar neste projeto: a chave `menosCodigo` com `false` em
+`.claude/esquadro/projeto.json` (só o booleano `false` desliga; vale para a abertura e para os subagentes).
+
+As ideias vêm do [ponytail](https://github.com/DietrichGebert/ponytail), de Dietrich Gebert (licença MIT); o texto
+é próprio.
 
 ---
 
@@ -936,23 +960,24 @@ isso repete o já visto. O roteiro não bloqueia o fecho: sai junto, sem esperar
 
 ---
 
-## Os seis comandos
+## Os sete comandos
 
 | Comando | O que faz |
 |---|---|
 | `/esquadro:init` | A entrevista. Varre o repositório, mostra o que inferiu — marcado como inferência — e faz seis perguntas que varredura nenhuma responde. Grava sempre `.claude/esquadro/projeto.json` e `.claude/esquadro/regras.md`, e registra a conferência do catálogo de modelos da instalação em `.claude/esquadro/catalogo.json`. O resto é opcional: `.claude/esquadro/design.json` (só quando há design system) e, cada um só com aprovação explícita e sem sobrescrever arquivo que já exista, os agentes do projeto em `.claude/agents/`, a skill do projeto em `.claude/skills/<slug>/SKILL.md` e o `AGENTS.md` na raiz. |
-| `/esquadro:revisar` | Revisão cega A/B de um arquivo mudado: rotula os dois lados sem autoria, despacha um inspetor por lente, **nove** de código, **oito** de tela, e **dezessete** quando a mudança é de código e de tela, e **seis** quando é só lógica (as de código sem `design`, `medidor` e `escopo`; na dúvida, as nove); antes disso, a mudança pequena vai a menos inspetores (até 3 linhas, um; lógica de até 40 linhas com teste vermelho e mutação, ou texto, dois; a faixa sai do `preparar-revisao.js`, e só sobe), com default reprovar, e apura por script com teto de 3 rondas; com `referencias` declarada, compara também com a peça de topo, nas duas ordens. |
+| `/esquadro:revisar` | Revisão cega A/B de um arquivo mudado: rotula os dois lados sem autoria, despacha um inspetor por lente, **dez** de código, **oito** de tela, e **dezoito** quando a mudança é de código e de tela, e **sete** quando é só lógica (as de código sem `design`, `medidor` e `escopo`; na dúvida, as dez); antes disso, a mudança pequena vai a menos inspetores (até 3 linhas, um; lógica de até 40 linhas com teste vermelho e mutação, ou texto, dois; a faixa sai do `preparar-revisao.js`, e só sobe), com default reprovar, e apura por script com teto de 3 rondas; com `referencias` declarada, compara também com a peça de topo, nas duas ordens. |
 | `/esquadro:aprender` | Transforma uma correção sua em regra proposta no formato `gatilho -> ação`, mostra pronta, e **só grava depois de aprovação explícita**. |
 | `/esquadro:handoff` | Gera o texto de continuação para um chat novo: caminhos, `HEAD`, em que etapa o trabalho está, decisões já tomadas, pendências e erros de método que custaram tempo. Confere os fatos no disco, não na memória. |
 | `/esquadro:auditar` | Mede o peso de instrução do projeto contra um teto e aponta o que cortar: skills que se sobrepõem, regras que se contradizem e itens fora da rubrica. Não acrescenta — poda. |
 | `/esquadro:calibrar` | Mede, nas conversas do seu projeto, a partir de quantos tokens de contexto trocar de chat ainda compensa, e sugere o limiar de troca. **Só grava no `projeto.json` com o seu sim.** |
+| `/esquadro:atalhos` | Lista os atalhos deliberados do repositório: os comentários `atalho: <o que>. limite: <até onde vale>. trocar quando: <gatilho>.` (também `ponytail:` e `shortcut:`), agrupados por arquivo, e marca `sem-gatilho` o que não diz quando trocar. Só lê; a marca muda pela chave `marcaDeAtalho`. |
 
-A sétima skill instalada, `padrao`, **não é comando**: é o manual de execução, que o agente carrega
+A oitava skill instalada, `padrao`, **não é comando**: é o manual de execução, que o agente carrega
 no começo da tarefa e que traz junto a conferência do mapa de modelos deste projeto.
 
-Dos seis comandos, só os dois primeiros são travas — a 1 e a 2. Os outros quatro **não são travas**: `aprender` é o
+Dos sete comandos, só os dois primeiros são travas — a 1 e a 2. Os outros cinco **não são travas**: `aprender` é o
 autoaprimoramento mínimo — o plugin **não aprende sozinho**, ele transforma correção em proposta e
-espera o OK; `handoff`, `auditar` e `calibrar` são ferramentas de manutenção, e nenhum dos três bloqueia nada.
+espera o OK; `handoff`, `auditar`, `calibrar` e `atalhos` são ferramentas de manutenção, e nenhum dos quatro bloqueia nada.
 
 ---
 
@@ -964,9 +989,9 @@ dispara no evento dele.
 
 | Tipo | Nome | O que é |
 |---|---|---|
-| Skills dos comandos | `esquadro:init`, `esquadro:revisar`, `esquadro:aprender`, `esquadro:handoff`, `esquadro:auditar`, `esquadro:calibrar` | os comandos da tabela acima; cada um é uma skill que você chama pelo nome |
+| Skills dos comandos | `esquadro:init`, `esquadro:revisar`, `esquadro:aprender`, `esquadro:handoff`, `esquadro:auditar`, `esquadro:calibrar`, `esquadro:atalhos` | os comandos da tabela acima; cada um é uma skill que você chama pelo nome |
 | Skill-manual | `padrao` | não é comando: o manual de execução que o agente carrega no começo da tarefa (marchas, lentes, loop de revisão, decisão em três opções, o que um "pronto" precisa provar). Traz as seis referências listadas mais abaixo |
-| Workflow | `esquadro:paralelo` | tarefas independentes em paralelo, com teto de agentes, modelo barato e cópia isolada para quem edita; só roda depois do seu sim (ver "Trabalho em paralelo") |
+| Workflow | `esquadro:paralelo` | tarefas independentes em paralelo, com teto de agentes, modelo barato e cópia isolada para quem edita; o Claude roda direto com 3 ou mais tarefas independentes (ver "Trabalho em paralelo") |
 | Agentes | `inspetor`, `juiz-mesmo`, `leitor` | `inspetor` e `juiz-mesmo` são da revisão cega; `leitor` é o agente de leitura leve do paralelo (ver "Por dentro de cada comando" e "Trabalho em paralelo") |
 | Ganchos | um script por evento | scripts `node` que o Claude Code roda em momentos fixos; a tabela seguinte lista evento por evento |
 | Painéis | `/esquadro-sessao`, `/esquadro-plano` | o medidor da sessão e o painel do plano (ver "Ver os números a qualquer hora", na seção "Como funciona") |
@@ -975,13 +1000,14 @@ Os ganchos, um por evento, com o que cada um deixa na sua tela:
 
 | Evento | Script | O que faz | O que você vê |
 |---|---|---|---|
-| `SessionStart` (a sessão abre, reabre ou compacta) | `scripts/abertura.js` | fotografa o `git status`, reinjeta as suas regras e o escopo, injeta os blocos de paralelismo, menos paradas e qualidade de resposta, e avisa o que está torto na configuração | a linha "esquadro: lendo o estado do repositorio" enquanto roda; o resto vai ao contexto do Claude |
-| `UserPromptSubmit` | `scripts/abrir-turno.js` | zera as marcas do turno; reconhece a sua pergunta sobre o contexto e a correção do jeito de ele trabalhar | nada na tela; o Claude recebe a ordem de trocar de chat ou de oferecer virar regra |
+| `SessionStart` (a sessão abre, reabre ou compacta) | `scripts/abertura.js` | fotografa o `git status`, reinjeta as suas regras e o escopo, injeta os blocos de paralelismo, menos paradas, qualidade de resposta e menos código, e avisa o que está torto na configuração | a linha "esquadro: lendo o estado do repositorio" enquanto roda; o resto vai ao contexto do Claude |
+| `UserPromptSubmit` | `scripts/abrir-turno.js` | zera as marcas do turno; reconhece a sua pergunta sobre o contexto e a correção do jeito de ele trabalhar | nada na tela; o Claude recebe a ordem de trocar de chat ou de rodar o `/esquadro:aprender` |
 | `PreToolUse` em `Write` e `Edit` | `scripts/portao-escopo.js` | escopo, intocáveis, outra frente, "Fora", criar sem buscar, catraca e design | a escrita volta negada, com o motivo e as saídas |
-| `PreToolUse` em `Bash` e `PowerShell` | `scripts/portao-destrutivo.js`, `scripts/portao-estilo.js` | comando destrutivo, idioma de shell, `cd` solto e estilo escrito por shell | o comando volta negado com o motivo; o `cd` solto no `Bash` roda corrigido, e o Claude fica sabendo |
+| `PreToolUse` em `Bash` e `PowerShell` | `scripts/portao-destrutivo.js`, `scripts/portao-estilo.js`, `scripts/portao-commit.js` | comando destrutivo, idioma de shell, `cd` solto, estilo escrito por shell e commit sem revisão | o comando volta negado com o motivo; o `cd` solto no `Bash` roda corrigido, e o Claude fica sabendo |
 | `PreToolUse` em `Task` e `Agent` | `scripts/portao-agente.js`, `scripts/portao-apelido.js` | agente caro em marcha rápida; `model:` do agente contra o apelido gravado | o primeiro nega com o motivo; o segundo só avisa, uma vez por sessão, a você e ao Claude |
 | `PreToolUse` em `AskUserQuestion` | `scripts/portao-decisao.js` | a pergunta ao dono: 3 opções, a recomendada em primeiro | a pergunta volta negada, e a mensagem diz o que refazer |
 | `PostToolUse` em `Write`, `Edit`, `Bash`, `PowerShell`, `Grep`, `Glob`, `Read` e `AskUserQuestion` | `scripts/marcar-trabalho.js` | marca trabalho real, busca feita e arquivos tocados; conta as decisões suas respondidas e os commits que passaram | nada na tela: alimenta os contadores do aviso de troca de chat |
+| `SubagentStart` (menos os que só leem) | `scripts/abrir-subagente.js` | injeta o bloco "menos código" no subagente que pode escrever código | nada na tela; o subagente recebe o bloco antes do primeiro pedido |
 | `SubagentStop` (só do agente `inspetor`) e `PostToolUse` em `SubagentHandback` | `scripts/gravar-veredito.js` | grava o veredito do inspetor em `vereditos/<lente>.json` da ronda | nada quando grava; se algo não foi gravado, uma mensagem diz o quê e por quê |
 | `Stop` | `scripts/portao-fecho.js` | cobra evidência, etapa com subitem aberto e o prompt do handoff; grava os contadores | o turno volta com o motivo, ou fecha, com o aviso de troca de chat quando um gatilho cruzou |
 | `SessionEnd` | `scripts/fim-sessao.js` | apaga os arquivos de sessão parados há mais de 7 dias | nada |
@@ -1057,8 +1083,8 @@ produziu o bug reproduz o bug.
   `B.txt`, sem dizer qual é qual, numa base por arquivo (`.claude/esquadro/revisao/<arquivo>/<n>/`);
   o `apurar-ronda.js` apura a base de cada arquivo. O `mapa.json` que desfaz a cegueira só
   o script de apuração lê.
-- **Lentes distintas, não inspetores repetidos.** Nove cópias do mesmo revisor acham o mesmo
-  problema nove vezes; nove lentes acham nove classes de problema. Cada lente é um inspetor
+- **Lentes distintas, não inspetores repetidos.** Dez cópias do mesmo revisor acham o mesmo
+  problema dez vezes; dez lentes acham dez classes de problema. Cada lente é um inspetor
   somente leitura, com **default reprovar**, que devolve JSON citando `arquivo:linha` e dá a cada
   achado uma severidade: **P0** quebra função ou vaza segredo, **P1** quebra contrato ou deixa um
   estado obrigatório de fora, **P2** é melhoria fora do pedido, e vira registro, não correção.
@@ -1133,7 +1159,8 @@ recusado. E a duplicata é a linha inteira: a regra que é só o começo de outr
 
 **Você não precisa lembrar do comando.** Quando a sua mensagem parece uma correção ao comportamento
 do Claude ("eu já te disse", "não foi isso que pedi", "pare de…", "da próxima vez…"), o `abrir-turno.js`
-avisa o Claude, que atende o pedido primeiro e oferece em uma linha transformar aquilo em regra. O gancho
+avisa o Claude, que atende o pedido primeiro, roda o `/esquadro:aprender` na mesma resposta e pergunta em 3
+opções (gravar, ajustar o texto, não gravar). O gancho
 nunca grava nada: quem grava é a skill, depois do seu sim. No máximo uma sugestão a cada cinco turnos;
 relato de bug ("o botão para de funcionar") e resposta a pergunta ("não, pode seguir") não contam.
 Desliga com `"sugerirAprender": false` no `projeto.json`; sem a chave, fica ligado.
@@ -1161,18 +1188,37 @@ propõe cortar, fundir ou manter com motivo. **Não apaga, não move, não edita
 `abertura.js` roda a mesma auditoria no máximo uma vez a cada 7 dias e **só fala se algo passou do teto**:
 peso de instrução acima do teto, skills que se sobrepõem, regras que se contradizem, ou skill do projeto
 cujo `SKILL.md` não muda há 90 dias ou mais (pela data do último commit que o tocou; sem git, ou com o
-arquivo fora do git, pela data do arquivo). Tudo em ordem =
-silêncio. O aviso sai em uma lista curta, com no máximo cinco nomes por item, e termina apontando
-`/esquadro:auditar` para o detalhe. A data da última auditoria fica em `.claude/esquadro/auditoria.json`
+arquivo fora do git, pela data do arquivo), ou atalho deliberado sem "trocar quando:" (a mesma varredura do
+`/esquadro:atalhos`, que dá o detalhe). Tudo em ordem =
+silêncio. O aviso sai em uma lista curta, com no máximo cinco nomes por item, e termina com a ordem ao Claude:
+no primeiro turno, depois de atender o pedido, rodar o `/esquadro:auditar` e levar os cortes a você em 3 opções. A data da última auditoria fica em `.claude/esquadro/auditoria.json`
 (apagar o arquivo faz a próxima abertura auditar de novo); se a auditoria falhar, sai uma linha com a causa
 mandando rodar `/esquadro:auditar`, que mostra o relatório inteiro; a data é gravada mesmo assim, para o
 aviso não se repetir a cada sessão. Os prazos se ajustam em
 `limiares`, no `projeto.json`: `diasEntreAuditorias` (padrão 7) e `diasSkillParada` (padrão 90). Desliga com
 `"auditarNaAbertura": false`; sem a chave, fica ligado. Sem `projeto.json` ela não roda.
 
+**O que nunca é usado aparece em número.** Desde a 0.9.0, cada ordem que o esquadro dá ao Claude (rodar o
+`/esquadro:aprender`, o `/esquadro:auditar`, o `/esquadro:calibrar`, o `/esquadro:init`, revisar antes do commit,
+carregar o manual) conta em `.claude/esquadro/contadores.json` como **dada** (uma vez enquanto está pendente),
+**cumprida** (a skill pedida rodou depois, na mesma sessão, pelo agente principal) ou **recusada pelo dono** (só onde
+há sinal: o commit com `# esquadro: sem-revisao` depois de negado; nas outras sai `-`). A auditoria automática
+guarda a foto desses números em `auditoria.json` e mostra o que mudou desde a vez anterior:
+
+~~~text
+- ordens dos ultimos 7 dias (dadas / cumpridas / recusadas pelo dono):
+  aprender 4/3/-; revisar antes do commit 6/5/1; manual 2/2/-
+  nunca disparadas: auditar, calibrar, init
+  (-: o esquadro nao ve essa recusa; dada e nao cumprida foi ignorada ou recusada na conversa)
+~~~
+
+Sem nada a cortar, essa parte sai sozinha, sem a ordem de auditar; nada disparado e nada a cortar segue em
+silêncio. O `uso.js` não soma essas chaves no total das travas. Limite conhecido: num projeto sem
+`.claude/esquadro/`, o "nunca" do init não chega ao arquivo.
+
 ### `/esquadro:calibrar` — o limiar de troca medido no seu projeto
 
-Os 175 mil tokens do aviso de troca de chat foram medidos nas conversas de um projeto só. O
+Os 175 mil tokens do aviso de troca de chat (o padrão sem o modo contínuo) foram medidos nas conversas de um projeto só. O
 `scripts/calibrar.js` mede o seu: lê as transcrições que o Claude Code guarda do projeto (só a
 conversa principal; subagente fica de fora), calcula o custo de cada faixa de contexto e quanto custa
 uma troca aqui — escrever o handoff mais a rampa do chat novo —, e simula a troca no fim do seu turno
@@ -1311,12 +1357,14 @@ dois lugares, como na tabela.
 | `node "<plugin>/scripts/plataforma.js" --raiz "<plugin>"` | em que sistemas cada trecho dependente de plataforma foi de fato exercitado |
 | `node "<plugin>/scripts/sanitar.js"` | se algum dado seu vazou, nas três superfícies: conteúdo, autoria do histórico e mensagem de commit; age sobre a pasta atual, ou sobre outra com `--raiz <pasta>` |
 | `node "<plugin>/scripts/auditar.js" --memoria <caminho do MEMORY.md>` | o relatório do `/esquadro:auditar`, em JSON (peso de instrução, sobreposições, contradições, itens fora da rubrica, regras sem cicatriz); a skill roda por você. Sem `--memoria`, ou sem valor depois dela, a chave `memoria` diz "nao medida" e a causa |
+| `node "<plugin>/scripts/atalhos.js"` | o painel do `/esquadro:atalhos`: os comentários de atalho dos arquivos que o git rastreia e dos novos que ele não ignora, sem mudar nada; saída 0, ou 1 fora de repositório git |
 | `node "<plugin>/scripts/varrer.js" <pasta>` | a varredura do `/esquadro:init`, em JSON: o teto (quantos arquivos leu, se cortou, quanto custou), o ambiente detectado, o peso de instrução e o que ela inferiu, marcado como inferência; sem `<pasta>`, a atual |
 | `node "<plugin>/scripts/validar.js" <pasta>` | confere o `.claude/esquadro/projeto.json` e, se existir, o `regras.md`: `OK` e saída 0, ou a lista do que está errado e saída 1; sem `<pasta>`, a atual |
 | `node "<plugin>/scripts/gerar-agentes.js" [--fatias] [--respostas <arquivo.json>] [--gravar]` | os agentes do projeto, um por degrau da escada, a partir de `modelos/agente.md`. Sem `--gravar` só propõe e não escreve nada; com ele, escreve em `.claude/agents/` e **pula** o que já existe. `--fatias` lista o que o molde pergunta. Para com erro (saída 1) sem degraus gravados ou com a escada torta |
 | `node "<plugin>/scripts/gerar-skill.js" [--fatias] [--respostas <arquivo.json>] [--gravar]` | a skill de manual do projeto, em `.claude/skills/<slug>/SKILL.md`, a partir de `modelos/skill-projeto.md`. Recusa a que não passa no validador e na rubrica de boa skill, e não sobrescreve a que já existe |
 | `node "<plugin>/scripts/gerar-agents-md.js" [--fatias] [--respostas <arquivo.json>] [--gravar]` | o `AGENTS.md` da raiz, a partir de `modelos/agents-md.md`. Sem `--gravar` só mostra; com ele, recusa sobrescrever um `AGENTS.md` que já existe |
 | `node "<plugin>/scripts/autorizar-paralelo.js" [--conferir]` | grava a regra `Workflow(esquadro:paralelo)` em `permissions.allow` do `.claude/settings.local.json`; com `--conferir`, só lê e diz se já está autorizado. Saída em JSON (`autorizado`, `gravou`, `arquivo`) |
+| `node "<plugin>/scripts/recusar-init.js" <pasta>` | grava o "nunca neste projeto" da pergunta do init, fora do projeto (em `esquadro/init-recusado.json` da pasta de configuração do Claude), e a abertura não pergunta mais ali. O Claude roda quando você escolhe "nunca"; saída 0 se gravou, 1 sem pasta ou sem conseguir gravar |
 | `node "<plugin>/scripts/vigia-puxar.js" --repo <pasta do clone> [--remote backup] [--ramo claude/vigia] [--arquivo vigia/novidades.md] [--destino <pasta>]` | só para quem mantém o plugin: traz a novidade da semana do ramo `claude/vigia` para a pasta do vigia (ver "Os portões que não são travas"). Roda por tarefa agendada, nunca por gancho. Saída 0 se gravou, 1 se falhou, 2 se faltou `--repo` |
 | `node "<clone do plugin>/scripts/exportar.js" --raiz "<clone do plugin>" --destino <pasta>` | só para quem publica o próprio plugin: monta, numa pasta à parte, exatamente o que iria para um repositório público (sem `--gravar` só mostra o que copiaria) |
 | `node "<plugin>/scripts/experimento.js" --manual <pasta do seu manual>` | monta a tabela de obrigações do seu manual e do plugin; depois de preenchida (o script diz onde), rode de novo com `--veredito` para julgar: o plugin bastou, ou ainda falta manual? Sem `--manual` a tabela traz só as obrigações do plugin |
@@ -1525,22 +1573,26 @@ propósito, para não invalidar o `projeto.json` de quem já tem um.
 
 | Chave | O que liga ou desliga | Padrão |
 |---|---|---|
-| `sugerirAprender` | a oferta de virar regra quando você corrige o jeito de o Claude trabalhar (no máximo uma a cada cinco turnos) | ligado; `false` desliga |
+| `sugerirAprender` | a ordem de rodar o `/esquadro:aprender` quando você corrige o jeito de o Claude trabalhar (no máximo uma a cada cinco turnos) | ligado; `false` desliga |
 | `auditarNaAbertura` | a auditoria automática da abertura, a cada `diasEntreAuditorias` dias | ligado; `false` desliga |
 | `qualidadeDeResposta` | o bloco de seis regras de clareza das respostas | ligado; `false` desliga |
 | `portaoDecisao` | o portão da pergunta ao dono (3 opções, a recomendada em primeiro) | ligado; `false` desliga |
 | `portaoHandoff` | o portão do prompt do handoff no chat | ligado; `false` desliga |
 | `portaoReferencia` | o portão da referência de topo: barra a entrega AAA sem revisão contra a `referencias` na sessão | ligado; `false` desliga |
+| `portaoManual` | o portão do manual: nega editar arquivo da marcha AAA enquanto o manual de execução (skill com "padrao" no nome) não foi carregado na sessão | ligado; `false` desliga |
+| `portaoCommit` | o portão do commit (`scripts/portao-commit.js`): nega o `git commit` enquanto um arquivo de código mudado na sessão não tem revisão aprovada; diz a faixa e quantos inspetores cada um pede, e aponta o atalho novo sem "trocar quando:" | ligado; `false` desliga |
 | `paralelismo` | as regras de trabalho em paralelo que a abertura injeta | ligado; `false` desliga |
 | `avisoDeVolta` | o aviso antes de gastar: a 1ª mensagem num chat de 200 mil tokens ou mais, parado há mais de 1 hora, é segurada com a conta de continuar contra abrir um chat novo; mandada de novo, passa | ligado; `false` desliga |
-| `vigia` | a novidade da semana na abertura (só para quem mantém o plugin) | desligado; só `true` liga |
-| `modoContinuo` | o modo contínuo: troca de chat só por tamanho, decisão técnica sem parar | desligado; só `true` liga |
+| `menosCodigo` | o bloco "menos código" que a abertura injeta: a escada de 7 degraus antes de escrever código e o formato do comentário de atalho | ligado; `false` desliga |
+| `vigia` | a novidade da semana na abertura (só para quem mantém o plugin) | desligado, menos no repositório do próprio plugin; `true` liga, `false` desliga |
+| `modoContinuo` | o modo contínuo: troca de chat só por tamanho (aviso a 250 mil), decisão técnica sem parar | ligado, com ou sem `projeto.json`; `false` desliga |
 
-**A opcional.** Pode faltar sem erro; quando vem, o validar a confere.
+**As opcionais.** Podem faltar sem erro; quando vêm, o validar as confere.
 
 | Chave | O que muda | Padrão |
 |---|---|---|
 | `referencias` | a peça de topo contra a qual o `/esquadro:revisar` compara (o `R.txt` no pacote e uma 2ª passada com A e B trocados, que dobra os inspetores), por tipo (`tela`, `codigo`, `texto`), cada tipo uma lista de caminhos ou URLs; tipo desconhecido (`telas`) e lista que tem item que não é texto reprovam no `node scripts/validar.js`, que diz a chave a corrigir; no `/esquadro:init` rodado de novo, o tipo que você responder troca a lista dele e o tipo que você não citar fica como estava (lista vazia, `[]`, tira um tipo; `{}` não apaga nada) | sem a chave: nada muda |
+| `marcaDeAtalho` | a marca que o `/esquadro:atalhos` procura nos comentários, no lugar de `atalho` (`ponytail` e `shortcut` seguem valendo); uma palavra só (letras, números, `-` ou `_`), senão reprova no validar | `atalho` |
 
 **As quatro travas**, dentro de `travas`. As quatro são obrigatórias e booleanas.
 

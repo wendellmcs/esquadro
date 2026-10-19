@@ -142,6 +142,44 @@ test('apurar-ronda: revisao que encerra soma +1 em revisao_fechada (D21)', () =>
   });
 });
 
+// Plano 091 (#1, D559): o "aprovado" grava o arquivo revisado em revisadosAprovados, que o portao do commit le; o
+// teto (encerra sem aprovar) e a ronda que nao encerra nao gravam.
+function aprovadosDe(tmp, sessionId) {
+  try { return JSON.parse(fs.readFileSync(path.join(tmp, 'esquadro', sessionId + '.json'), 'utf8')).revisadosAprovados; }
+  catch (e) { return undefined; }
+}
+
+test('091 #1: revisao aprovada grava o arquivo em revisadosAprovados; o teto nao grava', () => {
+  comTmp((tmp) => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-repo-'));
+    try {
+      gravarMapa(cwd, 1, { A: 'trabalho', B: 'HEAD' });
+      gravarRonda(cwd, 1, [{ lente: 'correcao', melhor: 'A', achados: [] }]);
+      gravarMapa(cwd, 2, { A: 'trabalho', B: 'HEAD' });
+      gravarRonda(cwd, 2, [{ lente: 'correcao', melhor: 'A', achados: [] }]);
+      const r = rodar(['--sessao', 'ap1'], cwd, tmp);
+      assert.strictEqual(r.status, 0, r.stdout);
+      assert.match(String(r.json.motivo), /aprovado/);
+      assert.deepStrictEqual(aprovadosDe(tmp, 'ap1'), [path.resolve(cwd, 'src/a.js')]);
+    } finally { fs.rmSync(cwd, { recursive: true, force: true }); }
+  });
+  comTmp((tmp) => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-repo-'));
+    try {
+      for (const n of [1, 2, 3]) {
+        gravarMapa(cwd, n, { A: 'trabalho', B: 'HEAD' });
+        gravarRonda(cwd, n, [{ lente: 'correcao', melhor: 'B',
+          achados: [{ severidade: 'P1', arquivo: 'A.txt', linha: n * 10, descricao: 'quebra ' + n }] }]);
+      }
+      const r = rodar(['--sessao', 'ap2'], cwd, tmp);
+      assert.strictEqual(r.status, 0, r.stdout);
+      assert.strictEqual(r.json.encerrar, true, 'o teto tinha de encerrar: ' + r.stdout);
+      assert.doesNotMatch(String(r.json.motivo), /aprovado/);
+      assert.strictEqual(aprovadosDe(tmp, 'ap2'), undefined, 'o teto gravou aprovado');
+    } finally { fs.rmSync(cwd, { recursive: true, force: true }); }
+  });
+});
+
 test('apurar-ronda: revisao que NAO encerra nao conta (contador inflado e D14 sem base)', () => {
   comTmp((tmp) => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-repo-'));

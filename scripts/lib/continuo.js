@@ -3,7 +3,7 @@
 /**
  * D466/D467/D468 (0.7.0): menos paradas. A abertura injeta este bloco em toda sessao, no molde do de
  * paralelismo (paralelismo.js). Ligado por padrao (D467): validar pelo proprio agente antes de pedir acao
- * manual ao dono. Sob a chave `modoContinuo` (desligada ate o teste da D465; so o booleano true liga):
+ * manual ao dono. Sob a chave `modoContinuo` (ligada por padrao desde a 0.9.0, plano 091; so o booleano false desliga):
  * os gatilhos de CALADOS nao pedem troca de chat (saude.js le a mesma lista) e o agente decide sozinho o
  * tecnico. ASCII puro: sai por hook.
  */
@@ -32,7 +32,7 @@ function mil(n) {
 // saude.js requer este arquivo no topo, por isso o require aqui dentro.
 function tamanho(projeto) {
   const saude = require('./saude.js');
-  const L = saude.limiaresValidos(projeto.limiares);
+  const L = saude.limiaresValidos(projeto && typeof projeto === 'object' ? projeto.limiares : undefined);
   const aviso = 'tokensDeContexto' in L ? L.tokensDeContexto : TOKENS_CONTEXTO;
   const alarme = Object.assign({}, saude.LIMIARES_PADRAO, L).tokensAlarme;
   return '(aviso a ' + mil(aviso) + ', alarme a ' + mil(alarme) + ')';
@@ -44,10 +44,11 @@ const LIGADO = [
   '4. Escolha tecnica dentro do escopo: decida, registre o motivo e liste no fecho. Pergunte ao dono so o irreversivel, o externo (publicar, push, envio), credencial, permissao ou seguranca, o de custo e o de produto.'
 ];
 
-/** A chave ligada? So o booleano true (D388/D415): "true" entre aspas nao liga. */
+/** A chave ligada? Plano 091 (#9, D556/D559): ligada por padrao, com ou sem projeto.json; so o booleano false
+ *  desliga (D388/D415): "false" entre aspas nao desliga. */
 function ativo(projeto) {
   const objeto = !!projeto && typeof projeto === 'object' && !Array.isArray(projeto);
-  return objeto && projeto[CHAVE] === true;
+  return !(objeto && projeto[CHAVE] === false);
 }
 
 /** O bloco da abertura: sempre a regra de validar; com a chave, as do modo continuo. */

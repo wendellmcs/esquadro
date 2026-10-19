@@ -6,6 +6,10 @@ const path = require('node:path');
 const alvo = path.join(process.cwd(), '.claude', 'esquadro', 'contadores.json');
 let dados = null;
 try { dados = JSON.parse(fs.readFileSync(alvo, 'utf8')); } catch (e) { dados = null; }
+// Plano 091 T6: os contadores de ordem (lib/ordens.js) moram no mesmo arquivo, mas nao sao disparo de trava.
+const RE_ORDEM = /^ordem_/;
+const temOrdens = !!dados && typeof dados === 'object' && Object.keys(dados).some(function (k) { return RE_ORDEM.test(k); });
+if (temOrdens) dados = Object.fromEntries(Object.entries(dados).filter(function (par) { return !RE_ORDEM.test(par[0]); }));
 
 if (!dados || Object.keys(dados).length === 0) {
   process.stdout.write('esquadro: nenhum disparo registrado ainda em ' + alvo + '\n');
@@ -30,4 +34,5 @@ for (const chave of invalidas) {
 }
 process.stdout.write('\n  ' + String(total).padStart(6) + ' | TOTAL\n\n');
 process.stdout.write('Manter ou tirar trava se decide por estes numeros, nao por impressao.\n');
+if (temOrdens) process.stdout.write('As ordens (dadas, cumpridas, recusadas) saem na auditoria automatica.\n');
 process.exit(0);

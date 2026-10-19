@@ -95,28 +95,6 @@ function versaoNoHead(cwd, relRaiz) {
     (v ? (v.error ? (v.error.code || 'erro') : v.status) : 'sem resposta') + ')' };
 }
 
-/**
- * D485 (s108): o diff do arquivo contra o HEAD, sem contexto (-U0), para medir a faixa da revisao. Devolve
- * { removidas, acrescentadas, blocos: [{ antigoIni, antigoQtd, novoIni, novoQtd }] }, ou null quando nao da para
- * medir (git que falha, binario, saida sem bloco): sem medida, a faixa e a completa. `:(literal)` para que um
- * nome com `*` ou `?` nao vire padrao; --ignore-cr-at-eol porque o identico tambem ignora o CRLF.
- */
-function diffContraHead(cwd, rel) {
-  const r = rodarGit(cwd, ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '--ignore-cr-at-eol', '-U0',
-    'HEAD', '--', ':(literal)' + rel]);
-  if (!r || r.error || r.status !== 0 || typeof r.stdout !== 'string') return null;
-  const blocos = [];
-  const re = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm;
-  let m;
-  while ((m = re.exec(r.stdout)) !== null) {
-    blocos.push({ antigoIni: Number(m[1]), antigoQtd: m[2] === undefined ? 1 : Number(m[2]),
-      novoIni: Number(m[3]), novoQtd: m[4] === undefined ? 1 : Number(m[4]) });
-  }
-  if (blocos.length === 0 && r.stdout.trim() !== '') return null;
-  const soma = function (campo) { return blocos.reduce(function (t, b) { return t + b[campo]; }, 0); };
-  return { removidas: soma('antigoQtd'), acrescentadas: soma('novoQtd'), blocos: blocos };
-}
-
 const cwd = process.cwd();
 const alvo = arg('arquivo');
 const sementeTexto = arg('semente') || String(process.pid);
@@ -191,7 +169,8 @@ const identico = !novo && normalizado(anterior) === normalizado(atual);
 // acrescentadas). Estilo pela mesma regra do portao (extensao ou caminhosDeEstilo do projeto, relativo a raiz).
 const raizProjeto = config.raizDoProjeto(cwd);
 const relNaRaiz = path.relative(raizProjeto, path.join(cwd, rel)).replace(/\\/g, '/');
-const diff = novo || identico ? null : diffContraHead(cwd, rel);
+// D485: o diff contra o HEAD mora em lib/git.js (plano 091: o portao do commit mede a mesma faixa).
+const diff = novo || identico ? null : git.diffContraHead(cwd, rel);
 const linhasMudadas = identico ? 0 : (diff ? Math.max(diff.removidas, diff.acrescentadas) : null);
 const projetoCfg = config.carregarProjeto(raizProjeto);
 const ehEstilo = design.ehArquivoDeEstilo(relNaRaiz, projetoCfg);

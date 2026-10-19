@@ -13,7 +13,8 @@ const CHAVES = [
 
 // D503: chave que pode faltar sem erro, mas que validar() confere quando vem. `referencias` e a peca de topo contra a
 // qual a revisao compara, por tipo, cada um uma lista de caminho ou URL (por isso fora de conferirCaminhos).
-const CHAVES_OPCIONAIS = ['referencias'];
+// Plano 090 Tarefa 5: `marcaDeAtalho`, a marca do /esquadro:atalhos (padrao `atalho`), uma palavra.
+const CHAVES_OPCIONAIS = ['referencias', 'marcaDeAtalho'];
 const TIPOS_REFERENCIA = ['tela', 'codigo', 'texto'];
 
 const TRAVAS = ['fecho', 'escopo', 'destrutivo', 'outraFrente'];
@@ -51,7 +52,8 @@ const LISTAS_LIDAS = ['comandosLiberados', 'comandosBloqueados', 'intocaveis'];
 // D468 (0.7.0): `modoContinuo` e opt-in como o vigia (so `=== true` liga, continuo.js).
 // D503 (0.8.1): `portaoReferencia` liga por padrao (so `=== false` desliga, portao-fecho.js), como o portaoHandoff.
 // D549 (0.8.4): `avisoDeVolta` liga por padrao (so `=== false` desliga, volta.js).
-const CHAVES_LIGA_DESLIGA = ['sugerirAprender', 'auditarNaAbertura', 'qualidadeDeResposta', 'portaoDecisao', 'portaoHandoff', 'vigia', 'paralelismo', 'modoContinuo', 'portaoReferencia', 'avisoDeVolta'];
+// D554 (0.9.0): `menosCodigo` liga por padrao (so `=== false` desliga, enxuto.js).
+const CHAVES_LIGA_DESLIGA = ['sugerirAprender', 'auditarNaAbertura', 'qualidadeDeResposta', 'portaoDecisao', 'portaoHandoff', 'vigia', 'paralelismo', 'modoContinuo', 'portaoReferencia', 'avisoDeVolta', 'menosCodigo', 'portaoManual', 'portaoCommit'];
 
 // Padrao que NUNCA casa um alvo relativo: letra de unidade (C: ou C:\) ou esquema
 // (file://). O alvo que chega aos portoes e sempre relativo a raiz do projeto
@@ -139,6 +141,9 @@ function avisosDeTipo(projeto) {
   for (const chave of CHAVES_LIGA_DESLIGA) {
     if (chave === 'qualidadeDeResposta') continue;
     if (chave in projeto && typeof projeto[chave] !== 'boolean') avisos.push(chave + ' tem de ser true ou false');
+  }
+  if ('marcaDeAtalho' in projeto && !require('./atalhos.js').ehMarca(projeto.marcaDeAtalho)) {
+    avisos.push('marcaDeAtalho tem de ser uma palavra (letras, numeros, - ou _)');
   }
   const deQualidade = require('./qualidade.js').avisoDeTipo(projeto);
   if (deQualidade) avisos.push(deQualidade);
@@ -245,6 +250,10 @@ function validar(obj) {
         }
       }
     }
+  }
+
+  if ('marcaDeAtalho' in obj && !require('./atalhos.js').ehMarca(obj.marcaDeAtalho)) {
+    erros.push('marcaDeAtalho tem de ser uma palavra (letras, numeros, - ou _)');
   }
 
   if ('agentes' in obj) {

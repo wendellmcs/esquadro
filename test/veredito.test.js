@@ -10,9 +10,28 @@ function veredito(lente, achados, melhor) {
   return { lente: lente, melhor: melhor || 'A', porQue: 'A.txt:1', achados: achados };
 }
 
-test('veredito: sao nove lentes distintas', () => {
-  assert.strictEqual(v.LENTES.length, 9);
-  assert.strictEqual(new Set(v.LENTES.map((l) => l.chave)).size, 9);
+test('veredito: sao dez lentes distintas', () => {
+  assert.strictEqual(v.LENTES.length, 10);
+  assert.strictEqual(new Set(v.LENTES.map((l) => l.chave)).size, 10);
+});
+
+// D553/D554 (0.9.0): a lente 10 julga o codigo que nao precisava existir (ideia do /ponytail-review, texto nosso).
+// Entra na faixa completa e no arquivo so de logica; nao entra nas faixas pequenas.
+test('veredito: a lente enxuto pede o que substitui, com arquivo:linha, e nunca chama de excesso o que protege', () => {
+  const l = v.LENTES.find((x) => x.chave === 'enxuto');
+  assert.ok(l, 'falta a lente enxuto');
+  assert.strictEqual(l.titulo, 'Codigo que nao precisava existir');
+  assert.ok(/^[\x20-\x7E]+$/.test(l.pergunta), 'pergunta fora de ASCII');
+  for (const t of ['arquivo:linha', 'linguagem', 'plataforma', 'dependencia ja instalada', 'codigo do projeto',
+    'Validacao na fronteira', 'perda de dados', 'seguranca', 'acessibilidade', 'nunca sao excesso']) {
+    assert.ok(l.pergunta.includes(t), 'a pergunta nao diz: ' + t);
+  }
+  assert.strictEqual(v.chaveDaLente('Código que não precisava existir'), 'enxuto', 'o titulo com acento acha a lente');
+  assert.ok(v.SAEM_SO_LOGICA.indexOf('enxuto') === -1, 'enxuto fica no arquivo so de logica');
+  for (const f of ['uma', 'duas', 'texto']) {
+    assert.ok(v.lentesDaFaixa(f).indexOf('enxuto') === -1, 'enxuto nao entra na faixa ' + f);
+  }
+  assert.strictEqual(v.lentesDaFaixa('completa'), null, 'na completa vale a familia inteira');
 });
 
 test('veredito: as oito lentes de UI sao distintas e nao colidem com as de codigo', () => {
@@ -92,10 +111,10 @@ test('D485: lentesDaFaixa - as lentes de cada faixa existem em LENTES; a complet
   assert.deepStrictEqual(v.lentesDaFaixa('uma'), ['correcao']);
 });
 
-test('veredito: as duas familias somam 17 lentes sem chave repetida', () => {
+test('veredito: as duas familias somam 18 lentes sem chave repetida', () => {
   const todas = v.FAMILIAS.codigo.concat(v.FAMILIAS.ui);
-  assert.strictEqual(todas.length, 17);
-  assert.strictEqual(new Set(todas.map((l) => l.chave)).size, 17);
+  assert.strictEqual(todas.length, 18);
+  assert.strictEqual(new Set(todas.map((l) => l.chave)).size, 18);
 });
 
 test('veredito: achado sem arquivo:linha nao conta (anti-teatro)', () => {
@@ -463,7 +482,8 @@ test('veredito: as outras oito lentes de codigo seguem com a pergunta de antes',
     design: 'Cite o token literal ou a tela irm\u00e3 de refer\u00eancia. Valor cru, gradiente, sombra larga, card aninhado ou tipografia fluida onde o sistema nao os tem. Sem citar token ou coordenada, o veredito nao conta.'
   };
   const hoje = {};
-  for (const l of v.LENTES) if (l.chave !== 'seguranca') hoje[l.chave] = l.pergunta;
+  // D554: a `enxuto` e nova, e tem teste proprio (acima); esta guarda as que ja existiam.
+  for (const l of v.LENTES) if (l.chave !== 'seguranca' && l.chave !== 'enxuto') hoje[l.chave] = l.pergunta;
   assert.deepStrictEqual(hoje, antes);
 });
 

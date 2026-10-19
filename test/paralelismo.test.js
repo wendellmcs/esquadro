@@ -15,7 +15,11 @@ test('paralelismo: o bloco diz seguir sem esperar, isolar quem edita, relatorio 
   assert.ok(/isolation: worktree/.test(b), 'quem edita roda isolado');
   assert.ok(/alegacao/.test(b) && /na fonte/.test(b), 'relatorio de agente e alegacao');
   assert.ok(/mais barato que resolve/.test(b), 'freio: modelo mais barato');
-  assert.ok(/\/esquadro:paralelo/.test(b) && /custo/.test(b) && /depois do sim/.test(b), 'oferece com custo e espera o sim');
+  // Plano 091 #5 (D557, mock D559): roda direto, sem perguntar e sem condicao de init; diz agentes, modelo e custo.
+  assert.ok(b.split('\n').indexOf('4. 3 ou mais tarefas independentes: rode o /esquadro:paralelo direto, sem perguntar; ' +
+    'diga numa linha quantos agentes, qual modelo e o custo. Teto de 8 agentes e o modelo mais barato que resolve ' +
+    'seguem valendo.') !== -1, 'item 4 do mock: ' + b);
+  assert.ok(!/depois do sim|ofereca|init/.test(b), 'sobrou a oferta ou a condicao de init: ' + b);
 });
 
 test('paralelismo: o teto do bloco e o mesmo do workflow (um numero so)', () => {
@@ -23,6 +27,9 @@ test('paralelismo: o teto do bloco e o mesmo do workflow (um numero so)', () => 
   const m = wf.match(/^const TETO_PADRAO = (\d+)$/m);
   assert.ok(m, 'sumiu o TETO_PADRAO do workflow');
   assert.ok(p.BLOCO.indexOf('no maximo ' + m[1] + ' agentes por disparo') !== -1, 'o bloco cita outro teto: ' + p.BLOCO);
+  // 091 #5: o item 4 repete o teto; todo "N agentes" do bloco e o mesmo numero
+  const tetos = (p.BLOCO.match(/\d+ agentes/g) || []).map(function (x) { return parseInt(x, 10); });
+  assert.ok(tetos.length >= 2 && tetos.every(function (n) { return String(n) === m[1]; }), 'tetos no bloco: ' + tetos);
 });
 
 test('paralelismo: ASCII puro (texto de hook) e dentro do teto de tamanho', () => {

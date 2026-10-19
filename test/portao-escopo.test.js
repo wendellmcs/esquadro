@@ -852,3 +852,69 @@ test('TS-03 (lote 3, D423): token_fora_do_sistema - Write (content) e Edit (new_
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });
+
+// ------------------------------- Plano 091 (#6, D559): o manual antes de arquivo AAA
+// O motivo e o texto do mock aprovado (prints-091); o manual conta pelo PostToolUse da ferramenta Skill
+// (marcar-trabalho.js), com a mesma regra do mod: skill do agente principal com "padrao" no nome.
+function carregarSkill(dir, tmp, skill, extra) {
+  return spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'marcar-trabalho.js')], {
+    input: JSON.stringify(Object.assign({ session_id: 's1', cwd: dir, hook_event_name: 'PostToolUse',
+      tool_name: 'Skill', tool_input: { skill: skill } }, extra || {})),
+    encoding: 'utf8', env: Object.assign({}, process.env, { ESQUADRO_TMP: tmp })
+  });
+}
+
+function projetoAaa(extra) {
+  const dir = montarProjeto(extra);
+  escrever(dir, '.claude/esquadro/escopo.md', '## Dentro\n- src/**\n');
+  escrever(dir, 'src/auth/login.js', 'x');
+  escrever(dir, 'src/app.js', 'x');
+  return dir;
+}
+
+test('091 #6: arquivo AAA sem o manual carregado e negado com o motivo do mock; carregar o manual libera', () => {
+  comTmp(function (tmp) {
+    const dir = projetoAaa();
+    try {
+      const r = rodar(entrada(dir, 'src/auth/login.js'), tmp);
+      assert.ok(negou(r), 'AAA sem manual passou');
+      assert.strictEqual(r.json.hookSpecificOutput.permissionDecisionReason, [
+        'esquadro - falta carregar o manual antes de editar arquivo de rigor maximo.',
+        '',
+        '"src/auth/login.js" e de marcha AAA neste projeto, e nenhum manual',
+        'de execucao (esquadro:padrao, ou o manual do projeto) foi carregado nesta sessao.',
+        'Faca agora: carregue a skill pela ferramenta Skill e tente a edicao de novo.',
+        'Desligar neste projeto: "portaoManual": false em .claude/esquadro/projeto.json.'
+      ].join('\n'));
+      assert.strictEqual(carregarSkill(dir, tmp, 'esquadro:revisar').status, 0);
+      assert.ok(negou(rodar(entrada(dir, 'src/auth/login.js'), tmp)), 'skill que nao e manual liberou');
+      const sessao = function () { return JSON.parse(fs.readFileSync(path.join(tmp, 'esquadro', 's1.json'), 'utf8')); };
+      // 091 T6: duas negacoes = uma ordem dada (a mesma pendencia)
+      assert.strictEqual(sessao().contadores.ordem_manual_dada, 1);
+      assert.strictEqual(carregarSkill(dir, tmp, 'padrao-aaa', { agent_id: 'sub-1' }).status, 0);
+      assert.ok(negou(rodar(entrada(dir, 'src/auth/login.js'), tmp)), 'o manual carregado por subagente liberou');
+      assert.strictEqual(carregarSkill(dir, tmp, 'padrao-aaa').status, 0);
+      liberou(rodar(entrada(dir, 'src/auth/login.js'), tmp));
+      assert.strictEqual(sessao().contadores.ordem_manual_cumprida, 1);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('091 #6: controles - arquivo de marcha padrao passa sem manual; "portaoManual": false desliga; esquadro:padrao libera', () => {
+  comTmp(function (tmp) {
+    const dir = projetoAaa();
+    try {
+      liberou(rodar(entrada(dir, 'src/app.js'), tmp));
+      fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'projeto.json'), JSON.stringify({ versaoConfig: 1,
+        marchaPadrao: 'padrao', marchas: { aaa: ['**/auth/**'], padrao: ['src/**'], rapida: [] }, portaoManual: false }));
+      liberou(rodar(entrada(dir, 'src/auth/login.js'), tmp));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+  comTmp(function (tmp) {
+    const dir = projetoAaa();
+    try {
+      assert.strictEqual(carregarSkill(dir, tmp, 'esquadro:padrao').status, 0);
+      liberou(rodar(entrada(dir, 'src/auth/login.js'), tmp));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
