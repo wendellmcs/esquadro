@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.9.2 — a auditoria automática vê os ganchos repetidos, e os atalhos voltam sozinhos
+
+Desenho dos avisos aprovado por imagem antes do código.
+
+**Novo**
+
+- **Os atalhos deliberados voltam sozinhos a cada 30 dias.** Antes, quem não rodava o `/esquadro:atalhos` à mão
+  nunca revia um "trocar quando" que já tinha acontecido. Agora a abertura da sessão mostra a lista completa (com e
+  sem gatilho), até 10 atalhos, no máximo uma vez a cada 30 dias, com a ordem ao Claude de conferir se algum já
+  venceu e levar os vencidos a você em 3 opções. Sem atalho, silêncio. O prazo muda em
+  `limiares.diasEntreAtalhos`, e `"atalhosNaAbertura": false` desliga.
+- **A auditoria de 7 dias avisa quando um gancho repetiu o mesmo texto na conversa anterior.** Antes, isso só se via
+  rodando o `/esquadro:auditar` à mão. Agora, se algum texto de gancho voltou mais de 5 vezes na conversa anterior à
+  atual, a auditoria automática diz qual, com o id e a data dessa conversa (pode ser de outra frente de trabalho).
+  Sem excesso, silêncio.
+
+**Muda**
+
+- **A busca de atalhos não deixa de fora o workspace com vários repositórios.** Aberta numa pasta que guarda os
+  projetos em repositórios próprios, a auditoria achava 0 atalhos. Agora ela varre a pasta aberta e os repositórios
+  logo abaixo dela; a lista dos 30 dias também.
+
+**Corrige**
+
+- **A revisão antes do commit cobrava revisão de arquivo que nem estava no repositório.** Quando não dava para
+  saber em que repositório o commit acontecia (a pasta numa variável, como em `cd "$D" && git commit`), ela listava como "código sem revisão" os scripts de apoio guardados fora de
+  qualquer repositório, como os da pasta temporária da sessão. Agora arquivo fora de repositório nunca entra nessa
+  conta.
+
 ## 0.9.1 — o trabalho da sessão sobrevive à compactação, e a auditoria mede o que os ganchos injetam
 
 Ideias do [context-mode](https://github.com/mksglu/context-mode), de Mert Koseoğlu: nada do código, que tem licença

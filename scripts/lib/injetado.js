@@ -54,6 +54,35 @@ function localizar(passado, env) {
   return { caminho: caminho, plugins: plugins };
 }
 
+/**
+ * Plano 092 (D573): a conversa anterior a atual, para a auditoria de 7 dias - o .jsonl mais recente (mtime) da pasta da
+ * transcricao `atual` que nao e o dela. A atual pode ainda nao existir na abertura (o Claude Code a escreve de forma
+ * assincrona). Devolve o alvo do localizar() com `id` (8 primeiros caracteres do nome) e `quando` (mtime, ms), ou null.
+ */
+function anterior(atual, sessionId, env) {
+  if (typeof atual !== 'string' || !atual) return null;
+  const pasta = path.dirname(atual);
+  const fora = new Set([path.basename(atual).toLowerCase()]);
+  if (typeof sessionId === 'string' && sessionId) fora.add((sessionId + '.jsonl').toLowerCase());
+  let melhor = null;
+  try {
+    for (const nome of fs.readdirSync(pasta)) {
+      if (!/\.jsonl$/i.test(nome) || fora.has(nome.toLowerCase())) continue;
+      let st;
+      try { st = fs.statSync(path.join(pasta, nome)); } catch (e) { continue; }
+      // vazio (sessao que nem escreveu) nao conta: esconderia a anterior de verdade (revisao 092, borda)
+      if (st.isFile() && st.size > 0 && (!melhor || st.mtimeMs > melhor.quando)) melhor = { nome: nome, quando: st.mtimeMs };
+    }
+  } catch (e) {
+    return null;
+  }
+  if (!melhor) return null;
+  const alvo = localizar(path.join(pasta, melhor.nome), env);
+  alvo.id = melhor.nome.slice(0, 8);
+  alvo.quando = melhor.quando;
+  return alvo;
+}
+
 /** nome -> Set de plugins, de cada <cache>/<mercado>/<plugin>/<versao>/hooks/hooks.json. Pasta ilegivel: mapa vazio. */
 function lerPlugins(cache) {
   const scripts = new Map();
@@ -218,4 +247,4 @@ function medir(alvo) {
   return r;
 }
 
-module.exports = { VOLTA_MAIS_DE, CORTE_DO_TEXTO, localizar, medir, cabeca, pluginDoComando };
+module.exports = { VOLTA_MAIS_DE, CORTE_DO_TEXTO, localizar, anterior, medir, cabeca, pluginDoComando };

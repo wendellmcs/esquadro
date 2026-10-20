@@ -38,6 +38,16 @@ o resumo e, quando há atalho sem gatilho, o conselho de escrever o "trocar quan
 - **"Nenhum atalho registrado."** não quer dizer código sem atalho: quer dizer que nenhum foi
   marcado. A linha de baixo diz em quantos arquivos o script procurou.
 
+## Sozinha, a cada 30 dias
+
+Na abertura da sessão, num projeto com `projeto.json`, o esquadro mostra a lista completa (com e sem
+gatilho) no máximo uma vez a cada 30 dias, com a ordem de conferir se algum "trocar quando" já
+aconteceu e, se aconteceu, levar ao dono em 3 opções. Varre a pasta aberta e os repositórios logo
+abaixo dela (um workspace que guarda os projetos em repositórios próprios não fica de fora); lista até
+10 atalhos, e o resto fica para esta skill. Sem atalho, nada sai. A data fica em
+`.claude/esquadro/atalhos-revisao.json`; o prazo muda em `limiares.diasEntreAtalhos`, e
+`"atalhosNaAbertura": false` desliga. Quando um atalho aparecer ali, rode esta skill para o detalhe.
+
 ## O que esta skill NÃO faz
 
 - **Não acha atalho sem marca.** Ela lê comentário, não código: simplificação sem o comentário não

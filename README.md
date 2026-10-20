@@ -363,7 +363,8 @@ Basta um (com o modo contínuo ligado, só o tamanho, o alarme, os bloqueios e a
 contexto: ver "Menos paradas e modo contínuo"). Sem `projeto.json`, valem os padrões da tabela; com ele, só as chaves que você escreve
 mudam, e só com número positivo (desde a 0.7.5, `0`, negativo, texto ou `null` caem no padrão). O commit entra com 3, e não 1, porque o aviso sai uma vez só: com 1, todo mundo que commita
 receberia o aviso no primeiro commit. A auditoria automática usa mais duas chaves de `limiares`, que
-não são gatilho de troca de chat: `diasEntreAuditorias` e `diasSkillParada` (ver `/esquadro:auditar`).
+não são gatilho de troca de chat: `diasEntreAuditorias` e `diasSkillParada` (ver `/esquadro:auditar`); a lista
+automática dos atalhos usa `diasEntreAtalhos` (ver `/esquadro:atalhos`).
 
 **Perguntar também dispara.** Se você perguntar se o contexto ou a memória da conversa está bom
 ("o contexto está bom?", "contexto tá cheio?", "is the context ok?"), a pergunta é a resposta: o
@@ -1198,8 +1199,10 @@ documentado pelo Claude Code: quando a leitura falha, o relatório diz "não med
 `abertura.js` roda a mesma auditoria no máximo uma vez a cada 7 dias e **só fala se algo passou do teto**:
 peso de instrução acima do teto, skills que se sobrepõem, regras que se contradizem, ou skill do projeto
 cujo `SKILL.md` não muda há 90 dias ou mais (pela data do último commit que o tocou; sem git, ou com o
-arquivo fora do git, pela data do arquivo), ou atalho deliberado sem "trocar quando:" (a mesma varredura do
-`/esquadro:atalhos`, que dá o detalhe). Tudo em ordem =
+arquivo fora do git, pela data do arquivo), ou texto de gancho que voltou mais de 5 vezes na conversa anterior
+(desde a 0.9.2: a transcrição mais recente do projeto que não é a atual, com o id e a data dela na linha, porque
+pode ser de outra frente), ou atalho deliberado sem "trocar quando:" (a mesma varredura do
+`/esquadro:atalhos`, que dá o detalhe, na pasta aberta e nos repositórios logo abaixo dela). Tudo em ordem =
 silêncio. O aviso sai em uma lista curta, com no máximo cinco nomes por item, e termina com a ordem ao Claude:
 no primeiro turno, depois de atender o pedido, rodar o `/esquadro:auditar` e levar os cortes a você em 3 opções. A data da última auditoria fica em `.claude/esquadro/auditoria.json`
 (apagar o arquivo faz a próxima abertura auditar de novo); se a auditoria falhar, sai uma linha com a causa
@@ -1207,6 +1210,13 @@ mandando rodar `/esquadro:auditar`, que mostra o relatório inteiro; a data é g
 aviso não se repetir a cada sessão. Os prazos se ajustam em
 `limiares`, no `projeto.json`: `diasEntreAuditorias` (padrão 7) e `diasSkillParada` (padrão 90). Desliga com
 `"auditarNaAbertura": false`; sem a chave, fica ligado. Sem `projeto.json` ela não roda.
+
+**Os atalhos também voltam sozinhos.** Desde a 0.9.2, a abertura mostra a lista completa dos atalhos deliberados
+(com e sem gatilho) no máximo uma vez a cada 30 dias, com a ordem de conferir se algum "trocar quando" já
+aconteceu e levar os vencidos a você em 3 opções. Varre a pasta aberta e os repositórios logo abaixo dela, lista
+até 10 e deixa o resto para o `/esquadro:atalhos`; sem atalho, silêncio. A data fica em
+`.claude/esquadro/atalhos-revisao.json`, o prazo em `limiares.diasEntreAtalhos`, e `"atalhosNaAbertura": false`
+desliga.
 
 **O que nunca é usado aparece em número.** Desde a 0.9.0, cada ordem que o esquadro dá ao Claude (rodar o
 `/esquadro:aprender`, o `/esquadro:auditar`, o `/esquadro:calibrar`, o `/esquadro:init`, revisar antes do commit,
@@ -1585,6 +1595,7 @@ propósito, para não invalidar o `projeto.json` de quem já tem um.
 |---|---|---|
 | `sugerirAprender` | a ordem de rodar o `/esquadro:aprender` quando você corrige o jeito de o Claude trabalhar (no máximo uma a cada cinco turnos) | ligado; `false` desliga |
 | `auditarNaAbertura` | a auditoria automática da abertura, a cada `diasEntreAuditorias` dias | ligado; `false` desliga |
+| `atalhosNaAbertura` | a lista dos atalhos deliberados na abertura, a cada `diasEntreAtalhos` dias | ligado; `false` desliga |
 | `qualidadeDeResposta` | o bloco de seis regras de clareza das respostas | ligado; `false` desliga |
 | `portaoDecisao` | o portão da pergunta ao dono (3 opções, a recomendada em primeiro) | ligado; `false` desliga |
 | `portaoHandoff` | o portão do prompt do handoff no chat | ligado; `false` desliga |
@@ -1628,6 +1639,7 @@ propósito, para não invalidar o `projeto.json` de quem já tem um.
 | `limiares.tokensAlarme` | o segundo aviso, firme | 450000 |
 | `limiares.diasEntreAuditorias` | dias entre as auditorias automáticas | 7 |
 | `limiares.diasSkillParada` | dias sem mudar para a skill do projeto contar como parada | 90 |
+| `limiares.diasEntreAtalhos` | dias entre as listas automáticas dos atalhos | 30 |
 
 ---
 

@@ -66,8 +66,8 @@ function topo(pasta) {
 }
 
 /**
- * Um arquivo tocado: { faixa, inspetores } se e codigo, existe, esta num repositorio e difere do HEAD (ou e novo e o
- * git nao o ignora); senao null. `estilo` vem do chamador (regra do design.js, relativa a raiz do projeto).
+ * Um arquivo tocado: { faixa, inspetores } se e codigo, existe e difere do HEAD (ou e novo e o git nao o ignora); senao
+ * null. Fora de repositorio ele mediria "novo": quem chama confere o repositorio antes (`pendentes`, D575). `estilo` vem do chamador (regra do design.js, relativa a raiz do projeto).
  */
 function medir(abs, estilo) {
   if (/\.(md|markdown|txt)$/i.test(abs) || !fs.existsSync(abs)) return null;
@@ -114,10 +114,9 @@ function pendentes(arquivos, aprovados, raiz, topoDoCommit, ehEstilo, marcas) {
     if (typeof a !== 'string' || ok.has(chave(a))) continue;
     const abs = path.resolve(raiz, a);
     const rel = require('./glob.js').normalizar(path.relative(raiz, abs));
-    if (topoDoCommit) {
-      const t = topo(path.dirname(abs));
-      if (!t || chave(t) !== chave(topoDoCommit)) continue;
-    }
+    // D575: fora de qualquer repositorio (instrumento do scratchpad) nunca conta, mesmo com topoDoCommit null (`cd "$D"`).
+    const t = topo(path.dirname(abs));
+    if (!t || (topoDoCommit && chave(t) !== chave(topoDoCommit))) continue;
     const m = medir(abs, typeof ehEstilo === 'function' && ehEstilo(rel) === true);
     if (m) lista.push({ rel: rel, faixa: m.faixa, inspetores: m.inspetores,
       atalhos: Array.isArray(marcas) && marcas.length ? atalhosNovos(abs, m.novas, marcas) : [] });

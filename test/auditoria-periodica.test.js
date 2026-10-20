@@ -665,3 +665,258 @@ test('091 T6: auditar que lanca com ordens na janela - a retroalimentacao sai ju
     assert.deepStrictEqual(lerMarcaBruta(dir).ordens, { ordem_aprender_dada: 2 });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// ---- Plano 092: D573 (injetado da conversa anterior), D574 (atalhos a cada 30 dias), D576 (pasta e repositorios de dentro)
+
+const injetadoLib = require('../scripts/lib/injetado.js');
+const atalhosLib = require('../scripts/lib/atalhos.js');
+
+/** A data local no formato da linha do mock: AAAA-MM-DD HH:MM. */
+function local(ms) {
+  const d = new Date(ms);
+  const p = function (n) { return String(n).padStart(2, '0'); };
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+test('D573: a auditoria passa a transcricao anterior ao auditar e avisa o gancho que volta mais de 5 vezes, com a conversa', () => {
+  const dir = temp('injetado');
+  try {
+    const quando = Date.UTC(2026, 9, 19, 12, 5);
+    const alvo = { caminho: path.join(dir, '4f947022-aaaa.jsonl'), plugins: dir, id: '4f947022', quando: quando };
+    const relatorio = limpo({ injetado: { medido: true, repetidos: [
+      { texto: '<context_guidance>', plugin: 'context-mode', gancho: 'PreToolUse:Read', vezes: 12, caracteres: 4812 }] } });
+    let recebido = null;
+    const auditar = function (c, p, o) { recebido = o; return relatorio; };
+    const t = ap.avisoDaAuditoria(dir, PROJETO, { agora: AGORA, auditar: auditar, atalhos: function () { return []; }, transcricao: alvo });
+    assert.ok(recebido && recebido.transcricao === alvo, 'o auditar nao recebeu a transcricao anterior');
+    assert.strictEqual(t, [
+      'esquadro: auditoria automatica (a cada 7 dias) achou o que cortar:',
+      '- texto de gancho que volta mais de 5 vezes na conversa anterior (4f947022, ' + local(quando) +
+        ') (1): context-mode PreToolUse:Read 12x, 4812 caracteres',
+      ORDEM_DO_MOCK
+    ].join('\n'));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D573: injetado nao medido, sem repetidos ou de forma estranha = linha nenhuma (nunca zero inventado)', () => {
+  const rep = [{ texto: 't', plugin: 'p', gancho: 'g', vezes: 9, caracteres: 9 }];
+  for (const injetado of [{ medido: false, motivo: 'nao medido' }, { medido: false, repetidos: rep }, { medido: true, repetidos: [] }, { medido: true, repetidos: [null, 3] }, null, 'x']) {
+    const dir = temp('injetado-nada');
+    try {
+      const t = ap.avisoDaAuditoria(dir, PROJETO, { agora: AGORA, auditar: stub(limpo({ injetado: injetado })),
+        atalhos: function () { return []; }, transcricao: { caminho: 'x', plugins: 'y', id: 'abcd1234', quando: AGORA } });
+      assert.strictEqual(t, '', JSON.stringify(injetado) + ' -> ' + t);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+test('D573: injetado.anterior acha o .jsonl mais recente da pasta que nao e o da sessao atual (exista ou nao o atual)', () => {
+  const dir = temp('anterior');
+  try {
+    const gravar = function (nome, ms) { escrever(dir, nome, '{}\n'); fs.utimesSync(path.join(dir, nome), new Date(ms), new Date(ms)); };
+    gravar('11111111-velha.jsonl', AGORA - 3 * DIA);
+    gravar('22222222-nova.jsonl', AGORA - DIA);
+    gravar('atual-sessao.jsonl', AGORA);
+    gravar('notas.txt', AGORA);
+    const a = injetadoLib.anterior(path.join(dir, 'atual-sessao.jsonl'), 'atual-sessao', {});
+    assert.strictEqual(path.basename(a.caminho), '22222222-nova.jsonl');
+    assert.strictEqual(a.id, '22222222');
+    assert.strictEqual(a.quando, AGORA - DIA);
+    assert.ok(typeof a.plugins === 'string' && a.plugins.length > 0, 'sem a pasta de plugins');
+    const semAtual = injetadoLib.anterior(path.join(dir, 'ainda-nao-existe.jsonl'), 'ainda-nao-existe', {});
+    assert.strictEqual(path.basename(semAtual.caminho), 'atual-sessao.jsonl', 'com o atual ausente, a mais recente das outras');
+    assert.strictEqual(injetadoLib.anterior(null, 'x', {}), null);
+    assert.strictEqual(injetadoLib.anterior(path.join(dir, 'nada', 'x.jsonl'), 'x', {}), null, 'pasta que nao existe');
+    // revisao 092 (borda): .jsonl vazio (sessao que nem escreveu) nao vira a "anterior" e esconde a de verdade
+    escrever(dir, '44444444-vazia.jsonl', '');
+    fs.utimesSync(path.join(dir, '44444444-vazia.jsonl'), new Date(AGORA - 1000), new Date(AGORA - 1000));
+    assert.strictEqual(path.basename(injetadoLib.anterior(path.join(dir, 'atual-sessao.jsonl'), 'atual-sessao', {}).caminho),
+      '22222222-nova.jsonl', 'escolheu o .jsonl vazio');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D573: com a entrada do gancho, a auditoria acha a anterior sozinha; dentro do prazo nem procura', () => {
+  const dir = temp('entrada');
+  const pasta = temp('entrada-projects');
+  try {
+    escrever(pasta, '33333333-outra.jsonl', '{}\n');
+    let recebido = null;
+    const auditar = function (c, p, o) { recebido = o; return limpo({}); };
+    const entrada = { transcript_path: path.join(pasta, 'sessao-agora.jsonl'), session_id: 'sessao-agora' };
+    ap.avisoDaAuditoria(dir, PROJETO, { agora: AGORA, auditar: auditar, atalhos: function () { return []; }, entrada: entrada });
+    assert.strictEqual(path.basename(recebido.transcricao.caminho), '33333333-outra.jsonl');
+    recebido = null;
+    ap.avisoDaAuditoria(dir, PROJETO, { agora: AGORA + DIA, auditar: auditar, atalhos: function () { return []; }, entrada: entrada });
+    assert.strictEqual(recebido, null, 'dentro do prazo auditou');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(pasta, { recursive: true, force: true });
+  }
+});
+
+const ORDEM_DOS_ATALHOS = [
+  'Faca no seu primeiro turno, depois de atender o pedido:',
+  '1. Para cada atalho, confira se o "trocar quando" ja aconteceu.',
+  '2. Se algum venceu (ou nao tem gatilho), leve ao usuario pelo',
+  '   AskUserQuestion, em 3 opcoes, com o custo. Nao troque nada sem o sim.',
+  '   Se nenhum venceu, nao diga nada.',
+  'Desligar: "atalhosNaAbertura": false em .claude/esquadro/projeto.json.'
+].join('\n');
+
+test('D574: a chave e atalhosNaAbertura e o prazo padrao e 30 dias', () => {
+  assert.strictEqual(ap.CHAVE_ATALHOS, 'atalhosNaAbertura');
+  assert.strictEqual(ap.PADROES.diasEntreAtalhos, 30);
+  assert.strictEqual(ap.dias({ limiares: { diasEntreAtalhos: 10 } }, 'diasEntreAtalhos'), 10);
+});
+
+test('D574: a lista completa dos atalhos, no texto do mock, com e sem gatilho; marca propria; dentro de 30 dias, calada', () => {
+  const dir = temp('rev-atalhos');
+  try {
+    const achados = [
+      { arquivo: 'esquadro/scripts/lib/ordens.js', linha: 88, oque: 'raiz comparada sem maiuscula em todo sistema.',
+        limite: 'pastas que so diferem na caixa.', gatilho: 'aparecer projeto no Linux com duas pastas que so diferem na caixa.' },
+      { arquivo: 'scripts/y.js', linha: 7, oque: 'retry fixo de 3 vezes.', limite: null, gatilho: null }
+    ];
+    let chamadas = 0;
+    const varrer = function () { chamadas++; return achados; };
+    const t = ap.avisoDosAtalhos(dir, PROJETO, { agora: AGORA, atalhos: varrer });
+    assert.strictEqual(t, [
+      'esquadro: atalhos registrados (revisao a cada 30 dias): 2 atalhos em 2 arquivos; 1 sem gatilho.',
+      '- esquadro/scripts/lib/ordens.js:88  raiz comparada sem maiuscula em todo sistema.',
+      '    trocar quando: aparecer projeto no Linux com duas pastas que so diferem na caixa.',
+      '- scripts/y.js:7  retry fixo de 3 vezes.',
+      '    sem gatilho',
+      ORDEM_DOS_ATALHOS
+    ].join('\n'));
+    assert.ok(fs.existsSync(path.join(dir, '.claude', 'esquadro', ap.MARCA_ATALHOS)), 'a marca propria nao foi gravada');
+    assert.ok(!fs.existsSync(path.join(dir, '.claude', 'esquadro', ap.MARCA)), 'gravou a marca da auditoria');
+    assert.strictEqual(ap.avisoDosAtalhos(dir, PROJETO, { agora: AGORA + 29 * DIA, atalhos: varrer }), '');
+    assert.strictEqual(chamadas, 1, 'dentro do prazo varreu de novo');
+    assert.ok(ap.avisoDosAtalhos(dir, PROJETO, { agora: AGORA + 30 * DIA, atalhos: varrer }).startsWith('esquadro: atalhos registrados'));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D574: um atalho com gatilho = "todos com gatilho"; sem atalho, calada e com a marca; sem projeto ou desligada, nada', () => {
+  const um = temp('rev-um');
+  const nada = temp('rev-nada');
+  const sem = temp('rev-sem');
+  try {
+    const t = ap.avisoDosAtalhos(um, PROJETO, { agora: AGORA,
+      atalhos: function () { return [{ arquivo: 'a.js', linha: 1, oque: 'x.', limite: null, gatilho: 'y.' }]; } });
+    assert.ok(t.startsWith('esquadro: atalhos registrados (revisao a cada 30 dias): 1 atalho em 1 arquivo; todos com gatilho.\n'), t);
+    assert.strictEqual(ap.avisoDosAtalhos(nada, PROJETO, { agora: AGORA, atalhos: function () { return []; } }), '');
+    assert.ok(fs.existsSync(path.join(nada, '.claude', 'esquadro', ap.MARCA_ATALHOS)), 'sem atalho tambem grava a marca');
+    assert.strictEqual(ap.avisoDosAtalhos(sem, null, { agora: AGORA, atalhos: function () { return [{ arquivo: 'a.js', linha: 1, oque: 'x', gatilho: null }]; } }), '');
+    assert.strictEqual(ap.avisoDosAtalhos(sem, { atalhosNaAbertura: false }, { agora: AGORA,
+      atalhos: function () { return [{ arquivo: 'a.js', linha: 1, oque: 'x', gatilho: null }]; } }), '');
+    assert.ok(!fs.existsSync(path.join(sem, '.claude')), 'sem projeto ou desligada criou a pasta');
+  } finally {
+    for (const d of [um, nada, sem]) fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('D574: mais de 10 atalhos lista os 10 primeiros e manda o resto ao /esquadro:atalhos; acento sai ASCII', () => {
+  const dir = temp('rev-teto');
+  const quebra = temp('rev-quebra');
+  try {
+    const achados = Array.from({ length: 12 }, function (_, i) {
+      return { arquivo: 'a.js', linha: i + 1, oque: 'simplificação ' + i + '.', limite: null, gatilho: 'quando crescer.' };
+    });
+    const t = ap.avisoDosAtalhos(dir, PROJETO, { agora: AGORA, atalhos: function () { return achados; } });
+    const itens = t.split('\n').filter(function (l) { return l.startsWith('- '); });
+    assert.strictEqual(itens.length, 10);
+    assert.ok(t.includes('- a.js:1  simplificacao 0.'), t);
+    assert.ok(t.includes('\n(+2 nao listados: rode /esquadro:atalhos)\n'), t);
+    assert.ok(/^[\x0a\x20-\x7e]*$/.test(t), 'saiu fora do ASCII');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(quebra, { recursive: true, force: true });
+  }
+});
+
+// Revisao cega da 0.9.2 (ronda 1, estados/borda/manutencao): a falha da varredura calava por 30 dias, e o repositorio
+// que nao respondia sumia da lista quando outro respondia.
+test('revisao 092: varredura que lanca sai numa linha com a causa e o proximo passo, e a marca anda', () => {
+  const quebra = temp('rev-quebra');
+  try {
+    const t = ap.avisoDosAtalhos(quebra, PROJETO, { agora: AGORA, atalhos: function () { throw new Error('git sumiu'); } });
+    assert.strictEqual(t, 'esquadro: atalhos registrados (revisao a cada 30 dias): a busca falhou (Error: git sumiu); rode /esquadro:atalhos para ver o detalhe.');
+    assert.ok(fs.existsSync(path.join(quebra, '.claude', 'esquadro', ap.MARCA_ATALHOS)), 'a falha repetiria a cada abertura');
+  } finally { fs.rmSync(quebra, { recursive: true, force: true }); }
+});
+
+test('revisao 092: repositorio que nao respondeu sai nomeado, com e sem atalho; pasta sem git nenhum segue calada', () => {
+  const com = temp('rev-falha-com');
+  const sem = temp('rev-falha-sem');
+  const fora = temp('rev-fora');
+  try {
+    const um = [{ arquivo: 'a.js', linha: 1, oque: 'x.', limite: null, gatilho: 'y.' }];
+    const t = ap.avisoDosAtalhos(com, PROJETO, { agora: AGORA, atalhos: function () { return { achados: um, falhas: ['sub'] }; } });
+    assert.ok(t.includes('\n1 repositorio nao varrido (o git nao respondeu): sub; rode /esquadro:atalhos de dentro dele.\n'), t);
+    const s = ap.avisoDosAtalhos(sem, PROJETO, { agora: AGORA, atalhos: function () { return { achados: [], falhas: ['sub', 'outro'] }; } });
+    assert.strictEqual(s, 'esquadro: atalhos registrados (revisao a cada 30 dias): nenhum atalho achado; ' +
+      '2 repositorios nao varridos (o git nao respondeu): sub; outro; rode /esquadro:atalhos de dentro dele.');
+    assert.strictEqual(ap.avisoDosAtalhos(fora, PROJETO, { agora: AGORA,
+      atalhos: function () { return { erro: 'Esta pasta nao e repositorio git', foraDeRepositorio: true }; } }), '');
+  } finally {
+    for (const d of [com, sem, fora]) fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('revisao 092: daPastaEDeDentro devolve em `falhas` o repositorio de dentro que o git nao leu', () => {
+  const dir = temp('varre-falha');
+  try {
+    git(dir, ['init', '-q']);
+    escrever(dir, 'a.js', '// atalho: na raiz\n');
+    fs.mkdirSync(path.join(dir, 'quebrado'));
+    fs.writeFileSync(path.join(dir, 'quebrado', '.git'), ''); // gitfile vazio: o git recusa a pasta
+    const r = atalhosLib.daPastaEDeDentro(dir, {});
+    assert.deepStrictEqual(r.achados.map(function (a) { return a.arquivo; }), ['a.js']);
+    assert.deepStrictEqual(r.falhas, ['quebrado']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D576: a varredura pega a pasta aberta e os repositorios logo abaixo dela, com o caminho a partir da pasta', () => {
+  const dir = temp('varre');
+  try {
+    git(dir, ['init', '-q']);
+    escrever(dir, 'a.js', '// atalho: na raiz\n');
+    escrever(dir, 'pasta/c.js', '// atalho: pasta comum da raiz\n');
+    fs.mkdirSync(path.join(dir, 'sub'));
+    git(path.join(dir, 'sub'), ['init', '-q']);
+    escrever(dir, 'sub/b.js', 'x\n// atalho: no repositorio de dentro\n');
+    const r = atalhosLib.daPastaEDeDentro(dir, {});
+    const onde = r.achados.map(function (a) { return a.arquivo + ':' + a.linha; }).sort();
+    assert.deepStrictEqual(onde, ['a.js:1', 'pasta/c.js:1', 'sub/b.js:2']);
+    const t = ap.avisoDaAuditoria(dir, PROJETO, { agora: AGORA, auditar: stub(limpo({})) });
+    assert.ok(t.includes('- atalhos sem gatilho (3): '), t);
+    assert.ok(t.includes('sub/b.js:2'), 'a auditoria de 7 dias nao varreu o repositorio de dentro: ' + t);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('D576: pasta aberta fora de git com repositorio dentro ainda varre o de dentro; sem nenhum, erro', () => {
+  const dir = temp('varre-fora');
+  const vazio = temp('varre-vazio');
+  const soQuebrado = temp('varre-so-quebrado');
+  try {
+    const noGit = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf8' });
+    if (noGit.status === 0) return; // tmpdir dentro de repositorio: o cenario nao se monta aqui
+    fs.mkdirSync(path.join(dir, 'sub'));
+    git(path.join(dir, 'sub'), ['init', '-q']);
+    escrever(dir, 'sub/b.js', '// atalho: dentro\n');
+    const r = atalhosLib.daPastaEDeDentro(dir, {});
+    assert.deepStrictEqual(r.achados.map(function (a) { return a.arquivo; }), ['sub/b.js']);
+    assert.ok(atalhosLib.daPastaEDeDentro(vazio, {}).erro, 'sem repositorio nenhum devia dar erro');
+    assert.strictEqual(atalhosLib.daPastaEDeDentro(vazio, {}).foraDeRepositorio, true, 'pasta sem git e falha do git se confundem');
+    // revisao 092: o unico repositorio de dentro quebrado sai nomeado, nao como "pasta fora de git"
+    fs.mkdirSync(path.join(soQuebrado, 'quebrado'));
+    fs.writeFileSync(path.join(soQuebrado, 'quebrado', '.git'), ''); // gitfile vazio: o git recusa a pasta
+    const q = atalhosLib.daPastaEDeDentro(soQuebrado, {});
+    assert.deepStrictEqual(q.achados, [], JSON.stringify(q));
+    assert.deepStrictEqual(q.falhas, ['quebrado'], JSON.stringify(q));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(vazio, { recursive: true, force: true });
+    fs.rmSync(soQuebrado, { recursive: true, force: true });
+  }
+});

@@ -139,6 +139,30 @@ test('091 #1: commit com codigo mudado sem revisao e negado com a lista, a faixa
   });
 });
 
+// D575 (plano 092): arquivo fora de qualquer repositorio (instrumento do scratchpad) nunca conta no portao. Na s85, o
+// commit `( cd "$D" && git commit ... )` deu topoDoCommit null (o $D nao se expande) e o portao listou o scratchpad.
+test('D575: arquivo tocado fora de qualquer repositorio nao barra o commit, com cd "$D" e com o commit no repositorio', () => {
+  comRepo(function (dir, tmp) {
+    const fora = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-fora-'));
+    try {
+      const noGit = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: fora, encoding: 'utf8' });
+      if (noGit.status === 0) return; // tmpdir dentro de um repositorio: o cenario nao se monta aqui
+      fs.writeFileSync(path.join(fora, 'mutar.js'), 'x\n');
+      hook('marcar-trabalho.js', dir, tmp, { hook_event_name: 'PostToolUse', tool_name: 'Write',
+        tool_input: { file_path: path.join(fora, 'mutar.js') } });
+      const comVariavel = commitar(dir, tmp, 'D="' + dir + '"; ( cd "$D" && git commit -m "x" )');
+      assert.strictEqual(comVariavel.status, 0, comVariavel.stderr);
+      assert.ok(!negou(comVariavel), 'cd "$D": o arquivo de fora barrou o commit: ' + JSON.stringify(comVariavel.json));
+      const noRepo = commitar(dir, tmp, 'git commit -m "x"');
+      assert.ok(!negou(noRepo), 'commit no repositorio: o arquivo de fora barrou: ' + JSON.stringify(noRepo.json));
+      assert.deepStrictEqual(commit.pendentes([path.join(fora, 'mutar.js')], [], dir, null, null, []), [],
+        'pendentes com topoDoCommit null contou o arquivo de fora');
+    } finally {
+      fs.rmSync(fora, { recursive: true, force: true });
+    }
+  });
+});
+
 // Plano 091 #8 (mock D559, secao 3): o portao avisa o atalho NOVO sem gatilho (linha acrescentada contra o HEAD, ou
 // arquivo novo) dos arquivos que barram o commit; o atalho que ja estava no HEAD e o que tem gatilho ficam fora.
 test('091 #8: commit negado lista o atalho novo sem gatilho e manda escrever o gatilho', () => {

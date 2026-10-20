@@ -132,8 +132,8 @@ function lerArquivo(abs) {
 
 /**
  * Os atalhos do repositorio git de `cwd`: os arquivos que o git rastreia e os novos que ele nao ignora (fora `.git`,
- * `node_modules` e o .gitignore), caminhos relativos a raiz do repositorio. Devolve { achados, total, marcas }, ou
- * { erro } fora de repositorio ou com o git mudo. So le.
+ * `node_modules` e o .gitignore), caminhos relativos a raiz do repositorio. Devolve { achados, total, marcas, raiz }, ou
+ * { erro } fora de repositorio ou com o git mudo (`foraDeRepositorio: true` quando nem o rev-parse respondeu). So le.
  */
 function doRepositorio(cwd, projeto) {
   const git = require('./git.js');
@@ -141,7 +141,7 @@ function doRepositorio(cwd, projeto) {
   const topo = git.correr(cwd, ['rev-parse', '--show-toplevel']);
   if (topo === null) {
     return { erro: 'Esta pasta não é repositório git, ou o git não respondeu: não sei quais arquivos varrer. Rode de ' +
-      'dentro da pasta do repositório; se já estiver nela, confira se o git está instalado.' };
+      'dentro da pasta do repositório; se já estiver nela, confira se o git está instalado.', foraDeRepositorio: true };
   }
   const raiz = topo.trim();
   // -z: sem ele o git cita entre aspas o nome com acento.
@@ -156,8 +156,57 @@ function doRepositorio(cwd, projeto) {
   return {
     achados: varrer(arquivos, function (rel) { return lerArquivo(path.join(raiz, rel)); }, lista),
     total: arquivos.length,
-    marcas: lista
+    marcas: lista,
+    raiz: raiz
   };
 }
 
-module.exports = { MARCA_PADRAO, MARCAS_ACEITAS, ehMarca, marcas, lerLinha, varrer, painel, lerArquivo, doRepositorio };
+/**
+ * Plano 092 (D576): os atalhos da pasta aberta e dos repositorios logo abaixo dela (um nivel), com o caminho a partir da
+ * pasta. Num workspace cuja raiz guarda os projetos em repositorios proprios, so a raiz nao acharia nada. Devolve
+ * { achados, total, marcas, falhas } (falhas = as pastas que o git nao leu; a propria pasta fora de git nao e falha), ou
+ * o { erro } do primeiro quando nenhum repositorio respondeu e nada falhou. So le.
+ */
+function daPastaEDeDentro(cwd, projeto) {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const glob = require('./glob.js');
+  // o git devolve o caminho longo; o %TEMP% do Windows pode vir no nome curto (8.3): compara pelo caminho real
+  const real = function (p) { try { return fs.realpathSync.native(p); } catch (e) { return path.resolve(p); } };
+  const pastas = [cwd];
+  try {
+    for (const e of fs.readdirSync(cwd, { withFileTypes: true })) {
+      if (e.isDirectory() && e.name !== '.git' && e.name !== 'node_modules' && fs.existsSync(path.join(cwd, e.name, '.git'))) {
+        pastas.push(path.join(cwd, e.name));
+      }
+    }
+  } catch (e) { /* pasta ilegivel: so a propria */ }
+  const base = real(cwd);
+  const vistos = new Set();
+  const achados = [];
+  let total = 0;
+  let primeiroErro = null;
+  const falhas = [];
+  for (const p of pastas) {
+    const r = doRepositorio(p, projeto);
+    if (r.erro) {
+      if (!primeiroErro) primeiroErro = r;
+      // revisao 092: o erro de um repositorio nao some calado quando outro responde
+      if (!(p === cwd && r.foraDeRepositorio)) falhas.push(p === cwd ? '.' : glob.normalizar(path.relative(cwd, p)));
+      continue;
+    }
+    const raiz = real(r.raiz);
+    if (vistos.has(raiz.toLowerCase())) continue;
+    vistos.add(raiz.toLowerCase());
+    const rel = glob.normalizar(path.relative(base, raiz));
+    // repositorio de dentro: o caminho ganha a pasta dele; o da propria pasta (ou acima dela) fica como o git devolve
+    const prefixo = rel && !rel.startsWith('..') ? rel + '/' : '';
+    for (const a of r.achados) achados.push(Object.assign({}, a, { arquivo: prefixo + a.arquivo }));
+    total += r.total;
+  }
+  if (!vistos.size && !falhas.length) return primeiroErro;
+  return { achados: achados, total: total, marcas: marcas(projeto), falhas: falhas };
+}
+
+module.exports = { MARCA_PADRAO, MARCAS_ACEITAS, ehMarca, marcas, lerLinha, varrer, painel, lerArquivo, doRepositorio,
+  daPastaEDeDentro };

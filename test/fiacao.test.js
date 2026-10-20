@@ -1464,6 +1464,36 @@ test('A2 + pedido 32: a abertura que avisou da auditoria marca a sessao; a calad
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// Plano 092 (D573, D574, mock D576): a abertura passa o transcript_path a auditoria (que mede a conversa anterior) e
+// roda a revisao dos atalhos com marca propria; a 2a abertura, dentro dos prazos, fica calada nas duas.
+test('092: a abertura mede o injetado da conversa anterior e revisa os atalhos; dentro do prazo, calada', () => {
+  const dir = temp('092');
+  const projects = temp('092-projects');
+  try {
+    escrever(dir, '.claude/esquadro/projeto.json', '{}');
+    const g = spawnSync('git', ['init', '-q'], { cwd: dir, encoding: 'utf8' });
+    assert.strictEqual(g.status, 0, g.stderr);
+    escrever(dir, 'a.js', 'x\n// atalho: lista lida inteira. limite: 1 MB. trocar quando: arquivo maior.\n');
+    const anexo = JSON.stringify({ type: 'attachment', attachment: { type: 'hook_additional_context',
+      content: ['esquadro - aviso que se repete'], hookEvent: 'PreToolUse', hookName: 'PreToolUse:Bash', toolUseID: 't' } });
+    escrever(projects, 'aaaa1111-anterior.jsonl', Array(6).fill(anexo).join('\n') + '\n');
+    const entrada = { session_id: '092-1', cwd: dir, source: 'startup', transcript_path: path.join(projects, '092-1.jsonl') };
+    const r1 = rodar('abertura.js', dir, entrada);
+    assert.strictEqual(r1.status, 0, r1.stderr);
+    assert.ok(r1.stdout.indexOf('- texto de gancho que volta mais de 5 vezes na conversa anterior (aaaa1111, ') !== -1, r1.stdout);
+    assert.ok(r1.stdout.indexOf('esquadro: atalhos registrados (revisao a cada 30 dias): 1 atalho em 1 arquivo; todos com gatilho.\n' +
+      '- a.js:2  lista lida inteira.\n    trocar quando: arquivo maior.\n') !== -1, r1.stdout);
+    assert.ok(r1.stdout.indexOf('esquadro: atalhos registrados') > r1.stdout.indexOf('auditoria automatica'), 'os atalhos sairam antes da auditoria');
+    const r2 = rodar('abertura.js', dir, Object.assign({}, entrada, { session_id: '092-2', transcript_path: path.join(projects, '092-2.jsonl') }));
+    assert.strictEqual(r2.status, 0, r2.stderr);
+    assert.strictEqual(r2.stdout.indexOf('auditoria automatica'), -1, r2.stdout);
+    assert.strictEqual(r2.stdout.indexOf('atalhos registrados'), -1, r2.stdout);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(projects, { recursive: true, force: true });
+  }
+});
+
 // 091 T6: so a retroalimentacao (nada a cortar) sai na abertura, mas nao acende o botao nem conta a ordem do auditar.
 test('091 T6: a abertura com so a retroalimentacao nao marca auditoriaAvisou nem conta a ordem', () => {
   const dir = temp('a2-retro');

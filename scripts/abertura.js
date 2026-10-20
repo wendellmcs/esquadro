@@ -135,7 +135,8 @@ io.blindar(function () {
     // ativo, que segue por ultimo. A lib ja nao lanca; o try/catch aqui e a segunda rede, para que
     // nada da auditoria derrube o resto da abertura.
     try {
-      const auditoriaTexto = require('./lib/auditoria-periodica.js').avisoDaAuditoria(cwd, projeto);
+      // Plano 092 (D573): a entrada do gancho leva o transcript_path, de onde sai a conversa anterior.
+      const auditoriaTexto = require('./lib/auditoria-periodica.js').avisoDaAuditoria(cwd, projeto, { entrada: e });
       if (auditoriaTexto) process.stdout.write('\n' + auditoriaTexto + '\n');
       // Pedido 32 (Tarefa 4 subitem 3): a marca da sessao que acende o botao do /esquadro:auditar na faixa do mod. Plano
       // 091 T6: so com a ordem de cortar (a retroalimentacao sozinha nao pede nada), e ai conta a ordem dada.
@@ -147,6 +148,15 @@ io.blindar(function () {
       // da sessao depois do aviso impresso. Calar deixava a auditoria morta para sempre sem ninguem saber; uma linha
       // diz que nao rodou inteira e por que. A abertura segue.
       process.stdout.write('\nesquadro: auditoria automatica nao rodou inteira (' +
+        escopoLib.ascii(textoLib.causaDoErro(erro)).slice(0, 120) + '). O resto da abertura segue igual.\n');
+    }
+    // Plano 092 (D574, mock D576): a revisao dos atalhos, a cada 30 dias, com marca propria, depois da auditoria. A lib
+    // nao lanca; aqui so falha do require, e a abertura segue.
+    try {
+      const atalhosTexto = require('./lib/auditoria-periodica.js').avisoDosAtalhos(cwd, projeto);
+      if (atalhosTexto) process.stdout.write('\n' + atalhosTexto + '\n');
+    } catch (erro) {
+      process.stdout.write('\nesquadro: revisao dos atalhos nao rodou (' +
         escopoLib.ascii(textoLib.causaDoErro(erro)).slice(0, 120) + '). O resto da abertura segue igual.\n');
     }
     // Plano 091 (#4, D559): ordem de calibrar (30+ conversas, nunca calibrado). A lib nao lanca; a rede e a do vigia.
