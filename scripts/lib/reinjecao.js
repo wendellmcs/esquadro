@@ -8,6 +8,9 @@ const planoLib = require('./plano.js');
 const estado = require('./estado.js');
 const caminhoLib = require('./caminho.js');
 const textoLib = require('./texto.js');
+const saude = require('./saude.js');
+const git = require('./git.js');
+const ordensLib = require('./ordens.js');
 
 // A2: compactacao preserva o sentido e destroi a literalidade.
 // Depois dela eu sei que existe uma regra de escopo, e nao sei mais QUAL e o escopo.
@@ -155,6 +158,68 @@ function nucleo(cwd) {
   }
 }
 
+// Plano 0.9.1 (D560, D568): o que a sessao fez, para o compact nao apagar. Os arquivos listados tem teto; o resto vira conta.
+const TETO_DE_ARQUIVOS = 8;
+
+/** A pasta do repositorio de `abs` (a mais perto com `.git`), subindo pelo disco; null fora de repositorio. Pelo
+ *  disco, e nao por `git rev-parse` por arquivo: a sessao pode ter tocado dezenas, e isto roda em toda compactacao. */
+function repositorioDe(abs) {
+  let pasta = path.dirname(abs);
+  for (;;) {
+    if (fs.existsSync(path.join(pasta, '.git'))) return pasta;
+    const pai = path.dirname(pasta);
+    if (pai === pasta) return null;
+    pasta = pai;
+  }
+}
+
+/** D568: o HEAD de cada repositorio onde houve arquivo tocado, na ordem em que apareceram. O que contem a pasta
+ *  aberta se chama "raiz"; repositorio sem commit (ou git que nao responde) fica de fora. */
+function linhaDoHead(cwd, relativos) {
+  const vistos = [];
+  const partes = [];
+  for (const rel of relativos) {
+    const repo = repositorioDe(path.resolve(cwd, rel));
+    if (!repo || vistos.indexOf(repo.toLowerCase()) !== -1) continue;
+    vistos.push(repo.toLowerCase());
+    const sha = git.correr(repo, ['rev-parse', '--short', 'HEAD']);
+    if (sha === null) continue;
+    const ramo = (git.correr(repo, ['rev-parse', '--abbrev-ref', 'HEAD']) || '').trim();
+    partes.push((caminhoLib.relativoAoProjeto(repo, cwd) || 'raiz') + ' ' + sha.trim() +
+      (ramo && ramo !== 'HEAD' ? ' (' + ramo + ')' : ''));
+  }
+  return partes.length ? 'HEAD: ' + partes.join(' | ') : null;
+}
+
+/** As linhas do bloco "trabalho desta sessao"; so as que tem o que dizer (sessao sem nada = lista vazia). */
+function linhasDoTrabalho(cwd, s) {
+  const linhas = [];
+  const tocados = Array.isArray(s.arquivosTocados)
+    ? s.arquivosTocados.filter(function (a) { return typeof a === 'string' && a !== ''; }) : [];
+  const dentro = [];
+  for (const a of tocados) {
+    const rel = caminhoLib.relativoAoProjeto(a, cwd);
+    if (rel) dentro.push(rel);
+  }
+  if (tocados.length) {
+    const fora = tocados.length - dentro.length;
+    linhas.push('Arquivos tocados: ' + dentro.length + ' no projeto' + (fora ? ' (+' + fora + ' fora dele)' : '') +
+      (dentro.length > TETO_DE_ARQUIVOS ? ' (os ' + TETO_DE_ARQUIVOS + ' primeiros)' : ''));
+    for (const rel of dentro.slice(0, TETO_DE_ARQUIVOS)) linhas.push('  - ' + umaLinha(rel));
+    if (dentro.length > TETO_DE_ARQUIVOS) linhas.push('  (+' + (dentro.length - TETO_DE_ARQUIVOS) + ' nao listados)');
+  }
+  const ordens = Array.isArray(s.ordensPendentes)
+    ? s.ordensPendentes.filter(function (o) { return typeof o === 'string'; }) : [];
+  if (ordens.length) {
+    linhas.push('Ordens pendentes: ' + umaLinha(ordens.map(function (o) { return ordensLib.ROTULO[o] || o; }).join(', ')));
+  }
+  if (typeof s.decisoesDoDono === 'number' && s.decisoesDoDono > 0) linhas.push('Decisoes do dono nesta sessao: ' + s.decisoesDoDono);
+  if (typeof s.commitsFeitos === 'number' && s.commitsFeitos > 0) linhas.push('Commits nesta sessao: ' + s.commitsFeitos);
+  const head = linhaDoHead(cwd, dentro);
+  if (head) linhas.push(umaLinha(head));
+  return linhas;
+}
+
 function montar(cwd, sessionId, origem) {
   const partes = [];
 
@@ -228,12 +293,17 @@ function montar(cwd, sessionId, origem) {
     }
   }
 
-  const c = s.contadores || {};
+  // Plano 0.9.1 (Tarefa 1): `s.contadores` e do turno e morre no fecho; a conta da sessao e o turno somado ao balde
+  // da sessao, a mesma que o gatilho de saude le.
+  const c = saude.acumular(s);
   const chaves = Object.keys(c);
   if (chaves.length) {
     estadoPartes.push(bloco('ESTADO - portoes que dispararam nesta sessao',
       chaves.map(function (k) { return '  ' + c[k] + 'x ' + k; })));
   }
+
+  const trabalho = linhasDoTrabalho(cwd, s);
+  if (trabalho.length) estadoPartes.push(bloco('ESTADO - trabalho desta sessao', trabalho));
 
   if (!estadoPartes.length) return partes.length ? partes.join('\n') + '\n' : null;
   return partes.concat(estadoPartes).join('\n') + '\n';

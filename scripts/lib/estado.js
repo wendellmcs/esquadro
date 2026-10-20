@@ -181,7 +181,9 @@ const CAMPOS_DA_SESSAO = ['avisouSemConfig', 'avisouTipoErrado', 'avisouApelido'
   // Plano 091 (#1): os arquivos com revisao aprovada (apurar-ronda.js); o portao do commit os deixa passar.
   'revisadosAprovados',
   // Plano 091 T6: as ordens dadas e ainda nao cumpridas (lib/ordens.js); a skill que roda depois as cumpre.
-  'ordensPendentes'];
+  'ordensPendentes',
+  // D569 (0.9.1): o aviso inteiro do cd corrigido ja saiu nesta sessao; os seguintes vao curtos.
+  'avisouCdCorrigido'];
 const CAMPOS_DO_TURNO = ['trabalhoReal', 'bloqueouNesteTurno', 'buscouNesteTurno', 'contadores', 'gravouHandoff'];
 
 /** Os campos da sessao que este estado tem, para o fecho carregar adiante. */

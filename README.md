@@ -282,7 +282,9 @@ Cinco coisas acontecem sem você pedir:
 
 - **As suas regras voltam em toda sessão.** O `regras.md` do projeto e o escopo em vigor são
   reinjetados também ao retomar e depois de compactar o contexto — que é justamente quando a regra
-  se perde.
+  se perde. Desde a 0.9.1 volta junto o que já foi feito na sessão: os arquivos tocados (quantos, e os 8
+  primeiros), as ordens pendentes, as suas decisões e os commits, quando há, o `HEAD` de cada repositório
+  onde houve arquivo tocado, e os portões que dispararam no turno e antes dele.
 - **Ele avisa quando é hora de abrir chat novo.** Por gatilho contável, não por palpite. Com o modo
   contínuo, ligado por padrão desde a 0.9.0, avisam o tamanho da conversa e 6 bloqueios de portão
   ([a seção da chave](#menos-paradas-e-modo-contínuo)). Com `"modoContinuo": false`, avisam também 15 turnos
@@ -586,7 +588,8 @@ O que os portões leem, além do que a tabela diz:
   `git restore --staged .`, `git restore --staged -q .` (só o índice) e `git restore -p .` (interativo). Padrão
   inválido em `comandosLiberados` não libera nada.
 - **`cd` solto no `Bash`.** O comando corrigido para rodar num subshell não conta como bloqueio para o aviso de
-  troca de chat. Seguem negados o `cd` solto no `PowerShell`, o comando que termina em barra e o que o portão não
+  troca de chat. O aviso ao Claude sai inteiro na primeira correção da sessão e numa linha curta nas seguintes
+  (desde a 0.9.1). Seguem negados o `cd` solto no `PowerShell`, o comando que termina em barra e o que o portão não
   consegue ler inteiro.
 - **Estado.** Se a pasta onde o plugin guarda o estado não aceita escrita, nada que estaria barrado passa por causa
   disso. E o `projeto.json` que existe mas não é um JSON válido é dito como inválido, e não como ausente, também
@@ -1184,6 +1187,13 @@ itens fora da rubrica e regra sem cicatriz, e confere se o catálogo de modelos 
 projeto supõe — consultado no agente principal, porque hook nenhum do plugin abre conexão. Ela
 propõe cortar, fundir ou manter com motivo. **Não apaga, não move, não edita.**
 
+**Ela mede também o que os ganchos põem na conversa** (desde a 0.9.1): lida a transcrição da sessão, quantas vezes e
+quantos caracteres cada gancho de cada plugin injetou, e o texto que volta mais de 5 vezes, com o corte proposto (a
+dica com teto). Fica à parte do peso, como a memória: não é instrução escrita no projeto. O plugin sai do registro do
+gancho na transcrição; o que não dá para ligar a um plugin sai como "nao identificado". O formato da transcrição não é
+documentado pelo Claude Code: quando a leitura falha, o relatório diz "não medido" e a causa, nunca zero. Ideia do
+[context-mode](https://github.com/mksglu/context-mode), de Mert Koseoğlu, com texto e código nossos.
+
 **Você também não precisa lembrar de rodá-la.** Na abertura da sessão, num projeto com `projeto.json`, o
 `abertura.js` roda a mesma auditoria no máximo uma vez a cada 7 dias e **só fala se algo passou do teto**:
 peso de instrução acima do teto, skills que se sobrepõem, regras que se contradizem, ou skill do projeto
@@ -1356,7 +1366,7 @@ dois lugares, como na tabela.
 | `node "<plugin>/scripts/cicatriz.js" --manual <pasta ou arquivo do seu manual> --corpus <pasta com o seu histórico em .md>` | para cada regra do seu manual: existe decisão, incidente ou achado atrás dela? Sem `--corpus` o script avisa que não leu histórico e não separa nada; sem `--manual` mede as skills do próprio plugin |
 | `node "<plugin>/scripts/plataforma.js" --raiz "<plugin>"` | em que sistemas cada trecho dependente de plataforma foi de fato exercitado |
 | `node "<plugin>/scripts/sanitar.js"` | se algum dado seu vazou, nas três superfícies: conteúdo, autoria do histórico e mensagem de commit; age sobre a pasta atual, ou sobre outra com `--raiz <pasta>` |
-| `node "<plugin>/scripts/auditar.js" --memoria <caminho do MEMORY.md>` | o relatório do `/esquadro:auditar`, em JSON (peso de instrução, sobreposições, contradições, itens fora da rubrica, regras sem cicatriz); a skill roda por você. Sem `--memoria`, ou sem valor depois dela, a chave `memoria` diz "nao medida" e a causa |
+| `node "<plugin>/scripts/auditar.js" --memoria <caminho do MEMORY.md>` | o relatório do `/esquadro:auditar`, em JSON (peso de instrução, sobreposições, contradições, itens fora da rubrica, regras sem cicatriz); a skill roda por você. Sem `--memoria`, ou sem valor depois dela, a chave `memoria` diz "nao medida" e a causa. A chave `injetado` lê a transcrição da sessão do ambiente (`CLAUDE_CODE_SESSION_ID`), ou a de `--transcricao <caminho do .jsonl>`; sem as duas, diz "nao medido" e a causa |
 | `node "<plugin>/scripts/atalhos.js"` | o painel do `/esquadro:atalhos`: os comentários de atalho dos arquivos que o git rastreia e dos novos que ele não ignora, sem mudar nada; saída 0, ou 1 fora de repositório git |
 | `node "<plugin>/scripts/varrer.js" <pasta>` | a varredura do `/esquadro:init`, em JSON: o teto (quantos arquivos leu, se cortou, quanto custou), o ambiente detectado, o peso de instrução e o que ela inferiu, marcado como inferência; sem `<pasta>`, a atual |
 | `node "<plugin>/scripts/validar.js" <pasta>` | confere o `.claude/esquadro/projeto.json` e, se existir, o `regras.md`: `OK` e saída 0, ou a lista do que está errado e saída 1; sem `<pasta>`, a atual |

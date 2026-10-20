@@ -34,6 +34,10 @@ persistente está na sua própria instrução de sistema (a seção de memória 
 arquivo é `MEMORY.md` dentro dela. **Sessão sem memória persistente: rode sem o argumento.** A chave
 `memoria` da saída volta "não medida" com a causa, e o relatório diz isso — não some calada.
 
+**A transcrição da sessão o script acha sozinho**, pela sessão do ambiente (`CLAUDE_CODE_SESSION_ID`,
+que o Claude Code põe no shell da sessão), na pasta `projects/` da configuração do Claude Code. Para
+medir outra sessão, passe `--transcricao "<caminho do .jsonl>"`.
+
 ## Passo 1b — o catálogo de modelos ainda é o que este projeto supõe?
 
 **Quem consulta a internet é você, aqui, no agente principal — nunca um hook.** O plugin não abre
@@ -105,6 +109,16 @@ serve para qual papel, e quanto ele aceita pagar. Com os fatos na mão, a pergun
    agente nunca vê. Diga qual limite cortou primeiro (`primeiro`) e que "25 KB" foi lido como
    25.000 bytes (a nota vem na saída). Se vier `medida: false`, diga "memória não medida" e a
    `causa`; não invente número.
+
+   1c. **Injetado pelos ganchos nesta sessão.** A chave `injetado`, também **à parte do peso**: não é
+   instrução escrita no projeto, é texto que os ganchos de cada plugin põem na conversa, a cada vez.
+   Mostre o total (`total.vezes` injeções, `total.caracteres` caracteres) e a tabela de `porGancho`
+   (plugin, gancho, vezes, caracteres), na ordem em que vem. Depois, cada item de `repetidos`, o texto
+   que volta mais de 5 vezes: "Volta mais de 5 vezes: "<texto>" (<plugin>, <gancho>), N vezes, M
+   caracteres", com o corte proposto: dica com teto (uma vez por sessão, ou só a cada N vezes). Plugin
+   `nao identificado` é gancho que esta leitura não conseguiu ligar a um plugin; diga assim. Se vier
+   `medido: false`, diga "injetado não medido" com a `causa` e a `nota` (o formato da transcrição não é
+   documentado); nunca "0 injeções". Se vier `aviso`, mostre-o ao lado do zero.
 2. **Sobreposições.** Pares de skills cujos gatilhos disputam a mesma situação. Duas skills que
    disparam no mesmo momento significam que **nenhuma das duas dispara de forma confiável.**
 3. **Contradições.** Mesmo gatilho, ações diferentes. Isto não é preferência: é o agente escolhendo

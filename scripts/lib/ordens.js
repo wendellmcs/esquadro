@@ -268,5 +268,5 @@ function linhasDasOrdens(antes, agora, dias) {
 }
 
 module.exports = { MARCA_CALIBRAR, DIAS_ENTRE_ORDENS_DO_CALIBRAR, ARQUIVO_INIT_RECUSADO, ordemDoCalibrar, ordemDoInit,
-  recusarInit, motivoSemManual, TIPOS_DE_ORDEM, chaveDaOrdem, marcarDada, marcarCumprida, marcarRecusada,
+  recusarInit, motivoSemManual, TIPOS_DE_ORDEM, ROTULO, chaveDaOrdem, marcarDada, marcarCumprida, marcarRecusada,
   totaisDasOrdens, linhasDasOrdens };

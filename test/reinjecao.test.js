@@ -548,3 +548,151 @@ test('H-3/H-4: projeto.json que e LISTA JSON tambem nao se le: o aviso sai com a
     }
   });
 });
+
+// ------------------------------- Plano 0.9.1 Tarefa 3 (D560, D568): o trabalho da sessao sobrevive ao compact
+
+const { spawnSync } = require('node:child_process');
+const SCRIPTS = path.join(__dirname, '..', 'scripts');
+
+function rodarScript(script, entrada, tmp) {
+  return spawnSync(process.execPath, [path.join(SCRIPTS, script)], {
+    input: JSON.stringify(entrada), encoding: 'utf8', env: Object.assign({}, process.env, { ESQUADRO_TMP: tmp })
+  });
+}
+
+/** O bloco "## <titulo>" do texto, ate o proximo "## " ou o fim; null se nao ha. */
+function blocoDe(texto, titulo) {
+  const i = texto.indexOf('## ' + titulo);
+  if (i === -1) return null;
+  const fim = texto.indexOf('\n## ', i + 3);
+  return texto.slice(i, fim === -1 ? texto.length : fim);
+}
+
+test('0.9.1 (Tarefa 1): o portao que disparou num turno com trabalho segue no compact depois do fecho do turno', () => {
+  comTmp((rein, base) => {
+    const dir = projeto();
+    try {
+      const estado = require('../scripts/lib/estado.js');
+      estado.incrementar('p1', 'escopo');
+      estado.incrementar('p1', 'escopo');
+      assert.strictEqual(rodarScript('marcar-trabalho.js', { session_id: 'p1', cwd: dir, tool_name: 'Edit' }, base).status, 0);
+      const r = rodarScript('portao-fecho.js', { session_id: 'p1', cwd: dir, hook_event_name: 'Stop', last_assistant_message: 'ok' }, base);
+      assert.strictEqual(r.status, 0, r.stderr);
+      const t = rein.montar(dir, 'p1', 'compact') || '';
+      assert.ok(t.includes('## ESTADO - portoes que dispararam nesta sessao\n\n  2x escopo'), 'o fecho apagou o bloco: ' + t);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('0.9.1: os portoes somam o turno e a sessao (a conta do gatilho de saude)', () => {
+  comTmp((rein) => {
+    const dir = projeto();
+    try {
+      require('../scripts/lib/estado.js').gravar('p2', { contadoresSessao: { escopo: 2 }, contadores: { escopo: 1, custo: 1 } });
+      const b = blocoDe(rein.montar(dir, 'p2', 'compact') || '', 'ESTADO - portoes') || '';
+      assert.ok(b.includes('  3x escopo') && b.includes('  1x custo'), b);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('0.9.1 (D568): o bloco do trabalho traz arquivos do projeto, ordens, decisoes e commits, uma linha por coisa', () => {
+  comTmp((rein) => {
+    const dir = projeto();
+    const fora = path.join(os.tmpdir(), 'fora-do-projeto.txt');
+    try {
+      require('../scripts/lib/estado.js').gravar('p3', {
+        arquivosTocados: [path.join(dir, 'a.js'), fora, path.join(dir, 'sub', 'b.js')],
+        ordensPendentes: ['revisar', 'auditar'], decisoesDoDono: 3, commitsFeitos: 1
+      });
+      const b = blocoDe(rein.montar(dir, 'p3', 'compact') || '', 'ESTADO - trabalho desta sessao');
+      assert.ok(b, 'sem o bloco do trabalho');
+      assert.strictEqual(b.replace(/\n+$/, ''), [
+        '## ESTADO - trabalho desta sessao', '',
+        'Arquivos tocados: 2 no projeto (+1 fora dele)',
+        '  - a.js',
+        '  - sub/b.js',
+        'Ordens pendentes: revisar antes do commit, auditar',
+        'Decisoes do dono nesta sessao: 3',
+        'Commits nesta sessao: 1'
+      ].join('\n'));
+      assert.ok(/^[\x20-\x7E\n]+$/.test(b), 'o bloco tem de ser ASCII (D532): ' + JSON.stringify(b));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('0.9.1 (D568): teto de 8 arquivos listados; o resto vira "(+N nao listados)"', () => {
+  comTmp((rein) => {
+    const dir = projeto();
+    try {
+      const arquivos = [];
+      for (let i = 1; i <= 11; i++) arquivos.push(path.join(dir, 'f' + i + '.js'));
+      require('../scripts/lib/estado.js').gravar('p4', { arquivosTocados: arquivos });
+      const b = blocoDe(rein.montar(dir, 'p4', 'compact') || '', 'ESTADO - trabalho desta sessao') || '';
+      assert.ok(b.includes('Arquivos tocados: 11 no projeto (os 8 primeiros)\n'), b);
+      assert.ok(b.includes('  - f8.js\n  (+3 nao listados)'), b);
+      assert.ok(!b.includes('f9.js'), b);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('0.9.1 (plano par.5): o bloco do trabalho tem teto de tamanho, mesmo com nomes enormes e muitos arquivos', () => {
+  comTmp((rein) => {
+    const dir = projeto();
+    try {
+      const arquivos = [];
+      for (let i = 1; i <= 40; i++) arquivos.push(path.join(dir, String(i) + 'x'.repeat(300) + '.js'));
+      require('../scripts/lib/estado.js').gravar('p7', { arquivosTocados: arquivos, ordensPendentes: ['revisar'], decisoesDoDono: 2, commitsFeitos: 2 });
+      const b = blocoDe(rein.montar(dir, 'p7', 'compact') || '', 'ESTADO - trabalho desta sessao') || '';
+      const linhas = b.split('\n');
+      assert.ok(linhas.every(function (l) { return l.length <= 204; }), 'linha acima do teto: ' + Math.max.apply(null, linhas.map(function (l) { return l.length; })));
+      assert.ok(b.length <= 2000, 'o bloco passou de 2000 caracteres: ' + b.length);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('0.9.1 (D568): sessao sem nada feito nao imprime o bloco do trabalho, nem linha vazia', () => {
+  comTmp((rein) => {
+    const dir = projeto({ '.claude/esquadro/escopo.md': '**Objetivo:** x\n## Dentro\n- a.js\n' });
+    try {
+      require('../scripts/lib/estado.js').gravar('p5', { arquivosTocados: [], ordensPendentes: [], decisoesDoDono: 0, commitsFeitos: 0 });
+      const t = rein.montar(dir, 'p5', 'compact') || '';
+      assert.ok(t.includes('ESTADO - escopo declarado'), 'controle: o escopo sai: ' + t);
+      assert.ok(!t.includes('trabalho desta sessao'), t);
+      assert.ok(!/Ordens pendentes|Decisoes do dono|Commits nesta|HEAD:/.test(t), t);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+test('0.9.1 (D568): HEAD de cada repositorio onde houve arquivo tocado, na ordem em que apareceram', (t) => {
+  comTmp((rein) => {
+    const dir = projeto();
+    const git = function (cwd, args) {
+      const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false'].concat(args),
+        { cwd: cwd, encoding: 'utf8' });
+      return r.status === 0 ? r.stdout.trim() : null;
+    };
+    try {
+      const filho = path.join(dir, 'filho');
+      fs.mkdirSync(filho);
+      if (git(dir, ['init', '-q', '-b', 'principal']) === null || git(filho, ['init', '-q', '-b', 'ramo']) === null) {
+        t.skip('git init indisponivel'); return;
+      }
+      // Guarda: o commit vai para o repositorio de teste, nunca para um pai (git-init-c-sobe-ao-repo-pai).
+      // Pelo caminho real dos dois lados: o git devolve o nome longo, e o tmpdir pode vir no nome curto (8.3).
+      const real = function (p) { return fs.realpathSync.native(path.resolve(p)).toLowerCase(); };
+      assert.strictEqual(real(git(filho, ['rev-parse', '--show-toplevel'])), real(filho));
+      fs.writeFileSync(path.join(filho, 'c.js'), 'x', 'utf8');
+      git(filho, ['add', 'c.js']); git(filho, ['commit', '-q', '-m', 'c']);
+      fs.writeFileSync(path.join(dir, 'a.js'), 'x', 'utf8');
+      git(dir, ['add', 'a.js']); git(dir, ['commit', '-q', '-m', 'a']);
+      const shaFilho = git(filho, ['rev-parse', '--short', 'HEAD']);
+      const shaRaiz = git(dir, ['rev-parse', '--short', 'HEAD']);
+      require('../scripts/lib/estado.js').gravar('p6', {
+        arquivosTocados: [path.join(filho, 'c.js'), path.join(dir, 'a.js'), path.join(filho, 'novo.js')]
+      });
+      const b = blocoDe(rein.montar(dir, 'p6', 'compact') || '', 'ESTADO - trabalho desta sessao') || '';
+      // A linha inteira: o segundo arquivo do filho nao repete o repositorio.
+      assert.strictEqual((b.match(/^HEAD: .*$/m) || [''])[0], 'HEAD: filho ' + shaFilho + ' (ramo) | raiz ' + shaRaiz + ' (principal)', b);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});

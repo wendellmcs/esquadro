@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const ambiente = require('./ambiente.js');
+const injetado = require('./injetado.js');
 const instrucoes = require('./instrucoes.js');
 const regraLib = require('./regra.js');
 const rubrica = require('./rubrica.js');
@@ -226,7 +227,9 @@ function auditar(cwd, projeto, opcoes) {
     regras: lidas.estado,
     foraDaRubrica: foraDaRubrica,
     delegaveis: ambiente.detectar(cwd).delegaveis,
-    memoria: memoria
+    memoria: memoria,
+    // plano 0.9.1 (D568): o injetado pelos ganchos, a parte do peso como a memoria; quem acha a transcricao e o auditar.js
+    injetado: injetado.medir(opcoes ? opcoes.transcricao : null)
   };
 }
 

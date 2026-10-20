@@ -63,9 +63,19 @@ io.blindar(function () {
     // enche o cd_solto, que e balde de bloqueio. O que nao da para envolver segue negado, abaixo.
     const envolto = solto && e.tool_name === 'Bash' ? shell.envolverEmSubshell(comando, solto) : null;
     if (envolto) {
+      // D569: o aviso inteiro sai uma vez por sessao; depois, a linha curta. Estado fora do ar: inteiro (avisar a mais
+      // e melhor que calar, como o F3-20 abaixo).
+      let jaAvisou = false;
+      try {
+        estado.alterar(e.session_id, function (s) {
+          jaAvisou = !!s.avisouCdCorrigido;
+          s.avisouCdCorrigido = true;
+          return s;
+        });
+      } catch (err) { jaAvisou = false; }
       return io.permitir({ hookSpecificOutput: { hookEventName: 'PreToolUse',
         updatedInput: Object.assign({}, e.tool_input, { command: envolto }),
-        additionalContext: shell.avisoCdCorrigido(solto) } });
+        additionalContext: shell.avisoCdCorrigido(solto, jaAvisou) } });
     }
     if (solto) {
       // D420/SH-02: idem.

@@ -124,6 +124,11 @@ test('T5: os quatro avisos de shell na forma unica', () => {
   }
   confereForma('cd teto', shell.motivoCdSolto('cd x', { forma: 'bash', achado: 'cd', teto: true }), { acao: 'destas', ultima: LIBERAR });
   confereForma('cd corrigido', shell.avisoCdCorrigido({ forma: 'bash', achado: 'cd x' }), {});
+  // D569: a linha curta das vezes seguintes e uma linha so (sem o corpo da forma unica), ASCII e com a 1a linha dela
+  const curto = shell.avisoCdCorrigido({ forma: 'bash', achado: 'cd x' }, true);
+  assert.ok(ASCII.test(curto), curto);
+  assert.match(curto, /^esquadro - \S.*\.$/);
+  assert.strictEqual(curto.split('\n').length, 1, curto);
 });
 
 test('T5: os tres relatorios de comando abrem com a 1a linha na forma (o que e o relatorio)', () => {

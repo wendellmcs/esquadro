@@ -591,9 +591,10 @@ function envolverEmSubshell(comando, achado) {
 
 /**
  * D486: o que o agente fica sabendo quando o comando foi corrigido em vez de negado. Nada falta (o comando ja rodou),
- * entao o aviso nao tem "Faca uma destas".
+ * entao o aviso nao tem "Faca uma destas". D569: inteiro na 1a vez da sessao; `deNovo` da a linha curta das seguintes.
  */
-function avisoCdCorrigido(achado) {
+function avisoCdCorrigido(achado, deNovo) {
+  if (deNovo) return 'esquadro - cd solto corrigido de novo (subshell): ( cd "<pasta>" && <comando> ), ou git -C "<pasta>".';
   return [
     'esquadro - cd solto corrigido: o comando rodou dentro de um subshell, ( ... ).',
     '',

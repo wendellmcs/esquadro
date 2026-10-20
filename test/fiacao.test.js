@@ -13,6 +13,7 @@ const { spawnSync } = require('node:child_process');
 
 const RAIZ = path.join(__dirname, '..');
 const auditoria = require('../scripts/lib/auditoria.js');
+const shellLib = require('../scripts/lib/shell.js');
 
 function temp(nome) {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-fiacao-' + nome + '-'));
@@ -58,7 +59,7 @@ test('fiacao: auditar.js enxerga uma skill real e devolve exatamente as chaves d
     // 0.3.5 (D291 §4): o nome dizia "seis" com sete chaves, e o teste so conferia presenca - chave
     // nova ou sumida passava calada. Agora e o conjunto exato.
     assert.deepStrictEqual(Object.keys(saida).sort(),
-      ['contradicoes', 'delegaveis', 'foraDaRubrica', 'memoria', 'peso', 'regras', 'skills', 'sobreposicoes'],
+      ['contradicoes', 'delegaveis', 'foraDaRubrica', 'injetado', 'memoria', 'peso', 'regras', 'skills', 'sobreposicoes'],
       'as chaves do relatorio mudaram: ' + Object.keys(saida).join(', '));
     // lerSkills() achou a skill, e instrucoes.contar() contou os itens dela.
     assert.deepStrictEqual(saida.skills, ['zelador'], r.stdout);
@@ -349,13 +350,40 @@ test('fiacao: o cd solto no Bash e corrigido sozinho - subshell no updatedInput,
     assert.strictEqual(h.permissionDecision, undefined, 'corrigir nao decide a permissao: a pergunta normal segue');
     assert.ok(/cd solto/i.test(h.additionalContext) && h.additionalContext.includes('( cd '),
       'o agente fica sabendo da correcao e da forma certa: ' + h.additionalContext);
-    assert.strictEqual(lerSessao(dir, 'cd1'), null, 'corrigido nao e bloqueio: nao enche o balde cd_solto');
+    // D569: o estado agora guarda a marca do aviso; o balde segue vazio
+    const s1 = lerSessao(dir, 'cd1') || {};
+    assert.strictEqual((s1.contadores || {}).cd_solto, undefined, 'corrigido nao e bloqueio: nao enche o balde cd_solto');
 
     // heredoc e comentario no fim: o ) vem na linha de baixo
     const hd = corrigido(chamar(dir, 'cd1', 'Bash', 'cd sub && cat <<EOF\nx\nEOF'));
     assert.strictEqual(hd.updatedInput.command, '( cd sub && cat <<EOF\nx\nEOF\n)');
     const cm = corrigido(chamar(dir, 'cd1', 'Bash', 'echo a; pushd sub # vai'));
     assert.strictEqual(cm.updatedInput.command, '( echo a; pushd sub # vai\n)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// D569 (0.9.1, licao "dica com teto"): o aviso do cd corrigido voltava inteiro a cada comando (13 vezes numa sessao,
+// 3.445 caracteres, medido pelo /esquadro:auditar). Agora: inteiro na 1a vez da sessao, uma linha curta depois. A marca
+// e da sessao: sobrevive ao fecho do turno, e outra sessao recebe o aviso inteiro de novo.
+test('fiacao: o aviso do cd corrigido sai inteiro na 1a vez da sessao e curto depois, mesmo depois do fecho (D569)', () => {
+  const dir = temp('cd-teto');
+  try {
+    comPlataforma(dir, PLATAFORMA_LINUX);
+    const aviso = function (id) { return corrigido(chamar(dir, id, 'Bash', 'cd sub && git status')).additionalContext; };
+    const inteiro = aviso('ct1');
+    const achado = shellLib.cdSolto('cd sub && git status', 'Bash', PLATAFORMA_LINUX);
+    assert.strictEqual(inteiro, shellLib.avisoCdCorrigido(achado));
+    const curto = aviso('ct1');
+    assert.strictEqual(curto, shellLib.avisoCdCorrigido(achado, true));
+    assert.notStrictEqual(curto, inteiro);
+    assert.ok(curto.length * 2 < inteiro.length, 'o curto tem de ser bem menor: ' + curto.length + ' x ' + inteiro.length);
+    assert.ok(curto.includes('( cd ') && curto.includes('git -C'), 'o curto ainda diz a forma certa: ' + curto);
+    // sem trabalho marcado o fecho nao regrava o estado e a marca sobreviveria de graca (o molde do tb1, acima)
+    rodar('marcar-trabalho.js', dir, { session_id: 'ct1', cwd: dir, tool_name: 'Write' });
+    rodar('portao-fecho.js', dir, { session_id: 'ct1', cwd: dir, hook_event_name: 'Stop', last_assistant_message: 'Anotado.' });
+    assert.strictEqual(lerSessao(dir, 'ct1').trabalhoReal, undefined, 'controle: o fecho regravou o estado (trabalhoReal e do turno)');
+    assert.strictEqual(aviso('ct1'), curto, 'o fecho do turno apagou a marca da sessao');
+    assert.strictEqual(aviso('ct2'), inteiro, 'outra sessao recebe o aviso inteiro');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

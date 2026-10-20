@@ -310,6 +310,10 @@ Handoff em `{{texto:ondeHandoff}}`. Conteúdo obrigatório em
 (Claude in Chrome ou CDP), ler o resultado. Pedir a `{{campo:quemDecide}}` só o que só ele pode —
 credencial, publicar ou implantar, tela com dado de cliente no login dele — e juntar tudo num pedido só.
 
+**Aviso ou dica que um gancho põe na conversa tem teto:** sai uma vez por sessão, ou só a cada N vezes,
+nunca a cada chamada — cada repetição volta inteira ao contexto e disputa atenção com o que importa.
+O que já se repete, o `/esquadro:auditar` mostra (item 1c).
+
 **Modo contínuo (chave `modoContinuo` no `projeto.json`).** Ligado por padrão: só o booleano `false`
 desliga; sem a chave, com outro valor ou sem o arquivo, fica ligado. A abertura da sessão diz se está ligado. Ligado, só quatro
 coisas pedem troca de chat: o tamanho da conversa (o aviso dos 250 mil, no lugar dos 175 mil, e o

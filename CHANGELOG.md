@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.9.1 — o trabalho da sessão sobrevive à compactação, e a auditoria mede o que os ganchos injetam
+
+Ideias do [context-mode](https://github.com/mksglu/context-mode), de Mert Koseoğlu: nada do código, que tem licença
+ELv2; texto e código próprios. Desenho aprovado por imagem antes do código.
+
+**Novo**
+
+- **Depois de compactar a conversa, o Claude recebe de volta o que já fez na sessão.** Além das regras e do escopo, a
+  reinjeção traz os arquivos tocados (quantos, e os 8 primeiros; arquivo fora do projeto só entra na conta), as ordens
+  pendentes, as decisões do dono e os commits da sessão (cada linha só quando há o que dizer) e o `HEAD` de cada
+  repositório onde houve arquivo tocado. Vale também ao retomar, limpar e bifurcar a sessão.
+- **`/esquadro:auditar` mede o que os ganchos põem na conversa.** Item novo no relatório, à parte do peso de
+  instrução: lida a transcrição da sessão, quantas vezes e quantos caracteres cada gancho de cada plugin injetou, e o
+  texto que volta mais de 5 vezes, com o corte proposto. A transcrição é a da sessão do ambiente, ou a de
+  `--transcricao`. O formato dela não é documentado pelo Claude Code: leitura que falha sai "não medido" com a causa,
+  nunca zero.
+
+**Muda**
+
+- **A conversa gasta menos espaço com o aviso do `cd` solto.** Quando o esquadro conserta sozinho um `cd` solto (o
+  `cd` que mudaria a pasta dos comandos seguintes), ele avisa o Claude. Esse aviso agora sai inteiro só na primeira
+  vez da sessão e, nas seguintes, numa linha curta; antes voltava inteiro a cada comando (13 vezes numa sessão medida,
+  mais que qualquer dica de outro plugin). O comando segue consertado igual: você não precisa fazer nada.
+- **O manual (`esquadro:padrao`) ganha a regra da dica com teto:** aviso ou dica que um gancho põe na conversa sai uma
+  vez por sessão, ou a cada N vezes, nunca a cada chamada.
+
+**Corrige**
+
+- **Depois de compactar a conversa, o Claude esquecia o que o esquadro tinha barrado na sessão.** Acontecia em quase
+  toda sessão longa: bastava ter havido trabalho antes da compactação. Agora ele recebe de volta os bloqueios da sessão
+  inteira, também quando a compactação vem logo depois do aviso para trocar de chat.
+
 ## 0.9.0 — menos código: a escada antes de escrever, a lente que acha o que sobra e o registro de atalhos
 
 Ideias do [ponytail](https://github.com/DietrichGebert/ponytail), de Dietrich Gebert (licença MIT), com texto

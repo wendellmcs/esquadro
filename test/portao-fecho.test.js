@@ -511,6 +511,25 @@ test('T10-1: com stop_hook_active nao continua e nao marca avisouSaude - o aviso
   });
 });
 
+// Plano 0.9.1 Tarefa 3: o compact reinjeta os arquivos tocados e a conta dos portoes; o turno que avisa a saude
+// (o ramo `avisa` do encerrarTurno) nao pode apaga-los, e e justamente perto do aviso que a conversa compacta.
+test('0.9.1: o fecho que avisa a saude nao apaga os arquivos tocados nem a conta dos portoes da sessao', () => {
+  comTmp((tmp) => {
+    const dir = projetoQueDispara(tmp, 'p55');
+    const arquivo = path.join(dir, 'a.js');
+    rodar('marcar-trabalho.js', { session_id: 'p55', cwd: dir, tool_name: 'Write', tool_input: { file_path: arquivo } }, tmp);
+    const caminho = path.join(tmp, 'esquadro', 'p55.json');
+    const s = JSON.parse(fs.readFileSync(caminho, 'utf8'));
+    s.contadores = { escopo: 2 };
+    fs.writeFileSync(caminho, JSON.stringify(s), 'utf8');
+    const r = rodar('portao-fecho.js', { session_id: 'p55', cwd: dir, hook_event_name: 'Stop', last_assistant_message: 'Anotado.' }, tmp);
+    assert.ok(r.json && r.json.hookSpecificOutput, 'controle: este fecho tinha de avisar a saude: ' + r.stdout);
+    const depois = sessaoDe(tmp, 'p55');
+    assert.deepStrictEqual(depois.arquivosTocados, [arquivo]);
+    assert.deepStrictEqual(depois.contadoresSessao, { escopo: 2 });
+  });
+});
+
 // ------------------------------- D412/D415: handoff gravado no turno sem o prompt no chat
 
 const HANDOFF = path.join('.claude', 'esquadro', 'handoff', '2026-10-10-frente-x.md');

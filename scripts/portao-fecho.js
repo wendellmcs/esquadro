@@ -52,7 +52,9 @@ function encerrarTurno(e, s, avisoExtra) {
   const avisouAlarme = s.avisouAlarme === true || (avisa && vs.alarme === true);
   if (avisa) {
     // Zera o turno mas guarda que ja avisou: o aviso sai uma vez por sessao.
-    sessao({ avisouSaude: true, avisouAlarme: avisouAlarme, turnosComTrabalho: s.turnosComTrabalho || 0, gitAbertura: s.gitAbertura || [], tokensDeContexto: tokensDeContexto });
+    // Plano 0.9.1: os arquivos tocados e a conta dos portoes seguem, como no outro ramo - o compact os reinjeta, e e
+    // perto deste aviso que a conversa costuma compactar.
+    sessao({ avisouSaude: true, avisouAlarme: avisouAlarme, turnosComTrabalho: s.turnosComTrabalho || 0, gitAbertura: s.gitAbertura || [], arquivosTocados: s.arquivosTocados || [], contadoresSessao: acumulados, tokensDeContexto: tokensDeContexto });
   } else {
     sessao({ turnosComTrabalho: s.turnosComTrabalho || 0, gitAbertura: s.gitAbertura || [], arquivosTocados: s.arquivosTocados || [], contadoresSessao: acumulados, avisouSaude: s.avisouSaude || false, avisouAlarme: avisouAlarme, tokensDeContexto: tokensDeContexto });
   }

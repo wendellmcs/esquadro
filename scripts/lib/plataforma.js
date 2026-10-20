@@ -129,14 +129,15 @@ const PONTOS = [
     classe: INJETAVEL,
     titulo: 'Onde o claude grava a transcricao da sessao',
     arquivos: ['scripts/autorizar-paralelo.js', 'scripts/lib/calibracao.js', 'scripts/lib/gasto.js',
-               'scripts/lib/vigia-local.js', 'scripts/medir-qualidade.js'],
+               'scripts/lib/injetado.js', 'scripts/lib/vigia-local.js', 'scripts/medir-qualidade.js'],
     comoSeProva: 'CLAUDE_CONFIG_DIR sobrepoe a pasta pessoal, e a pasta pessoal entra por parametro ' +
                  'em acharTranscricao: os dois caminhos rodam daqui. A pasta do vigia (Bloco V) idem: ' +
                  'ESQUADRO_VIGIA a sobrepoe, e o teste roda por ela. O autorizar-paralelo (para de subir na ' +
                  'pasta pessoal) idem: o teste troca HOME e USERPROFILE. O calibrador idem: a pasta pessoal ' +
                  'entra por parametro em pastaDasTranscricoes, e o comando roda pelo CLAUDE_CONFIG_DIR. O gasto ' +
                  'do mes (pedido 31) idem: pastaDosProjetos recebe a pasta pessoal por parametro, e o sessao.js ' +
-                 'roda no teste pelo CLAUDE_CONFIG_DIR',
+                 'roda no teste pelo CLAUDE_CONFIG_DIR. O injetado da auditoria (0.9.1) idem: a transcricao e o ' +
+                 'cache de plugins saem do CLAUDE_CONFIG_DIR, e o teste roda por ele',
     ressalva: 'o nome da pasta de config padrao (.claude na pasta pessoal) so se confere naquele sistema ' +
               'com o claude de verdade; aqui se prova que a busca olha onde mandam.'
   },
@@ -166,7 +167,7 @@ const PONTOS = [
     titulo: 'Caminho do Windows normalizado para barra normal',
     arquivos: [
       'scripts/apurar-ronda.js', 'scripts/lib/busca.js', 'scripts/lib/git.js', 'scripts/lib/glob.js',
-      'scripts/lib/instrucoes.js', 'scripts/lib/molde.js', 'scripts/lib/plano.js', 'scripts/lib/plataforma.js',
+      'scripts/lib/injetado.js', 'scripts/lib/instrucoes.js', 'scripts/lib/molde.js', 'scripts/lib/plano.js', 'scripts/lib/plataforma.js',
       'scripts/lib/sanitacao.js', 'scripts/lib/saude.js', 'scripts/preparar-revisao.js'
     ],
     comoSeProva: 'e trabalho de string puro: a entrada com barra invertida se passa de qualquer maquina',
