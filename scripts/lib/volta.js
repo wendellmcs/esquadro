@@ -53,8 +53,13 @@ function duracao(ms) {
   return Math.floor(min / 60) + ' h ' + String(min % 60).padStart(2, '0') + ' min';
 }
 
-/** O texto do aviso (D550). ASCII: o id do modelo que vier torto sai com "?" no lugar. */
-function motivo(r) {
+/**
+ * O texto do aviso (D550; 0.11.0, mock D588). ASCII: o id do modelo que vier torto sai com "?" no lugar.
+ * `resumo` = o que o retomar.resumir devolveu ({ caminho, chat, handoff }) ou null: com ele, a opcao 1 traz o prompt
+ * pronto do chat novo; o handoff do modelo em dia (gravado depois do ultimo pedido) entra junto, se o caminho for
+ * ASCII (o resumo o cita de qualquer jeito). Sem ele, o aviso diz que nao houve resumo e a opcao 1 e a de antes.
+ */
+function motivo(r, resumo) {
   const linhas = ['esquadro - este chat ficou ' + duracao(r.parado) + ' parado e o cache venceu: continuar aqui regrava ' +
     milhar(Math.floor(r.contexto / 1000)) + ' mil tokens.', ''];
   if (r.continuar !== null) {
@@ -64,11 +69,20 @@ function motivo(r) {
     const id = r.modelo ? '"' + String(r.modelo).replace(/[^\x20-\x7E]/g, '?') + '"' : 'deste chat';
     linhas.push('Sem o valor em US$: o modelo ' + id + ' nao esta na tabela de precos do esquadro.');
   }
-  linhas.push('', 'Faca uma destas:',
-    '  1. abra um chat novo e cole o prompt do ultimo handoff, se ele estiver em dia;',
-    '  2. para seguir neste chat, mande a mensagem de novo: este aviso nao volta nesta pausa.',
+  if (resumo) {
+    const h = resumo.handoff;
+    const comHandoff = h && h.emDia && /^[\x20-\x7E]+$/.test(h.caminho);
+    linhas.push('', 'Resumo deste chat gravado em ' + resumo.caminho + ' (sem gastar nada).',
+      '', 'Faca uma destas:', '  1. abra um chat novo e cole:',
+      '     Retome o chat ' + resumo.chat + (comHandoff ? ' pelo handoff ' + h.caminho + ' e pelo resumo ' + resumo.caminho +
+        ': leia os dois' : ' pelo resumo ' + resumo.caminho + ': leia-o') + ' antes de qualquer coisa e siga de onde ele parou.');
+  } else {
+    linhas.push('', 'Sem resumo: nao consegui montar o resumo deste chat.',
+      '', 'Faca uma destas:', '  1. abra um chat novo e cole o prompt do ultimo handoff, se ele estiver em dia;');
+  }
+  linhas.push('  2. para seguir neste chat, mande a mensagem de novo: este aviso nao volta nesta pausa.',
     '', 'Desligar neste projeto: "' + CHAVE + '": false em .claude/esquadro/projeto.json.');
   return linhas.join('\n');
 }
 
-module.exports = { CHAVE, PARADO_MS, CONTEXTO_MINIMO, RECOMECO, ligada, avaliar, motivo, nomeDoModelo };
+module.exports = { CHAVE, PARADO_MS, CONTEXTO_MINIMO, RECOMECO, ligada, avaliar, motivo, nomeDoModelo, duracao };

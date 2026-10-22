@@ -16,16 +16,32 @@ io.blindar(function () {
     // Plano 084 (D549): volta a chat de 200 mil ou mais depois de mais de 1 h parado segura a 1a mensagem da
     // pausa com a conta (volta.js). A marca da pausa fica no estado; a mensagem seguinte passa. Falha de leitura
     // nunca segura: o turno segue como antes.
+    // 0.11.0 (D586): antes de parar, grava o resumo do chat (retomar.js), fora da trava do estado; resumo que falha
+    // nao impede o aviso, que diz isso.
     let aviso = null;
     try {
-      if (volta.ligada(config.carregarProjeto(config.raizDoProjeto(e.cwd || process.cwd())))) {
+      const raiz = config.raizDoProjeto(e.cwd || process.cwd());
+      if (volta.ligada(config.carregarProjeto(raiz))) {
         const chamada = saude.ultimaChamadaDoTranscript(e.transcript_path);
         if (chamada) {
+          const agora = Date.now();
+          let r = null;
+          let frente = null;
           estado.alterar(e.session_id, function (s) {
-            const r = volta.avaliar(chamada, Date.now(), s.avisouVolta);
-            if (r) { s.avisouVolta = r.marca; aviso = volta.motivo(r); }
+            r = volta.avaliar(chamada, agora, s.avisouVolta);
+            if (r) { s.avisouVolta = r.marca; frente = s.frente || null; }
             return s;
           });
+          if (r) {
+            // try proprio: a marca da pausa ja esta gravada; se o require lancasse no try de fora, a pausa passava
+            // calada e o aviso nao voltava (ronda 1 da 0.11.0). Sem resumo, o aviso sai e diz isso.
+            let resumo = null;
+            try {
+              resumo = require('./lib/retomar.js').resumir({ raiz: raiz, sessao: e.session_id,
+                transcript: e.transcript_path, frente: frente, agora: agora, volta: r });
+            } catch (err) { resumo = null; }
+            aviso = volta.motivo(r, resumo);
+          }
         }
       }
     } catch (err) { aviso = null; }

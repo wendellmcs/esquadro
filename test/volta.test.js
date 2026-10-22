@@ -30,12 +30,31 @@ function chamada(quando, modelo, contexto, extra) {
       cache_creation_input_tokens: 0, output_tokens: 9 } } }, extra || {});
 }
 
-// O texto do mock aprovado (prints-084/mock-084.html, D550), letra por letra.
+// O texto do mock aprovado da 0.11.0 (prints-0110/mock-0110.html, D588), letra por letra: o resumo gravado ao segurar.
+const RESUMO = '.claude/esquadro/handoff/2026-10-22-retomar-d731fc49.md';
 const MOCK = [
+  'esquadro - este chat ficou 1 h 16 min parado e o cache venceu: continuar aqui regrava 461 mil tokens.',
+  '',
+  'Continuar neste chat: cerca de US$ 3,69 (Opus 5.5).',
+  'Abrir um chat novo: cerca de US$ 0,55.',
+  '',
+  'Resumo deste chat gravado em ' + RESUMO + ' (sem gastar nada).',
+  '',
+  'Faca uma destas:',
+  '  1. abra um chat novo e cole:',
+  '     Retome o chat d731fc49 pelo resumo ' + RESUMO + ': leia-o antes de qualquer coisa e siga de onde ele parou.',
+  '  2. para seguir neste chat, mande a mensagem de novo: este aviso nao volta nesta pausa.',
+  '',
+  'Desligar neste projeto: "avisoDeVolta": false em .claude/esquadro/projeto.json.'
+].join('\n');
+// Sem resumo (registro torto, disco cheio): a linha diz isso e a opcao 1 volta a ser a da 0.8.4 (mock D550).
+const MOCK_SEM_RESUMO = [
   'esquadro - este chat ficou 3 h 08 min parado e o cache venceu: continuar aqui regrava 318 mil tokens.',
   '',
   'Continuar neste chat: cerca de US$ 2,54 (Opus 5.5).',
   'Abrir um chat novo: cerca de US$ 0,55.',
+  '',
+  'Sem resumo: nao consegui montar o resumo deste chat.',
   '',
   'Faca uma destas:',
   '  1. abra um chat novo e cole o prompt do ultimo handoff, se ele estiver em dia;',
@@ -64,11 +83,29 @@ test('084: ultimaChamadaDoTranscript da contexto, horario e modelo da ultima cha
   } finally { s.fim(); }
 });
 
-test('084: o aviso do mock aprovado (3 h 08 min, 318 mil, Opus 5.5), letra por letra', () => {
-  const r = volta.avaliar({ contexto: 318000, horario: AGORA - 188 * MIN, modelo: 'claude-opus-5-5' }, AGORA);
+test('0.11.0: o aviso do mock aprovado (1 h 16 min, 461 mil, Opus 5.5) com o resumo, letra por letra', () => {
+  const r = volta.avaliar({ contexto: 461000, horario: AGORA - 76 * MIN, modelo: 'claude-opus-5-5' }, AGORA);
   assert.ok(r, 'tinha de avisar');
-  assert.strictEqual(volta.motivo(r), MOCK);
-  assert.strictEqual(r.marca, AGORA - 188 * MIN, 'a marca da pausa e o horario da ultima chamada');
+  assert.strictEqual(volta.motivo(r, { caminho: RESUMO, chat: 'd731fc49', handoff: null }), MOCK);
+  assert.strictEqual(r.marca, AGORA - 76 * MIN, 'a marca da pausa e o horario da ultima chamada');
+});
+
+test('0.11.0: sem resumo, o aviso diz isso e a opcao 1 e a de antes, letra por letra', () => {
+  const r = volta.avaliar({ contexto: 318000, horario: AGORA - 188 * MIN, modelo: 'claude-opus-5-5' }, AGORA);
+  assert.strictEqual(volta.motivo(r, null), MOCK_SEM_RESUMO);
+  assert.strictEqual(volta.motivo(r), MOCK_SEM_RESUMO);
+});
+
+test('0.11.0: handoff do modelo em dia - a opcao 1 aponta o handoff e o resumo; atrasado ou fora de ASCII, so o resumo', () => {
+  const r = volta.avaliar({ contexto: 461000, horario: AGORA - 76 * MIN, modelo: 'claude-opus-5-5' }, AGORA);
+  const h = '.context/plans/2026-10-22-frente-handoff.md';
+  const emDia = volta.motivo(r, { caminho: RESUMO, chat: 'd731fc49', handoff: { caminho: h, emDia: true } });
+  assert.ok(emDia.split('\n').indexOf('     Retome o chat d731fc49 pelo handoff ' + h + ' e pelo resumo ' + RESUMO +
+    ': leia os dois antes de qualquer coisa e siga de onde ele parou.') !== -1, emDia);
+  const atrasado = volta.motivo(r, { caminho: RESUMO, chat: 'd731fc49', handoff: { caminho: h, emDia: false } });
+  assert.strictEqual(atrasado, MOCK);
+  const acento = volta.motivo(r, { caminho: RESUMO, chat: 'd731fc49', handoff: { caminho: 'pasta/ação-handoff.md', emDia: true } });
+  assert.strictEqual(acento, MOCK, 'caminho fora de ASCII nao entra no aviso (D532); o resumo o cita');
 });
 
 test('084: a conta - continuar = contexto x escrita de 1 h; chat novo = 68.723 x escrita de 1 h', () => {
@@ -130,17 +167,74 @@ function abrir(dir, sessoes, id, transcriptPath, prompt) {
   return r.stdout.trim() ? JSON.parse(r.stdout) : null;
 }
 
-test('084 Tarefa 3: abrir-turno segura a 1a mensagem da pausa e deixa passar a 2a', () => {
+// D587: a forma curta - para o turno com `continue: false` e o aviso em `stopReason` (sem "Original prompt").
+function parou(saida) { return !!(saida && saida.continue === false); }
+
+test('0.11.0: abrir-turno para a 1a mensagem da pausa na forma curta e deixa passar a 2a', () => {
   const agora = Date.now();
   const t = transcript([chamada(agora - 188 * MIN, 'claude-opus-5-5', 318000)]);
   const sessoes = path.join(t.dir, 'sessoes');
   try {
     const um = abrir(t.dir, sessoes, 'v1', t.f);
-    assert.ok(um && um.decision === 'block', 'a 1a mensagem tinha de ser segurada: ' + JSON.stringify(um));
-    assert.match(um.reason, /^esquadro - este chat ficou 3 h 0[78] min parado/);
-    assert.match(um.reason, /Desligar neste projeto: "avisoDeVolta": false/);
+    assert.ok(parou(um), 'a 1a mensagem tinha de parar: ' + JSON.stringify(um));
+    assert.strictEqual(um.decision, undefined, 'a forma curta nao usa decision: block');
+    assert.match(um.stopReason, /^esquadro - este chat ficou 3 h 0[78] min parado/);
+    assert.match(um.stopReason, /Desligar neste projeto: "avisoDeVolta": false/);
+    // o registro so tem a chamada, sem pedido do dono: sem resumo, e o aviso diz isso
+    assert.match(um.stopReason, /^Sem resumo: nao consegui montar o resumo deste chat\.$/m);
+    assert.strictEqual(fs.existsSync(path.join(t.dir, '.claude', 'esquadro', 'handoff')), false);
     const dois = abrir(t.dir, sessoes, 'v1', t.f);
-    assert.ok(!dois || dois.decision !== 'block', 'a 2a mensagem tinha de passar: ' + JSON.stringify(dois));
+    assert.ok(!parou(dois), 'a 2a mensagem tinha de passar: ' + JSON.stringify(dois));
+  } finally { t.fim(); }
+});
+
+test('0.11.0: abrir-turno grava o resumo antes de parar e o aviso traz o prompt do chat novo', () => {
+  const agora = Date.now();
+  const t = transcript([
+    { type: 'user', timestamp: new Date(agora - 200 * MIN).toISOString(), origin: { kind: 'human' },
+      message: { role: 'user', content: 'segue com a T4' } },
+    Object.assign(chamada(agora - 190 * MIN, 'claude-opus-5-5', 318000), { message: { model: 'claude-opus-5-5',
+      content: [{ type: 'text', text: 'T4 feita.' }], usage: { input_tokens: 10, cache_read_input_tokens: 317990 } } })
+  ]);
+  const sessoes = path.join(t.dir, 'sessoes');
+  try {
+    const um = abrir(t.dir, sessoes, 'abcdef12-3456', t.f);
+    assert.ok(parou(um), JSON.stringify(um));
+    const pasta = path.join(t.dir, '.claude', 'esquadro', 'handoff');
+    const gravados = fs.readdirSync(pasta);
+    assert.strictEqual(gravados.length, 1);
+    assert.match(gravados[0], /^\d{4}-\d\d-\d\d-retomar-abcdef12\.md$/);
+    const rel = '.claude/esquadro/handoff/' + gravados[0];
+    assert.ok(um.stopReason.split('\n').indexOf('Resumo deste chat gravado em ' + rel + ' (sem gastar nada).') !== -1, um.stopReason);
+    assert.ok(um.stopReason.split('\n').indexOf('     Retome o chat abcdef12 pelo resumo ' + rel +
+      ': leia-o antes de qualquer coisa e siga de onde ele parou.') !== -1, um.stopReason);
+    const texto = fs.readFileSync(path.join(pasta, gravados[0]), 'utf8');
+    assert.ok(texto.indexOf('segue com a T4') !== -1 && texto.indexOf('T4 feita.') !== -1, texto);
+  } finally { t.fim(); }
+});
+
+// Ronda 1 da 0.11.0 (correcao, P1): o require do retomar.js que lanca (arquivo ausente, erro de sintaxe) zerava o aviso
+// depois de a marca da pausa ja estar gravada - a pausa passava calada e o aviso nao voltava. Resumo que falha nao
+// impede o aviso (abrir-turno.js, comentario da D586): sai com "Sem resumo".
+test('0.11.0: retomar.js que lanca no require nao cala o aviso - sai sem resumo', () => {
+  const agora = Date.now();
+  const t = transcript([chamada(agora - 188 * MIN, 'claude-opus-5-5', 318000)]);
+  const copia = path.join(t.dir, 'plugin');
+  fs.cpSync(path.join(RAIZ, 'scripts'), path.join(copia, 'scripts'), { recursive: true });
+  fs.cpSync(path.join(RAIZ, 'modelos'), path.join(copia, 'modelos'), { recursive: true });
+  fs.writeFileSync(path.join(copia, 'scripts', 'lib', 'retomar.js'), "throw new Error('retomar quebrado');\n");
+  const sessoes = path.join(t.dir, 'sessoes');
+  try {
+    const r = spawnSync(process.execPath, [path.join(copia, 'scripts', 'abrir-turno.js')], {
+      cwd: t.dir, encoding: 'utf8',
+      input: JSON.stringify({ session_id: 'q1', cwd: t.dir, hook_event_name: 'UserPromptSubmit', prompt: 'segue',
+        transcript_path: t.f }),
+      env: Object.assign({}, process.env, { ESQUADRO_TMP: sessoes })
+    });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const um = r.stdout.trim() ? JSON.parse(r.stdout) : null;
+    assert.ok(parou(um), 'a 1a mensagem da pausa tinha de parar mesmo sem o retomar.js: ' + JSON.stringify(um));
+    assert.match(um.stopReason, /^Sem resumo: nao consegui montar o resumo deste chat\.$/m);
   } finally { t.fim(); }
 });
 
@@ -151,14 +245,14 @@ test('084 Tarefa 3: abrir-turno nao segura - chave desligada, chat pequeno, tran
   const sessoes = path.join(t.dir, 'sessoes');
   try {
     // controle positivo na mesma pasta antes de desligar
-    assert.strictEqual(abrir(t.dir, sessoes, 'c0', t.f).decision, 'block');
+    assert.ok(parou(abrir(t.dir, sessoes, 'c0', t.f)));
     fs.mkdirSync(path.join(t.dir, '.claude', 'esquadro'), { recursive: true });
     fs.writeFileSync(path.join(t.dir, '.claude', 'esquadro', 'projeto.json'), JSON.stringify({ avisoDeVolta: false }));
     const off = abrir(t.dir, sessoes, 'c1', t.f);
-    assert.ok(!off || off.decision !== 'block', 'desligado: ' + JSON.stringify(off));
+    assert.ok(!parou(off), 'desligado: ' + JSON.stringify(off));
     const peq = abrir(p.dir, sessoes, 'c2', p.f);
-    assert.ok(!peq || peq.decision !== 'block', 'chat pequeno: ' + JSON.stringify(peq));
+    assert.ok(!parou(peq), 'chat pequeno: ' + JSON.stringify(peq));
     const sem = abrir(p.dir, sessoes, 'c3', path.join(p.dir, 'nao-existe.jsonl'));
-    assert.ok(!sem || sem.decision !== 'block', 'sem transcript: ' + JSON.stringify(sem));
+    assert.ok(!parou(sem), 'sem transcript: ' + JSON.stringify(sem));
   } finally { t.fim(); p.fim(); }
 });

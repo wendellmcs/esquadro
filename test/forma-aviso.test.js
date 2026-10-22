@@ -158,5 +158,10 @@ test('084: aviso de volta a chat parado na forma unica, com e sem preco', () => 
   for (const modelo of ['claude-opus-5-5', 'claude-novo-9', null]) {
     const r = volta.avaliar({ contexto: 318000, horario: agora - 188 * 60000, modelo: modelo }, agora);
     confereForma('volta ' + modelo, volta.motivo(r), { acao: 'destas', ultima: DESLIGAR });
+    // 0.11.0 (D588): com o resumo e com o handoff em dia, a mesma forma
+    const resumo = { caminho: '.claude/esquadro/handoff/2026-10-22-retomar-d731fc49.md', chat: 'd731fc49', handoff: null };
+    confereForma('volta resumo ' + modelo, volta.motivo(r, resumo), { acao: 'destas', ultima: DESLIGAR });
+    confereForma('volta handoff ' + modelo, volta.motivo(r, Object.assign({}, resumo,
+      { handoff: { caminho: '.context/plans/2026-10-22-x-handoff.md', emDia: true } })), { acao: 'destas', ultima: DESLIGAR });
   }
 });

@@ -48,11 +48,13 @@ function bloquearFecho(motivo, aviso) {
 }
 
 /**
- * UserPromptSubmit (plano 084): segura a mensagem. Ela nao chega ao Claude; o `motivo` aparece so ao usuario,
- * seguido de "Original prompt:" e o texto dele.
+ * UserPromptSubmit (plano 084; forma curta da 0.11.0, D587): para o turno antes do Claude. O Claude Code mostra
+ * "Operation stopped by hook: " + `motivo` so ao usuario, sem repetir o prompt, e o prompt fica no registro do chat
+ * como mensagem do usuario (sonda da D587 com a claude.exe 2.1.306, custo zero). A forma `decision: block` de antes
+ * repetia o prompt inteiro depois de "Original prompt:".
  */
 function segurarMensagem(motivo) {
-  process.stdout.write(JSON.stringify({ decision: 'block', reason: motivo }));
+  process.stdout.write(JSON.stringify({ continue: false, stopReason: motivo }));
   process.exit(0);
 }
 

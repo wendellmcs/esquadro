@@ -9,6 +9,11 @@ argument-hint: "[nome curto do trabalho]"
 O desvio começa quando o plano passa a ser executado de memória. **Handoff é ponte entre chats, não
 substituto do plano.**
 
+**Chat novo que partiu de um resumo** (`handoff/AAAA-MM-DD-retomar-<id>.md`, gravado pelo aviso de volta a chat
+parado): o resumo é um retrato mecânico do registro do chat antigo, não este handoff. Leia-o, confira no disco o que
+ele diz (passo 1) e, se o trabalho pede ponte completa, escreva o handoff aqui, no chat novo — nunca no chat parado,
+que regravaria a conversa inteira.
+
 ## Passo 1 — conferir os fatos no disco, não na memória
 
 Rode, e cole a saída:

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.11.0 — o chat parado deixa um resumo pronto, e o aviso de volta fica curto
+
+Desenho do aviso e do resumo aprovado por imagem antes do código.
+
+**Novo**
+
+- **Voltar a um chat grande parado não exige mais pedir o handoff ali.** Antes, se o chat tinha parado sem handoff,
+  o único jeito de levar o trabalho para um chat novo era pedir o handoff no chat parado, que regravava a conversa
+  inteira (num teste, 461 mil tokens, cerca de US$ 3,69). Agora, quando o aviso de volta para a sua mensagem, o
+  esquadro grava na hora, sem chamar o Claude, um resumo do chat em `.claude/esquadro/handoff/` (seus últimos
+  pedidos, as últimas respostas, os arquivos mexidos, a frente, o plano e o `git status`), e o aviso traz o prompt
+  pronto para colar no chat novo, que paga só a abertura.
+
+**Muda**
+
+- **O aviso de volta não repete mais a sua mensagem.** Antes, ele terminava com "Original prompt:" e tudo o que você
+  digitou, inclusive o que o navegador injeta, e o próprio aviso sumia do alto da tela. Agora sai na forma curta, depois
+  de "Operation stopped by hook:" (o prefixo é do Claude Code), e a sua mensagem fica no chat como mensagem normal.
+
 ## 0.10.0 — estudar os melhores do mesmo tipo e trazer a ficha para a referência
 
 Desenho do comando e da ficha aprovado por imagem antes do código.
