@@ -46,8 +46,9 @@ function avisoDaReferencia(cwd, projeto) {
   try { fs.writeFileSync(marca, JSON.stringify({ avisadoEm: new Date().toISOString() }) + '\n', 'utf8'); } catch (e) { /* avisa de novo */ }
   return 'esquadro: este projeto nao declara a referencia de topo (chave referencias do .claude/esquadro/projeto.json): ' +
     'a melhor peca que existe para cada tipo de entrega (tela, codigo, texto), que o /esquadro:revisar poe ao lado do ' +
-    'trabalho e contra a qual o fecho da entrega AAA cobra a revisao. Para declarar, rode /esquadro:init de novo (Passo 4b) ' +
-    'ou ponha a chave a mao; para nunca usar, grave "referencias": {}. Este aviso sai uma vez so.';
+    'trabalho e contra a qual o fecho da entrega AAA cobra a revisao. Para declarar, rode /esquadro:referencia (estuda 2-3 ' +
+    'produtos lideres do mesmo tipo e grava a ficha), rode /esquadro:init de novo (Passo 4b) ou ponha a chave a mao; para ' +
+    'nunca usar, grave "referencias": {}. Este aviso sai uma vez so.';
 }
 
 io.blindar(function () {

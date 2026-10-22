@@ -373,12 +373,14 @@ para você, não entra na opção):
 1. **Nomear agora (recomendada)** — "Você aponta o melhor exemplo de cada tipo (tela, código, texto): um arquivo
    ou um print salvo no projeto. Toda revisão de entrega de rigor máximo compara o trabalho com ele." Grava:
    `referencias`, por tipo. O inspetor só lê arquivo: ofereça só caminhos que apareceram na listagem do Passo 3b ou
-   na varredura; sem candidato, pergunte aberto. Se o dono só tiver um link, diga que o inspetor não abre a página e
+   na varredura; sem candidato, pergunte aberto e ofereça o `/esquadro:referencia`, que estuda os produtos líderes
+   do mesmo tipo e grava a ficha que vira a referência. Se o dono só tiver um link, diga que o inspetor não abre a página e
    dê as duas saídas: salvar a página ou um print num arquivo do projeto e dar esse caminho; ou gravar o link assim
    mesmo, sabendo que aquele exemplo fica fora da comparação até virar arquivo (o `/esquadro:revisar` avisa isso a
    cada revisão);
 2. **Deixar para depois** — "Nada muda por ora: a revisão compara só o antes e o depois. A próxima sessão lembra
-   uma vez. Para nomear depois, rode `/esquadro:init` de novo e responda só esta pergunta." Grava: nada (a chave
+   uma vez. Para nomear depois, rode `/esquadro:init` de novo e responda só esta pergunta, ou rode `/esquadro:referencia`, que
+   estuda os melhores do mesmo tipo e traz a ficha." Grava: nada (a chave
    fica de fora, e a abertura da sessão avisa uma vez que ela falta);
 3. **Nunca neste projeto** — "A revisão nunca compara o trabalho com um exemplo de fora: ela só vê se o depois
    ficou melhor que o antes, não se ficou à altura do melhor que existe. O lembrete não sai mais." Grava:

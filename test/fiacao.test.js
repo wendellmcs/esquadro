@@ -1805,6 +1805,9 @@ test('D503 T6: abertura avisa uma vez que falta a referencia de topo, em ASCII, 
     const aviso = r.stdout.split('\n').filter((l) => RE_AVISO_REF.test(l))[0];
     assert.match(aviso, /referencias/, 'nomeia a chave');
     assert.match(aviso, /\/esquadro:init/, 'diz como declarar');
+    // Plano do REA, Tarefa 3 (D580; mock prints-rea/mock-rea.png, secao 4): o comando novo vem primeiro, dizendo o que faz.
+    assert.ok(aviso.includes('rode /esquadro:referencia (estuda 2-3 produtos lideres do mesmo tipo e grava a ficha), ' +
+      'rode /esquadro:init de novo (Passo 4b) ou ponha a chave a mao'), 'aponta o /esquadro:referencia: ' + aviso);
     assert.match(aviso, /"referencias": \{\}/, 'diz como calar de vez');
     assert.match(aviso, /uma vez/, 'diz que sai uma vez');
     assert.ok(/^[\x20-\x7E]*$/.test(aviso), 'aviso fora de ASCII: ' + aviso);

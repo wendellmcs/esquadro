@@ -7,7 +7,7 @@
 
 <p align="center">
   <strong>Um plugin do Claude Code que força o agente a provar em vez de afirmar.</strong><br>
-  Oito travas: seis portões de custo zero e dois dos sete comandos. Todo portão é um script determinístico: nenhum modelo no meio.
+  Oito travas: seis portões de custo zero e dois dos oito comandos. Todo portão é um script determinístico: nenhum modelo no meio.
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
   <a href="#como-instalar">Instalar</a> ·
   <a href="#um-exemplo-do-começo-ao-fim">Exemplo</a> ·
   <a href="#as-oito-travas">As travas</a> ·
-  <a href="#os-sete-comandos">Os comandos</a> ·
+  <a href="#os-oito-comandos">Os comandos</a> ·
   <a href="#o-que-ele-já-pegou-em-uso-real">Casos reais</a> ·
   <a href="#o-que-o-esquadro-não-promete">O que não promete</a>
 </p>
@@ -964,7 +964,7 @@ isso repete o já visto. O roteiro não bloqueia o fecho: sai junto, sem esperar
 
 ---
 
-## Os sete comandos
+## Os oito comandos
 
 | Comando | O que faz |
 |---|---|
@@ -975,13 +975,15 @@ isso repete o já visto. O roteiro não bloqueia o fecho: sai junto, sem esperar
 | `/esquadro:auditar` | Mede o peso de instrução do projeto contra um teto e aponta o que cortar: skills que se sobrepõem, regras que se contradizem e itens fora da rubrica. Não acrescenta — poda. |
 | `/esquadro:calibrar` | Mede, nas conversas do seu projeto, a partir de quantos tokens de contexto trocar de chat ainda compensa, e sugere o limiar de troca. **Só grava no `projeto.json` com o seu sim.** |
 | `/esquadro:atalhos` | Lista os atalhos deliberados do repositório: os comentários `atalho: <o que>. limite: <até onde vale>. trocar quando: <gatilho>.` (também `ponytail:` e `shortcut:`), agrupados por arquivo, e marca `sem-gatilho` o que não diz quando trocar. Só lê; a marca muda pela chave `marcaDeAtalho`. |
+| `/esquadro:referencia` | Estuda 2-3 produtos líderes do mesmo tipo do projeto, pelo que é público e em camadas (o que se vê, estados e fluxos, textos, rede e desempenho), e grava uma ficha em `.claude/esquadro/referencias/<tipo>-<assunto>.md` em que cada achado diz de onde veio, com que grau (observado, derivado, inferido) e quem agiu, mais o que ficou sem saber. Página com login, só a aba que você abriu. **Só põe a ficha na `referencias` com o seu sim.** |
 
-A oitava skill instalada, `padrao`, **não é comando**: é o manual de execução, que o agente carrega
+A nona skill instalada, `padrao`, **não é comando**: é o manual de execução, que o agente carrega
 no começo da tarefa e que traz junto a conferência do mapa de modelos deste projeto.
 
-Dos sete comandos, só os dois primeiros são travas — a 1 e a 2. Os outros cinco **não são travas**: `aprender` é o
+Dos oito comandos, só os dois primeiros são travas — a 1 e a 2. Os outros seis **não são travas**: `aprender` é o
 autoaprimoramento mínimo — o plugin **não aprende sozinho**, ele transforma correção em proposta e
-espera o OK; `handoff`, `auditar`, `calibrar` e `atalhos` são ferramentas de manutenção, e nenhum dos quatro bloqueia nada.
+espera o OK; `handoff`, `auditar`, `calibrar` e `atalhos` são ferramentas de manutenção, `referencia` é a de estudo, e nenhum dos
+cinco bloqueia nada.
 
 ---
 
@@ -993,7 +995,7 @@ dispara no evento dele.
 
 | Tipo | Nome | O que é |
 |---|---|---|
-| Skills dos comandos | `esquadro:init`, `esquadro:revisar`, `esquadro:aprender`, `esquadro:handoff`, `esquadro:auditar`, `esquadro:calibrar`, `esquadro:atalhos` | os comandos da tabela acima; cada um é uma skill que você chama pelo nome |
+| Skills dos comandos | `esquadro:init`, `esquadro:revisar`, `esquadro:aprender`, `esquadro:handoff`, `esquadro:auditar`, `esquadro:calibrar`, `esquadro:atalhos`, `esquadro:referencia` | os comandos da tabela acima; cada um é uma skill que você chama pelo nome |
 | Skill-manual | `padrao` | não é comando: o manual de execução que o agente carrega no começo da tarefa (marchas, lentes, loop de revisão, decisão em três opções, o que um "pronto" precisa provar). Traz as seis referências listadas mais abaixo |
 | Workflow | `esquadro:paralelo` | tarefas independentes em paralelo, com teto de agentes, modelo barato e cópia isolada para quem edita; o Claude roda direto com 3 ou mais tarefas independentes (ver "Trabalho em paralelo") |
 | Agentes | `inspetor`, `juiz-mesmo`, `leitor` | `inspetor` e `juiz-mesmo` são da revisão cega; `leitor` é o agente de leitura leve do paralelo (ver "Por dentro de cada comando" e "Trabalho em paralelo") |
@@ -1074,7 +1076,8 @@ arquivo gravado.
 Depois das seis, uma pergunta opcional: a **referência de topo**, a melhor peça que existe para cada tipo de entrega
 (`tela`, `codigo`, `texto`), que o `/esquadro:revisar` põe ao lado do trabalho. Três respostas: nomear agora, por
 tipo (grava `referencias`); deixar para depois (não grava a chave); ou nunca neste projeto (grava `"referencias": {}`).
-Sem a chave, a abertura da sessão avisa uma vez por projeto que ela falta e como declarar; a marca do aviso fica em
+Sem a chave, a abertura da sessão avisa uma vez por projeto que ela falta e como declarar — o primeiro caminho que ela
+aponta é o `/esquadro:referencia`, que estuda os líderes do mesmo tipo e grava a ficha —; a marca do aviso fica em
 `.claude/esquadro/referencia-avisada.json`. Com a chave, até vazia, o aviso não sai.
 
 ### `/esquadro:revisar` — quem escreveu não julga
@@ -1378,6 +1381,7 @@ dois lugares, como na tabela.
 | `node "<plugin>/scripts/sanitar.js"` | se algum dado seu vazou, nas três superfícies: conteúdo, autoria do histórico e mensagem de commit; age sobre a pasta atual, ou sobre outra com `--raiz <pasta>` |
 | `node "<plugin>/scripts/auditar.js" --memoria <caminho do MEMORY.md>` | o relatório do `/esquadro:auditar`, em JSON (peso de instrução, sobreposições, contradições, itens fora da rubrica, regras sem cicatriz); a skill roda por você. Sem `--memoria`, ou sem valor depois dela, a chave `memoria` diz "nao medida" e a causa. A chave `injetado` lê a transcrição da sessão do ambiente (`CLAUDE_CODE_SESSION_ID`), ou a de `--transcricao <caminho do .jsonl>`; sem as duas, diz "nao medido" e a causa |
 | `node "<plugin>/scripts/atalhos.js"` | o painel do `/esquadro:atalhos`: os comentários de atalho dos arquivos que o git rastreia e dos novos que ele não ignora, sem mudar nada; saída 0, ou 1 fora de repositório git |
+| `node "<plugin>/scripts/referencia.js" <ficha> [--gravar]` | a conferência da ficha do `/esquadro:referencia`, em JSON: todo achado com origem, grau e quem agiu, toda pergunta do que ficou sem saber com estado e o que mediria, a linha `Não li:`, o lugar e o nome (`.claude/esquadro/referencias/<tipo>-<assunto>.md`) e até 100 KB; com `--gravar`, junta a ficha à lista do tipo em `referencias` (a skill só roda depois do seu sim); saída 0, ou 1 com `problemas` ou `erro` |
 | `node "<plugin>/scripts/varrer.js" <pasta>` | a varredura do `/esquadro:init`, em JSON: o teto (quantos arquivos leu, se cortou, quanto custou), o ambiente detectado, o peso de instrução e o que ela inferiu, marcado como inferência; sem `<pasta>`, a atual |
 | `node "<plugin>/scripts/validar.js" <pasta>` | confere o `.claude/esquadro/projeto.json` e, se existir, o `regras.md`: `OK` e saída 0, ou a lista do que está errado e saída 1; sem `<pasta>`, a atual |
 | `node "<plugin>/scripts/gerar-agentes.js" [--fatias] [--respostas <arquivo.json>] [--gravar]` | os agentes do projeto, um por degrau da escada, a partir de `modelos/agente.md`. Sem `--gravar` só propõe e não escreve nada; com ele, escreve em `.claude/agents/` e **pula** o que já existe. `--fatias` lista o que o molde pergunta. Para com erro (saída 1) sem degraus gravados ou com a escada torta |
@@ -1612,7 +1616,7 @@ propósito, para não invalidar o `projeto.json` de quem já tem um.
 
 | Chave | O que muda | Padrão |
 |---|---|---|
-| `referencias` | a peça de topo contra a qual o `/esquadro:revisar` compara (o `R.txt` no pacote e uma 2ª passada com A e B trocados, que dobra os inspetores), por tipo (`tela`, `codigo`, `texto`), cada tipo uma lista de caminhos ou URLs; tipo desconhecido (`telas`) e lista que tem item que não é texto reprovam no `node scripts/validar.js`, que diz a chave a corrigir; no `/esquadro:init` rodado de novo, o tipo que você responder troca a lista dele e o tipo que você não citar fica como estava (lista vazia, `[]`, tira um tipo; `{}` não apaga nada) | sem a chave: nada muda |
+| `referencias` | a peça de topo contra a qual o `/esquadro:revisar` compara (o `R.txt` no pacote e uma 2ª passada com A e B trocados, que dobra os inspetores), por tipo (`tela`, `codigo`, `texto`), cada tipo uma lista de caminhos ou URLs; tipo desconhecido (`telas`) e lista que tem item que não é texto reprovam no `node scripts/validar.js`, que diz a chave a corrigir; no `/esquadro:init` rodado de novo, o tipo que você responder troca a lista dele e o tipo que você não citar fica como estava (lista vazia, `[]`, tira um tipo; `{}` não apaga nada); o `/esquadro:referencia` junta a ficha dele à lista do tipo, com o seu sim | sem a chave: nada muda |
 | `marcaDeAtalho` | a marca que o `/esquadro:atalhos` procura nos comentários, no lugar de `atalho` (`ponytail` e `shortcut` seguem valendo); uma palavra só (letras, números, `-` ou `_`), senão reprova no validar | `atalho` |
 
 **As quatro travas**, dentro de `travas`. As quatro são obrigatórias e booleanas.

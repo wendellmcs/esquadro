@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.10.0 — estudar os melhores do mesmo tipo e trazer a ficha para a referência
+
+Desenho do comando e da ficha aprovado por imagem antes do código.
+
+**Novo**
+
+- **`/esquadro:referencia`: a referência de topo sai de um estudo, não de memória.** Antes, a chave `referencias`
+  pedia que você já soubesse qual é a melhor peça do seu tipo de entrega e a apontasse à mão. Agora o comando lê o
+  tipo do projeto, acha os líderes do mesmo tipo por uma busca pública (com a hora da medida), propõe 2-3 que ainda
+  não foram estudados e os estuda pelo que é público, em camadas: o que se vê, estados e fluxos (só com o seu sim,
+  porque exige instalar), textos, e rede e desempenho (só para quem tem tela na web). Página pública ele abre e
+  fotografa sozinho; com login, só a aba que você abriu. Sem copiar código nem arte.
+- **A ficha diz de onde veio cada achado.** Uma por tipo de entrega, em
+  `.claude/esquadro/referencias/<tipo>-<assunto>.md`: cada achado com a origem (`arquivo:linha` do commit lido,
+  print, busca com hora), o grau (observado, derivado ou inferido) e quem agiu (o agente ou você), mais o que ficou
+  sem saber, com estado (aberto, bloqueado, resolvido) e o que mediria cada dúvida, e o que não foi lido — "não
+  achei" só vale sobre o que se leu. O `scripts/referencia.js` confere tudo isso e o tamanho (até 100 KB, o que a
+  revisão lê inteiro) antes de a ficha entrar na `referencias`, e só entra com o seu sim.
+
+**Muda**
+
+- **O aviso de que falta a referência aponta o comando novo primeiro.** A abertura da sessão, que avisa uma vez por
+  projeto sem `referencias`, agora diz para rodar o `/esquadro:referencia`; o `/esquadro:init` de novo e a chave à
+  mão seguem valendo. A pergunta da referência no `/esquadro:init` também oferece o comando a quem não tem exemplo.
+
 ## 0.9.2 — a auditoria automática vê os ganchos repetidos, e os atalhos voltam sozinhos
 
 Desenho dos avisos aprovado por imagem antes do código.
