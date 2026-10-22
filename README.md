@@ -414,13 +414,13 @@ Na mesma hora, sem chamar o Claude, o esquadro grava um **resumo do chat** em
 `.claude/esquadro/handoff/AAAA-MM-DD-retomar-<8 primeiros do id do chat>.md` (desde a 0.11.0): os seus últimos 5
 pedidos e as últimas 3 respostas do Claude, com a hora, sem os blocos que o Claude Code injeta (lembretes, instruções
 do navegador) e cortados em ~600 e ~800 caracteres; os últimos 20 arquivos mexidos; a frente, o plano, o último
-handoff do modelo e o `git status` da raiz. Teto de 10 KB; chave de API reconhecida sai como "[segredo omitido]". O
+handoff do modelo e o que está modificado sem commit na raiz (`git status`). Teto de 10 KB; chave de API reconhecida sai como "[segredo omitido]". O
 aviso traz o prompt pronto para colar no chat novo, apontando o resumo (e o handoff do modelo, se ele foi gravado
 depois do seu último pedido). O resumo é um retrato do registro do chat, não o handoff do modelo: o chat novo confere
-no disco e, se precisar, roda o `/esquadro:handoff` ali, pagando só a abertura. Se o resumo não sair (registro torto,
-disco cheio), o aviso diz "Sem resumo" e a opção 1 volta a ser colar o prompt do último handoff. A pasta `handoff/`
-é a mesma do handoff do modelo: se ela não estiver no `.gitignore` do seu projeto, o resumo aparece no `git status`
-como qualquer handoff. O custo de continuar é o contexto vezes a escrita de 1 hora do modelo; o do chat novo, a
+no disco e, se precisar, roda o `/esquadro:handoff` ali, pagando só a abertura. Se o resumo não sair (registro do chat
+ilegível, disco cheio), o aviso diz "Sem resumo" e sugere colar no chat novo o prompt do último handoff. A pasta
+`handoff/` é a mesma do handoff do modelo: se ela não estiver no `.gitignore` do seu projeto, o resumo aparece entre
+os arquivos novos sem commit, como qualquer handoff. O custo de continuar é o contexto vezes a escrita de 1 hora do modelo; o do chat novo, a
 primeira chamada típica de um chat novo (68.723 tokens, a mediana medida), que é o piso, porque o chat novo ainda
 relê arquivos depois. Os valores são preço de API (a tabela do plugin); no plano por assinatura, viram consumo do
 limite. Modelo fora da tabela: o aviso sai sem o valor em US$. Se o plugin não conseguir ler o registro da sessão, a

@@ -133,6 +133,9 @@ test('publicacao: o numero de travas e o MESMO no README, no CHANGELOG e no mani
   assert.strictEqual(doChangelog, doReadme, 'CHANGELOG e README discordam do numero de travas');
   assert.strictEqual(doManifesto, doReadme,
     'a descricao do manifesto conta outro numero - foi a D134, defeito 6');
+  // 0.11.1 (P2 da revisao da 0.11.0): o manifesto dizia "Oito" e listava sete. A lista vai ate o 1o ponto.
+  const itens = PLUGIN.description.split(':')[1].split('.')[0].split(',');
+  assert.strictEqual(itens.length, doReadme, 'o manifesto lista ' + itens.length + ' itens: ' + itens.join(' |'));
 });
 
 test('publicacao: o numero de baldes que negam vem do codigo, nao da memoria', () => {

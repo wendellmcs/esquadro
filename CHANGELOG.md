@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.1 — o aviso de volta não some com um resumo estranho, e a descrição conta as oito travas
+
+**Corrige**
+
+- **Um resumo com defeito podia calar o aviso de volta naquela pausa.** Se o resumo gravado saísse de um jeito que o
+  aviso não conseguisse ler, a mensagem passava sem aviso e ele não voltava até a pausa seguinte. Agora o aviso sai
+  assim mesmo, dizendo "Sem resumo".
+- **O aviso podia sugerir um handoff chamado "undefined".** Com o handoff em dia mas sem o caminho dele, o prompt
+  pronto apontava para um arquivo que não existe. Agora ele aponta só o resumo.
+- **A descrição do plugin dizia "Oito" e listava sete.** Agora lista as oito travas, como o README.
+- **Menos jargão no README e neste registro** na parte do resumo do chat parado.
+
 ## 0.11.0 — o chat parado deixa um resumo pronto, e o aviso de volta fica curto
 
 Desenho do aviso e do resumo aprovado por imagem antes do código.
@@ -10,7 +22,7 @@ Desenho do aviso e do resumo aprovado por imagem antes do código.
   o único jeito de levar o trabalho para um chat novo era pedir o handoff no chat parado, que regravava a conversa
   inteira (num teste, 461 mil tokens, cerca de US$ 3,69). Agora, quando o aviso de volta para a sua mensagem, o
   esquadro grava na hora, sem chamar o Claude, um resumo do chat em `.claude/esquadro/handoff/` (seus últimos
-  pedidos, as últimas respostas, os arquivos mexidos, a frente, o plano e o `git status`), e o aviso traz o prompt
+  pedidos, as últimas respostas, os arquivos mexidos, a frente, o plano e o que está sem commit), e o aviso traz o prompt
   pronto para colar no chat novo, que paga só a abertura.
 
 **Muda**

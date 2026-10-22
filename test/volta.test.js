@@ -106,6 +106,11 @@ test('0.11.0: handoff do modelo em dia - a opcao 1 aponta o handoff e o resumo; 
   assert.strictEqual(atrasado, MOCK);
   const acento = volta.motivo(r, { caminho: RESUMO, chat: 'd731fc49', handoff: { caminho: 'pasta/ação-handoff.md', emDia: true } });
   assert.strictEqual(acento, MOCK, 'caminho fora de ASCII nao entra no aviso (D532); o resumo o cita');
+  // 0.11.1 (P2 da revisao da 0.11.0): sem caminho, o teste ASCII via "undefined" e o aviso dizia "pelo handoff undefined"
+  for (const torto of [undefined, null, 42]) {
+    const sem = volta.motivo(r, { caminho: RESUMO, chat: 'd731fc49', handoff: { caminho: torto, emDia: true } });
+    assert.strictEqual(sem, MOCK, 'caminho ' + String(torto) + ' nao entra no aviso');
+  }
 });
 
 test('084: a conta - continuar = contexto x escrita de 1 h; chat novo = 68.723 x escrita de 1 h', () => {
@@ -234,6 +239,31 @@ test('0.11.0: retomar.js que lanca no require nao cala o aviso - sai sem resumo'
     assert.strictEqual(r.status, 0, r.stderr);
     const um = r.stdout.trim() ? JSON.parse(r.stdout) : null;
     assert.ok(parou(um), 'a 1a mensagem da pausa tinha de parar mesmo sem o retomar.js: ' + JSON.stringify(um));
+    assert.match(um.stopReason, /^Sem resumo: nao consegui montar o resumo deste chat\.$/m);
+  } finally { t.fim(); }
+});
+
+// 0.11.1 (P2 da revisao da 0.11.0): o volta.motivo ficava fora do try interno - resumo torto que o fizesse lancar
+// zerava o aviso no try de fora, com a marca da pausa ja gravada. Agora sai sem resumo, como o require que lanca.
+test('0.11.1: resumo torto que faz o motivo lancar nao cala o aviso - sai sem resumo', () => {
+  const agora = Date.now();
+  const t = transcript([chamada(agora - 188 * MIN, 'claude-opus-5-5', 318000)]);
+  const copia = path.join(t.dir, 'plugin');
+  fs.cpSync(path.join(RAIZ, 'scripts'), path.join(copia, 'scripts'), { recursive: true });
+  fs.cpSync(path.join(RAIZ, 'modelos'), path.join(copia, 'modelos'), { recursive: true });
+  fs.writeFileSync(path.join(copia, 'scripts', 'lib', 'retomar.js'),
+    "exports.resumir = function () { return { caminho: 'x.md', chat: 'q2', get handoff() { throw new Error('torto'); } }; };\n");
+  const sessoes = path.join(t.dir, 'sessoes');
+  try {
+    const r = spawnSync(process.execPath, [path.join(copia, 'scripts', 'abrir-turno.js')], {
+      cwd: t.dir, encoding: 'utf8',
+      input: JSON.stringify({ session_id: 'q2', cwd: t.dir, hook_event_name: 'UserPromptSubmit', prompt: 'segue',
+        transcript_path: t.f }),
+      env: Object.assign({}, process.env, { ESQUADRO_TMP: sessoes })
+    });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const um = r.stdout.trim() ? JSON.parse(r.stdout) : null;
+    assert.ok(parou(um), 'a 1a mensagem da pausa tinha de parar com o resumo torto: ' + JSON.stringify(um));
     assert.match(um.stopReason, /^Sem resumo: nao consegui montar o resumo deste chat\.$/m);
   } finally { t.fim(); }
 });

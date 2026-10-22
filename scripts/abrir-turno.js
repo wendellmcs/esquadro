@@ -34,13 +34,13 @@ io.blindar(function () {
           });
           if (r) {
             // try proprio: a marca da pausa ja esta gravada; se o require lancasse no try de fora, a pausa passava
-            // calada e o aviso nao voltava (ronda 1 da 0.11.0). Sem resumo, o aviso sai e diz isso.
-            let resumo = null;
+            // calada e o aviso nao voltava (ronda 1 da 0.11.0). Sem resumo, o aviso sai e diz isso. O motivo com o
+            // resumo fica no mesmo try: resumo torto que o faca lancar tambem sai sem resumo (0.11.1).
             try {
-              resumo = require('./lib/retomar.js').resumir({ raiz: raiz, sessao: e.session_id,
+              const resumo = require('./lib/retomar.js').resumir({ raiz: raiz, sessao: e.session_id,
                 transcript: e.transcript_path, frente: frente, agora: agora, volta: r });
-            } catch (err) { resumo = null; }
-            aviso = volta.motivo(r, resumo);
+              aviso = volta.motivo(r, resumo);
+            } catch (err) { aviso = volta.motivo(r, null); }
           }
         }
       }

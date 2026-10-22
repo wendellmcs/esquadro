@@ -71,7 +71,7 @@ function motivo(r, resumo) {
   }
   if (resumo) {
     const h = resumo.handoff;
-    const comHandoff = h && h.emDia && /^[\x20-\x7E]+$/.test(h.caminho);
+    const comHandoff = h && h.emDia && typeof h.caminho === 'string' && /^[\x20-\x7E]+$/.test(h.caminho);
     linhas.push('', 'Resumo deste chat gravado em ' + resumo.caminho + ' (sem gastar nada).',
       '', 'Faca uma destas:', '  1. abra um chat novo e cole:',
       '     Retome o chat ' + resumo.chat + (comHandoff ? ' pelo handoff ' + h.caminho + ' e pelo resumo ' + resumo.caminho +
