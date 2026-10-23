@@ -7,7 +7,7 @@
 
 <p align="center">
   <strong>Um plugin do Claude Code que força o agente a provar em vez de afirmar.</strong><br>
-  Oito travas: seis portões de custo zero e dois dos oito comandos. Todo portão é um script determinístico: nenhum modelo no meio.
+  Oito travas: seis portões de custo zero e dois dos nove comandos. Todo portão é um script determinístico: nenhum modelo no meio.
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
   <a href="#como-instalar">Instalar</a> ·
   <a href="#um-exemplo-do-começo-ao-fim">Exemplo</a> ·
   <a href="#as-oito-travas">As travas</a> ·
-  <a href="#os-oito-comandos">Os comandos</a> ·
+  <a href="#os-nove-comandos">Os comandos</a> ·
   <a href="#o-que-ele-já-pegou-em-uso-real">Casos reais</a> ·
   <a href="#o-que-o-esquadro-não-promete">O que não promete</a>
 </p>
@@ -772,7 +772,7 @@ um módulo opcional, ou têm a própria chave. Cada um abaixo diz o que faz e co
 | Prompt do handoff (`scripts/portao-fecho.js`, no fim do turno) | barra o turno que gravou um arquivo de handoff e não colou o prompt em bloco de código na resposta final | `"portaoHandoff": false` (ver "Como desligar uma trava") |
 | Referência de topo (`scripts/portao-fecho.js`, no fim do turno) | barra a resposta que alega entrega quando um arquivo mudado na sessão é da marcha AAA, o tipo dele tem `referencias` declarada e nenhuma revisão contra ela fechou na sessão; a mensagem diz o comando, `/esquadro:revisar <arquivo>` | `"portaoReferencia": false` (ver "Como desligar uma trava") |
 | Qualidade de resposta (a abertura) | injeta as seis regras de clareza das respostas no chat; não barra nada | `"qualidadeDeResposta": false` (ver "Qualidade de resposta") |
-| Vigia (a abertura) | mostra uma vez a "novidade da semana" do plugin; só para quem mantém o plugin | **desligado por padrão**, menos no repositório do próprio plugin; `"vigia": true` liga, `false` desliga |
+| Vigia (a abertura) | mostra uma vez a "novidade da semana" do plugin e a conta do radar da semana; só para quem mantém o plugin | **desligado por padrão**, menos no repositório do próprio plugin; `"vigia": true` liga, `false` desliga |
 
 **A pergunta de fato passa.** O portão de decisão existe para a decisão. A pergunta de sintoma, ou de um dado que só
 você tem, não é decisão: ponha `(fato)` (exata, entre parênteses, em maiúscula ou minúscula) no `header`, o título curto da
@@ -791,6 +791,13 @@ até 12 linhas, e a linha longa quebra em até três, sem partir o link. Se o ar
 linha `semana:` ou a semana vista já tem 14 dias ou mais, a abertura avisa no máximo uma vez por dia; quando a última
 busca falhou, o aviso diz quando e por quê.
 
+**O radar da semana, na mesma abertura.** Uma segunda tarefa agendada roda o mesmo `vigia-puxar.js` com
+`--ramo claude/radar --arquivo radar/semana.md --destino <pasta do vigia>/radar`, e traz a ficha da semana do
+`/esquadro:radar`. A abertura não mostra a ficha, que é texto de terceiros: mostra uma linha só, com quantos
+candidatos ela tem e quantos para adotar, e manda ao `/esquadro:radar` para ver e escolher. A ficha fora do formato
+diz quantos problemas tem e manda ao `/esquadro:radar`, que confere a ficha e mostra cada problema. Vale a mesma chave `vigia` e as mesmas regras: uma vez por semana nova, aviso de problema no
+máximo uma vez por dia.
+
 **Valor entre aspas não desliga.** Todas as chaves de liga/desliga só aceitam o booleano `true` ou `false`, sem
 aspas. `"portaoDecisao": "false"` não desliga nada: o portão segue ligado. Você não precisa descobrir isso sozinho. A
 abertura da sessão avisa, para qualquer uma das chaves:
@@ -800,7 +807,7 @@ esquadro: ATENCAO - valor de tipo errado em .claude/esquadro/projeto.json: porta
 ~~~
 
 E a conferência final do `/esquadro:init` (`scripts/validar.js`) reprova o arquivo com a mesma frase, `<chave> tem
-de ser true ou false`. O `vigia` é o contrário (só `true` liga), e `"true"` entre aspas também não liga. A lista das treze chaves, com o padrão de cada uma, está em "O `projeto.json` chave por chave".
+de ser true ou false`. O `vigia` é o contrário (só `true` liga), e `"true"` entre aspas também não liga. A lista das quinze chaves, com o padrão de cada uma, está em "O `projeto.json` chave por chave".
 
 ---
 
@@ -1003,7 +1010,7 @@ isso repete o já visto. O roteiro não bloqueia o fecho: sai junto, sem esperar
 
 ---
 
-## Os oito comandos
+## Os nove comandos
 
 | Comando | O que faz |
 |---|---|
@@ -1011,18 +1018,19 @@ isso repete o já visto. O roteiro não bloqueia o fecho: sai junto, sem esperar
 | `/esquadro:revisar` | Revisão cega A/B de um arquivo mudado: rotula os dois lados sem autoria, despacha um inspetor por lente, **dez** de código, **oito** de tela, e **dezoito** quando a mudança é de código e de tela, e **sete** quando é só lógica (as de código sem `design`, `medidor` e `escopo`; na dúvida, as dez); antes disso, a mudança pequena vai a menos inspetores (até 3 linhas, um; lógica de até 40 linhas com teste vermelho e mutação, ou texto, dois; a faixa sai do `preparar-revisao.js`, e só sobe), com default reprovar, e apura por script com teto de 3 rondas; com `referencias` declarada, compara também com a peça de topo, nas duas ordens. |
 | `/esquadro:aprender` | Transforma uma correção sua em regra proposta no formato `gatilho -> ação`, mostra pronta, e **só grava depois de aprovação explícita**. |
 | `/esquadro:handoff` | Gera o texto de continuação para um chat novo: caminhos, `HEAD`, em que etapa o trabalho está, decisões já tomadas, pendências e erros de método que custaram tempo. Confere os fatos no disco, não na memória. |
-| `/esquadro:auditar` | Mede o peso de instrução do projeto contra um teto e aponta o que cortar: skills que se sobrepõem, regras que se contradizem e itens fora da rubrica. Não acrescenta — poda. |
+| `/esquadro:auditar` | Mede o peso de instrução do projeto contra um teto e aponta o que cortar: skills que se sobrepõem (entre si e com as do próprio esquadro, como uma `padrao` do projeto repetindo o `/esquadro:padrao`), regras que se contradizem e itens fora da rubrica. Não acrescenta — poda. |
 | `/esquadro:calibrar` | Mede, nas conversas do seu projeto, a partir de quantos tokens de contexto trocar de chat ainda compensa, e sugere o limiar de troca. **Só grava no `projeto.json` com o seu sim.** |
 | `/esquadro:atalhos` | Lista os atalhos deliberados do repositório: os comentários `atalho: <o que>. limite: <até onde vale>. trocar quando: <gatilho>.` (também `ponytail:` e `shortcut:`), agrupados por arquivo, e marca `sem-gatilho` o que não diz quando trocar. Só lê; a marca muda pela chave `marcaDeAtalho`. |
 | `/esquadro:referencia` | Estuda 2-3 produtos líderes do mesmo tipo do projeto, pelo que é público e em camadas (o que se vê, estados e fluxos, textos, rede e desempenho), e grava uma ficha em `.claude/esquadro/referencias/<tipo>-<assunto>.md` em que cada achado diz de onde veio, com que grau (observado, derivado, inferido) e quem agiu, mais o que ficou sem saber. Página com login, só a aba que você abriu. **Só põe a ficha na `referencias` com o seu sim.** |
+| `/esquadro:radar` | Busca projetos públicos parecidos com o que você está construindo (até 10, por tema, pela busca do GitHub), ou uma lista que você passar, e cruza cada um com o seu projeto: triagem de todos, até 5 lidos a fundo, e uma ficha em `.claude/esquadro/radar/<AAAA-MM-DD>.md` com o que vale trazer, como entra, como fica melhor que o original, esforço, valor e licença (ELv2, AGPL, fechada ou sem licença: só a ideia). Na dúvida sobre o encaixe, faz no máximo 3 perguntas. **Só lê e propõe: o escolhido entra com teste vermelho e revisão cega, com o seu sim.** Se oferece sozinho quando você pede melhoria ou função nova (uma vez por sessão, só com o seu sim; `"oferecerRadar": false` desliga). A lista dos projetos em alta da semana (`github.com/trending?since=weekly`) é só do mantenedor do plugin, para melhorar o esquadro. |
 
-A nona skill instalada, `padrao`, **não é comando**: é o manual de execução, que o agente carrega
+A décima skill instalada, `padrao`, **não é comando**: é o manual de execução, que o agente carrega
 no começo da tarefa e que traz junto a conferência do mapa de modelos deste projeto.
 
-Dos oito comandos, só os dois primeiros são travas — a 1 e a 2. Os outros seis **não são travas**: `aprender` é o
+Dos nove comandos, só os dois primeiros são travas — a 1 e a 2. Os outros sete **não são travas**: `aprender` é o
 autoaprimoramento mínimo — o plugin **não aprende sozinho**, ele transforma correção em proposta e
-espera o OK; `handoff`, `auditar`, `calibrar` e `atalhos` são ferramentas de manutenção, `referencia` é a de estudo, e nenhum dos
-cinco bloqueia nada.
+espera o OK; `handoff`, `auditar`, `calibrar` e `atalhos` são ferramentas de manutenção, `referencia` e `radar` são as de estudo, e nenhum dos
+seis bloqueia nada.
 
 ---
 
@@ -1034,7 +1042,7 @@ dispara no evento dele.
 
 | Tipo | Nome | O que é |
 |---|---|---|
-| Skills dos comandos | `esquadro:init`, `esquadro:revisar`, `esquadro:aprender`, `esquadro:handoff`, `esquadro:auditar`, `esquadro:calibrar`, `esquadro:atalhos`, `esquadro:referencia` | os comandos da tabela acima; cada um é uma skill que você chama pelo nome |
+| Skills dos comandos | `esquadro:init`, `esquadro:revisar`, `esquadro:aprender`, `esquadro:handoff`, `esquadro:auditar`, `esquadro:calibrar`, `esquadro:atalhos`, `esquadro:referencia`, `esquadro:radar` | os comandos da tabela acima; cada um é uma skill que você chama pelo nome |
 | Skill-manual | `padrao` | não é comando: o manual de execução que o agente carrega no começo da tarefa (marchas, lentes, loop de revisão, decisão em três opções, o que um "pronto" precisa provar). Traz as seis referências listadas mais abaixo |
 | Workflow | `esquadro:paralelo` | tarefas independentes em paralelo, com teto de agentes, modelo barato e cópia isolada para quem edita; o Claude roda direto com 3 ou mais tarefas independentes (ver "Trabalho em paralelo") |
 | Agentes | `inspetor`, `juiz-mesmo`, `leitor` | `inspetor` e `juiz-mesmo` são da revisão cega; `leitor` é o agente de leitura leve do paralelo (ver "Por dentro de cada comando" e "Trabalho em paralelo") |
@@ -1117,7 +1125,10 @@ Depois das seis, uma pergunta opcional: a **referência de topo**, a melhor peç
 tipo (grava `referencias`); deixar para depois (não grava a chave); ou nunca neste projeto (grava `"referencias": {}`).
 Sem a chave, a abertura da sessão avisa uma vez por projeto que ela falta e como declarar — o primeiro caminho que ela
 aponta é o `/esquadro:referencia`, que estuda os líderes do mesmo tipo e grava a ficha —; a marca do aviso fica em
-`.claude/esquadro/referencia-avisada.json`. Com a chave, até vazia, o aviso não sai.
+`.claude/esquadro/referencia-avisada.json`. Com a chave, até vazia, o aviso não sai. Com a chave declarada, a abertura
+avisa, uma vez por ficha, a ficha de `.claude/esquadro/referencias/` que está parada: guardada fora de `referencias`
+(a revisão não a usa) ou estudada há mais de 180 dias (os líderes mudam); a marca fica em
+`.claude/esquadro/referencia-fichas-avisadas.json`.
 
 ### `/esquadro:revisar` — quem escreveu não julga
 
@@ -1420,7 +1431,7 @@ dois lugares, como na tabela.
 | `node "<plugin>/scripts/sanitar.js"` | se algum dado seu vazou, nas três superfícies: conteúdo, autoria do histórico e mensagem de commit; age sobre a pasta atual, ou sobre outra com `--raiz <pasta>` |
 | `node "<plugin>/scripts/auditar.js" --memoria <caminho do MEMORY.md>` | o relatório do `/esquadro:auditar`, em JSON (peso de instrução, sobreposições, contradições, itens fora da rubrica, regras sem cicatriz); a skill roda por você. Sem `--memoria`, ou sem valor depois dela, a chave `memoria` diz "nao medida" e a causa. A chave `injetado` lê a transcrição da sessão do ambiente (`CLAUDE_CODE_SESSION_ID`), ou a de `--transcricao <caminho do .jsonl>`; sem as duas, diz "nao medido" e a causa |
 | `node "<plugin>/scripts/atalhos.js"` | o painel do `/esquadro:atalhos`: os comentários de atalho dos arquivos que o git rastreia e dos novos que ele não ignora, sem mudar nada; saída 0, ou 1 fora de repositório git |
-| `node "<plugin>/scripts/referencia.js" <ficha> [--gravar]` | a conferência da ficha do `/esquadro:referencia`, em JSON: todo achado com origem, grau e quem agiu, toda pergunta do que ficou sem saber com estado e o que mediria, a linha `Não li:`, o lugar e o nome (`.claude/esquadro/referencias/<tipo>-<assunto>.md`) e até 100 KB; com `--gravar`, junta a ficha à lista do tipo em `referencias` (a skill só roda depois do seu sim); saída 0, ou 1 com `problemas` ou `erro` |
+| `node "<plugin>/scripts/referencia.js" <ficha> [--gravar \| --tipo radar]` | a conferência da ficha do `/esquadro:referencia`, em JSON: todo achado com origem, grau e quem agiu, toda pergunta do que ficou sem saber com estado e o que mediria, a linha `Não li:`, o lugar e o nome (`.claude/esquadro/referencias/<tipo>-<assunto>.md`) e até 100 KB; com `--gravar`, junta a ficha à lista do tipo em `referencias` (a skill só roda depois do seu sim); com `--tipo radar`, confere a ficha do `/esquadro:radar` em qualquer pasta, mais a tabela dos candidatos (licença, como entra, como melhora, esforço, valor, veredito), e recusa o `--gravar`; saída 0, ou 1 com `problemas` ou `erro` |
 | `node "<plugin>/scripts/varrer.js" <pasta>` | a varredura do `/esquadro:init`, em JSON: o teto (quantos arquivos leu, se cortou, quanto custou), o ambiente detectado, o peso de instrução e o que ela inferiu, marcado como inferência; sem `<pasta>`, a atual |
 | `node "<plugin>/scripts/validar.js" <pasta>` | confere o `.claude/esquadro/projeto.json` e, se existir, o `regras.md`: `OK` e saída 0, ou a lista do que está errado e saída 1; sem `<pasta>`, a atual |
 | `node "<plugin>/scripts/gerar-agentes.js" [--fatias] [--respostas <arquivo.json>] [--gravar]` | os agentes do projeto, um por degrau da escada, a partir de `modelos/agente.md`. Sem `--gravar` só propõe e não escreve nada; com ele, escreve em `.claude/agents/` e **pula** o que já existe. `--fatias` lista o que o molde pergunta. Para com erro (saída 1) sem degraus gravados ou com a escada torta |
@@ -1428,7 +1439,7 @@ dois lugares, como na tabela.
 | `node "<plugin>/scripts/gerar-agents-md.js" [--fatias] [--respostas <arquivo.json>] [--gravar]` | o `AGENTS.md` da raiz, a partir de `modelos/agents-md.md`. Sem `--gravar` só mostra; com ele, recusa sobrescrever um `AGENTS.md` que já existe |
 | `node "<plugin>/scripts/autorizar-paralelo.js" [--conferir]` | grava a regra `Workflow(esquadro:paralelo)` em `permissions.allow` do `.claude/settings.local.json`; com `--conferir`, só lê e diz se já está autorizado. Saída em JSON (`autorizado`, `gravou`, `arquivo`) |
 | `node "<plugin>/scripts/recusar-init.js" <pasta>` | grava o "nunca neste projeto" da pergunta do init, fora do projeto (em `esquadro/init-recusado.json` da pasta de configuração do Claude), e a abertura não pergunta mais ali. O Claude roda quando você escolhe "nunca"; saída 0 se gravou, 1 sem pasta ou sem conseguir gravar |
-| `node "<plugin>/scripts/vigia-puxar.js" --repo <pasta do clone> [--remote backup] [--ramo claude/vigia] [--arquivo vigia/novidades.md] [--destino <pasta>]` | só para quem mantém o plugin: traz a novidade da semana do ramo `claude/vigia` para a pasta do vigia (ver "Os portões que não são travas"). Roda por tarefa agendada, nunca por gancho. Saída 0 se gravou, 1 se falhou, 2 se faltou `--repo` |
+| `node "<plugin>/scripts/vigia-puxar.js" --repo <pasta do clone> [--remote backup] [--ramo claude/vigia] [--arquivo vigia/novidades.md] [--destino <pasta>]` | só para quem mantém o plugin: traz a novidade da semana do ramo `claude/vigia` para a pasta do vigia (ver "Os portões que não são travas"); com `--ramo claude/radar --arquivo radar/semana.md --destino <pasta do vigia>/radar`, traz a ficha do radar da semana. Roda por tarefa agendada, nunca por gancho. Saída 0 se gravou, 1 se falhou, 2 se faltou `--repo` |
 | `node "<clone do plugin>/scripts/exportar.js" --raiz "<clone do plugin>" --destino <pasta>` | só para quem publica o próprio plugin: monta, numa pasta à parte, exatamente o que iria para um repositório público (sem `--gravar` só mostra o que copiaria) |
 | `node "<plugin>/scripts/experimento.js" --manual <pasta do seu manual>` | monta a tabela de obrigações do seu manual e do plugin; depois de preenchida (o script diz onde), rode de novo com `--veredito` para julgar: o plugin bastou, ou ainda falta manual? Sem `--manual` a tabela traz só as obrigações do plugin |
 
@@ -1637,6 +1648,7 @@ propósito, para não invalidar o `projeto.json` de quem já tem um.
 | Chave | O que liga ou desliga | Padrão |
 |---|---|---|
 | `sugerirAprender` | a ordem de rodar o `/esquadro:aprender` quando você corrige o jeito de o Claude trabalhar (no máximo uma a cada cinco turnos) | ligado; `false` desliga |
+| `oferecerRadar` | a oferta do `/esquadro:radar` quando você pede melhoria, sugestão ou função nova (uma vez por sessão, só com o seu sim; nunca no repositório do próprio plugin) | ligado; `false` desliga |
 | `auditarNaAbertura` | a auditoria automática da abertura, a cada `diasEntreAuditorias` dias | ligado; `false` desliga |
 | `atalhosNaAbertura` | a lista dos atalhos deliberados na abertura, a cada `diasEntreAtalhos` dias | ligado; `false` desliga |
 | `qualidadeDeResposta` | o bloco de seis regras de clareza das respostas | ligado; `false` desliga |
@@ -1648,7 +1660,7 @@ propósito, para não invalidar o `projeto.json` de quem já tem um.
 | `paralelismo` | as regras de trabalho em paralelo que a abertura injeta | ligado; `false` desliga |
 | `avisoDeVolta` | o aviso antes de gastar: a 1ª mensagem num chat de 200 mil tokens ou mais, parado há mais de 1 hora, é parada com a conta de continuar contra abrir um chat novo e o resumo do chat gravado para o chat novo; mandada de novo, passa | ligado; `false` desliga |
 | `menosCodigo` | o bloco "menos código" que a abertura injeta: a escada de 7 degraus antes de escrever código e o formato do comentário de atalho | ligado; `false` desliga |
-| `vigia` | a novidade da semana na abertura (só para quem mantém o plugin) | desligado, menos no repositório do próprio plugin; `true` liga, `false` desliga |
+| `vigia` | a novidade da semana e a conta do radar da semana na abertura (só para quem mantém o plugin) | desligado, menos no repositório do próprio plugin; `true` liga, `false` desliga |
 | `modoContinuo` | o modo contínuo: troca de chat só por tamanho (aviso a 250 mil), decisão técnica sem parar | ligado, com ou sem `projeto.json`; `false` desliga |
 
 **As opcionais.** Podem faltar sem erro; quando vêm, o validar as confere.

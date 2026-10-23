@@ -99,6 +99,35 @@ test('publicacao: o diario de trabalho e o vocabulario privado NAO vao junto', (
 
 // ── os numeros que o CHANGELOG afirma ────────────────────────────────────
 
+// Revisao da 0.13.0, R1: o README dizia "treze chaves" de liga/desliga com quinze no codigo (a T3b do radar somou o
+// oferecerRadar, e a anterior ja tinha passado sem acertar o numero).
+test('publicacao: o numero de chaves de liga/desliga do README vem do codigo', () => {
+  const m = README.match(/A lista das (\S+) chaves, com o padr[aã]o de cada uma/);
+  assert.ok(m, 'o README nao diz quantas chaves de liga/desliga ha');
+  assert.strictEqual(NUMEROS[m[1].toLowerCase()], projetoLib.CHAVES_LIGA_DESLIGA.length,
+    'o README conta ' + m[1] + ' chaves, e o codigo tem ' + projetoLib.CHAVES_LIGA_DESLIGA.length);
+});
+
+// Revisao da 0.13.0, R2: a entrada dizia "ate 10" projetos por tema e, linhas abaixo, "11 projetos lidos" na medicao;
+// e "junto com a novidade da semana" sem dizer que e a do vigia.
+test('publicacao: a entrada do radar no CHANGELOG nao se contradiz na conta nem cita recurso sem nome', () => {
+  const topo = CHANGELOG.split(/^## /m)[1];
+  const teto = topo.match(/at[eé] (\d+), por tema/);
+  const lidos = topo.match(/(\d+) projetos\s+lidos/);
+  assert.ok(!teto || !lidos || Number(lidos[1]) <= Number(teto[1]),
+    'o CHANGELOG diz ate ' + (teto && teto[1]) + ' por tema e ' + (lidos && lidos[1]) + ' lidos');
+  assert.ok(!/novidade da semana(?! do vigia)/.test(topo), 'novidade da semana sem dizer que e a do vigia');
+});
+
+// Revisao da 0.13.0, R3: o README dizia que a ficha fora do formato "diz quantos problemas tem" e parava ai; a
+// abertura manda ao /esquadro:radar (lib/vigia-local.js, contaDaFicha), e o README tem de dizer o mesmo passo.
+test('publicacao: o README diz o proximo passo da ficha do radar fora do formato', () => {
+  const m = README.match(/A ficha fora do formato[^.]*\./);
+  assert.ok(m, 'o README nao fala da ficha do radar fora do formato');
+  assert.ok(/\/esquadro:radar/.test(m[0]), 'sem o proximo passo: ' + m[0]);
+  assert.ok(/o \/esquadro:radar confere/.test(ler('scripts/lib/vigia-local.js')), 'a frase da abertura mudou');
+});
+
 test('publicacao: a versao do manifesto e a do topo do CHANGELOG', () => {
   const m = CHANGELOG.match(/^## (\d+\.\d+\.\d+)/m);
   assert.ok(m, 'o CHANGELOG nao abre com uma versao');

@@ -514,7 +514,7 @@ test('PA1-7/A2-2: sugerirAprender e auditarNaAbertura de tipo errado ganham avis
 // (D388, D415) -, mas `validar()` aceitava o valor torto calado e o re-init jogava a resposta em `ignoradas`.
 // O aviso na abertura esta em fiacao.test.js.
 // Plano 092 (D574): atalhosNaAbertura entra no mesmo molde.
-const LIGA_DESLIGA = ['sugerirAprender', 'auditarNaAbertura', 'qualidadeDeResposta', 'portaoDecisao', 'portaoHandoff', 'vigia',
+const LIGA_DESLIGA = ['sugerirAprender', 'oferecerRadar', 'auditarNaAbertura', 'qualidadeDeResposta', 'portaoDecisao', 'portaoHandoff', 'vigia',
   'atalhosNaAbertura'];
 
 test('D442/5: validar reprova chave de liga/desliga que nao e booleano; avisosDeTipo avisa as seis', () => {

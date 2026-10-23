@@ -835,3 +835,14 @@ proteção que não vai acontecer.
 
 Diga também o que o `esquadro` **não** promete — ele não julga se a interface ficou bonita, não
 resolve sessão concorrente no caso geral, e não aprende sozinho.
+
+**Feche com os próximos comandos**, uma frase cada, sem pergunta, para ele saber a hora de cada um:
+
+- `/esquadro:revisar` — revisão cega do que foi escrito, antes de dar por pronto;
+- `/esquadro:referencia` — estuda os líderes do mesmo tipo e grava a referência que a revisão usa
+  (se ele recusou no Passo 4b, diga que pode rodar depois);
+- `/esquadro:radar` — projetos públicos parecidos com o que ele está construindo; ele se oferece
+  sozinho quando o pedido é de função nova ou melhoria;
+- `/esquadro:atalhos` — a dívida de simplificação deliberada, antes de um release;
+- `/esquadro:auditar` e `/esquadro:calibrar` — depois de algumas semanas: o peso das regras e o
+  limiar de troca de chat.

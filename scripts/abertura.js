@@ -51,6 +51,57 @@ function avisoDaReferencia(cwd, projeto) {
     'nunca usar, grave "referencias": {}. Este aviso sai uma vez so.';
 }
 
+const MARCA_FICHAS = 'referencia-fichas-avisadas.json';
+const DIAS_FICHA_VELHA = 180;
+
+/**
+ * D615 (L9 do censo da D612): ficha de referencia que nao esta trabalhando - em .claude/esquadro/referencias/ sem estar
+ * na chave `referencias` (o /esquadro:revisar nao a usa), ou com "Estudo de AAAA-MM-DD" ha mais de 180 dias (os
+ * lideres mudam). So com a chave declarada: sem ela fala o aviso da D503. Cada ficha (e motivo) avisada uma vez, pela
+ * marca; marca que nao se grava avisa de novo. R5: ASCII.
+ */
+function avisoDasFichas(cwd, projeto, agora) {
+  if (!projeto || !projeto.referencias || typeof projeto.referencias !== 'object') return null;
+  const pasta = path.join(cwd, '.claude', 'esquadro', 'referencias');
+  let nomes;
+  try { nomes = fs.readdirSync(pasta).filter(function (n) { return /\.md$/i.test(n); }); } catch (e) { return null; }
+  // atalho: caminho comparado sem caixa em qualquer sistema. limite: dois nomes so diferentes na caixa contam como um
+  // (a skill manda o nome em minusculas). trocar quando: ficha com nome em maiuscula for aceita pela skill.
+  const chave = function (p) { return path.resolve(cwd, p).toLowerCase(); };
+  const emUso = new Set();
+  for (const tipo of Object.keys(projeto.referencias)) {
+    const lista = projeto.referencias[tipo];
+    if (Array.isArray(lista)) for (const p of lista) if (typeof p === 'string') emUso.add(chave(p));
+  }
+  const marca = config.caminhoEmEsquadro(cwd, MARCA_FICHAS);
+  let vistos = {};
+  // Marca ilegivel ou que nao e objeto (5, "x", lista): vale como vazia; senao a atribuicao abaixo lancava.
+  try { vistos = JSON.parse(fs.readFileSync(marca, 'utf8')); } catch (e) { vistos = {}; }
+  if (!vistos || typeof vistos !== 'object' || Array.isArray(vistos)) vistos = {};
+  const ascii = require('./lib/escopo.js').ascii;
+  const partes = [];
+  for (const nome of nomes) {
+    const rel = '.claude/esquadro/referencias/' + nome;
+    let motivo = null;
+    if (!emUso.has(chave(rel))) motivo = '"' + ascii(rel) + '" guardada fora de "referencias" do projeto.json (o /esquadro:revisar nao a usa)';
+    else {
+      let data = null;
+      try { data = (fs.readFileSync(path.join(pasta, nome), 'utf8').match(/Estudo de (\d{4}-\d{2}-\d{2})/) || [])[1]; } catch (e) { data = null; }
+      if (data && (agora - Date.parse(data + 'T00:00:00Z')) / 86400000 > DIAS_FICHA_VELHA) {
+        motivo = '"' + ascii(rel) + '" estudada em ' + data + ', ha mais de ' + DIAS_FICHA_VELHA + ' dias';
+      }
+    }
+    if (!motivo || vistos[motivo]) continue;
+    vistos[motivo] = new Date(agora).toISOString();
+    partes.push(motivo);
+  }
+  if (!partes.length) return null;
+  try { fs.writeFileSync(marca, JSON.stringify(vistos) + '\n', 'utf8'); } catch (e) { /* avisa de novo */ }
+  return 'esquadro: fichas de referencia paradas: ' + partes.join('; ') + '. Para usar a guardada, ponha o caminho em ' +
+    '"referencias" (ou rode /esquadro:referencia, que grava com o seu sim); para a velha, rode /esquadro:referencia de novo ' +
+    'para estudar os lideres de hoje. Cada ficha e avisada uma vez.';
+}
+
 io.blindar(function () {
   io.lerEntrada(function (e) {
     const cwd = config.raizDoProjeto(e.cwd || process.cwd());
@@ -142,6 +193,14 @@ io.blindar(function () {
     // .claude/esquadro/ (como a da auditoria, depois da foto do git). Com a chave, ate `{}`, calada.
     const avisoRef = avisoDaReferencia(cwd, projeto);
     if (avisoRef) process.stdout.write('\n' + avisoRef + '\n');
+    // D615 (L9): com a chave declarada, a ficha guardada sem uso ou velha. try proprio: nada dela derruba a abertura.
+    try {
+      const avisoFichas = avisoDasFichas(cwd, projeto, Date.now());
+      if (avisoFichas) process.stdout.write('\n' + avisoFichas + '\n');
+    } catch (err) {
+      process.stdout.write('\nesquadro: aviso das fichas de referencia nao rodou (' +
+        escopoLib.ascii(textoLib.causaDoErro(err)).slice(0, 120) + '). O resto da abertura segue igual.\n');
+    }
     // A2 (D426): auditoria periodica. Depois da foto do git (a marca nao entra nela) e antes do plano
     // ativo, que segue por ultimo. A lib ja nao lanca; o try/catch aqui e a segunda rede, para que
     // nada da auditoria derrube o resto da abertura.
@@ -207,6 +266,14 @@ io.blindar(function () {
       if (vigiaTexto) process.stdout.write('\n' + vigiaTexto + '\n');
     } catch (erro) {
       process.stdout.write('\nesquadro: vigia nao rodou (' +
+        escopoLib.ascii(textoLib.causaDoErro(erro)).slice(0, 120) + '). O resto da abertura segue igual.\n');
+    }
+    // Plano do radar, T4: a ficha da semana do radar, puxada para <pasta do vigia>/radar/. Mesma chave e mesma rede.
+    try {
+      const radarTexto = require('./lib/vigia-local.js').avisoDoRadar(projeto, { cwd: e.cwd || process.cwd() });
+      if (radarTexto) process.stdout.write('\n' + radarTexto + '\n');
+    } catch (erro) {
+      process.stdout.write('\nesquadro: radar nao rodou (' +
         escopoLib.ascii(textoLib.causaDoErro(erro)).slice(0, 120) + '). O resto da abertura segue igual.\n');
     }
     const planoLib = require('./lib/plano.js');

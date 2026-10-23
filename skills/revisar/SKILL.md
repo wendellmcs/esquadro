@@ -78,7 +78,9 @@ monta tela.
 que julga "a mais" já foi refutada na fonte em 5 de 6 achados (`escopo`). **Regra de saída:** depois de 10
 revisões com ela, se 2 de cada 3 achados dela tiverem sido refutados na fonte, ela entra em
 `SAEM_SO_LOGICA` e sai do arquivo só de lógica, como `escopo`. Validação na fronteira, perda de dados,
-segurança e acessibilidade nunca são excesso: achado dela contra isso é refutado.
+segurança e acessibilidade nunca são excesso: achado dela contra isso é refutado. Atalho deliberado,
+com o comentário `atalho: <o que>. limite: <até onde vale>. trocar quando: <gatilho>.`, é dívida
+declarada, não excesso; o que não traz o gatilho o `/esquadro:atalhos` lista — rode-o antes de um release.
 
 Leia as lentes do arquivo, **não de memória**. Despache todos no mesmo disparo, **um subagente
 `esquadro:inspetor` por lente**.

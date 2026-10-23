@@ -59,7 +59,8 @@ test('fiacao: auditar.js enxerga uma skill real e devolve exatamente as chaves d
     // 0.3.5 (D291 §4): o nome dizia "seis" com sete chaves, e o teste so conferia presenca - chave
     // nova ou sumida passava calada. Agora e o conjunto exato.
     assert.deepStrictEqual(Object.keys(saida).sort(),
-      ['contradicoes', 'delegaveis', 'foraDaRubrica', 'injetado', 'memoria', 'peso', 'regras', 'skills', 'sobreposicoes'],
+      // D615 (L10): doPlugin, o cruzamento das skills do projeto com as do plugin.
+      ['contradicoes', 'delegaveis', 'doPlugin', 'foraDaRubrica', 'injetado', 'memoria', 'peso', 'regras', 'skills', 'sobreposicoes'],
       'as chaves do relatorio mudaram: ' + Object.keys(saida).join(', '));
     // lerSkills() achou a skill, e instrucoes.contar() contou os itens dela.
     assert.deepStrictEqual(saida.skills, ['zelador'], r.stdout);
@@ -598,8 +599,42 @@ test('fiacao: estado da sessao fora do ar - a abertura e o abrir-turno falam mes
     let ctx = null;
     try { ctx = JSON.parse(turno.stdout).hookSpecificOutput.additionalContext; } catch (e) { ctx = null; }
     assert.ok(ctx && ctx.includes(saudeLib.INSTRUCAO_DA_PERGUNTA), 'o abrir-turno calou a pergunta: ' + JSON.stringify(turno.stdout));
+    // T3b (s116, mutacao que escapou): sem a marca gravada, a oferta do radar nao sai - sairia a cada pedido.
+    const pedido = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'abrir-turno.js')], {
+      cwd: dir, encoding: 'utf8', env: env, timeout: 60000,
+      input: JSON.stringify({ session_id: 'sem-estado', cwd: dir, prompt: 'quero adicionar uma funcao nova de exportar PDF' })
+    });
+    assert.strictEqual(pedido.status, 0, pedido.stderr);
+    assert.ok(!pedido.stdout.includes('parece um pedido de MELHORIA'), 'oferta sem a marca gravada: ' + JSON.stringify(pedido.stdout));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// T3b (s116, mutacao que escapou): o estado que le mas nao grava (o arquivo da sessao e uma pasta) roda o callback,
+// que marca a oferta, e so depois lanca. Sem a marca gravada, a oferta nao pode sair: sairia a cada pedido.
+test('fiacao: estado que nao grava depois de marcar - a oferta do radar nao sai (T3b)', () => {
+  const dir = temp('oferta-sem-gravar');
+  const tmp = temp('oferta-sem-gravar-tmp');
+  try {
+    projetoComRegras(dir);
+    fs.mkdirSync(path.join(tmp, 'esquadro', 'nao-grava.json'), { recursive: true });
+    const env = Object.assign({}, process.env, { ESQUADRO_TMP: tmp });
+    const pedido = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'abrir-turno.js')], {
+      cwd: dir, encoding: 'utf8', env: env, timeout: 60000,
+      input: JSON.stringify({ session_id: 'nao-grava', cwd: dir, prompt: 'quero adicionar uma funcao nova de exportar PDF' })
+    });
+    assert.strictEqual(pedido.status, 0, pedido.stderr);
+    assert.ok(!pedido.stdout.includes('parece um pedido de MELHORIA'), 'oferta sem a marca gravada: ' + JSON.stringify(pedido.stdout));
+    // controle: com o estado gravando, a mesma mensagem oferece
+    const ok = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'abrir-turno.js')], {
+      cwd: dir, encoding: 'utf8', env: env, timeout: 60000,
+      input: JSON.stringify({ session_id: 'grava', cwd: dir, prompt: 'quero adicionar uma funcao nova de exportar PDF' })
+    });
+    assert.ok(ok.stdout.includes('parece um pedido de MELHORIA'), 'controle: ' + JSON.stringify(ok.stdout));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
@@ -1440,6 +1475,86 @@ test('A1: saude e correcao no mesmo prompt viram UM additionalContext com os doi
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// ------------------------------- T3b (D611): o radar do usuario se oferece sozinho
+
+test('T3b: pedido de funcao nova devolve a ordem de oferecer o radar (ASCII, sem gravar nada); relato de bug segue calado', () => {
+  const dir = temp('oferta-radar');
+  try {
+    const j = abrirComPrompt(dir, 'or1', 'quero adicionar uma função de exportar relatório em CSV');
+    assert.ok(j && j.hookSpecificOutput, 'nao ofereceu');
+    assert.strictEqual(j.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
+    const t = j.hookSpecificOutput.additionalContext;
+    assert.ok(t.indexOf('/esquadro:radar') !== -1 && /AskUserQuestion, em 3 opcoes/.test(t) && /Nada roda sem o sim/.test(t), t);
+    assert.ok(/^[\x20-\x7E\n]+$/.test(t), 'additionalContext tem de ser ASCII: ' + JSON.stringify(t));
+    assert.ok(!fs.existsSync(path.join(dir, '.claude')), 'o gancho nao pode criar nada no projeto');
+    assert.strictEqual(abrirComPrompt(dir, 'or2', 'o botão parou de funcionar'), null);
+    assert.strictEqual(abrirComPrompt(dir, 'or2', 'faça o commit'), null);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T3b: a oferta sai uma vez por SESSAO (o fecho do turno nao apaga a marca); outra sessao oferece de novo', () => {
+  const dir = temp('oferta-radar-uma-vez');
+  try {
+    assert.ok(abrirComPrompt(dir, 'ou', 'sugere melhorias para o projeto'), 'a 1a tem de oferecer');
+    const f = rodar('portao-fecho.js', dir, { session_id: 'ou', cwd: dir, hook_event_name: 'Stop', last_assistant_message: 'Pronto.' });
+    assert.strictEqual(f.status, 0, f.stderr);
+    assert.ok(lerSessao(dir, 'ou').ofereceuRadar === true, 'o fecho apagou a marca: ' + JSON.stringify(lerSessao(dir, 'ou')));
+    assert.strictEqual(abrirComPrompt(dir, 'ou', 'quero adicionar uma funcionalidade de busca'), null, 'ofereceu 2x na sessao');
+    assert.strictEqual(abrirComPrompt(dir, 'ou', 'how can I improve this project?'), null, 'ofereceu 3x na sessao');
+    assert.ok(abrirComPrompt(dir, 'ou2', 'sugere melhorias'), 'sessao nova oferece');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T3b: oferecerRadar: false desliga (e nao grava marca); ausente, "false" entre aspas ou json ilegivel seguem ligados', () => {
+  const dir = temp('oferta-radar-chave');
+  try {
+    escrever(dir, '.claude/esquadro/projeto.json', JSON.stringify({ oferecerRadar: false }));
+    assert.strictEqual(abrirComPrompt(dir, 'oc1', 'sugere melhorias'), null, 'ofereceu com a chave desligada');
+    assert.strictEqual(lerSessao(dir, 'oc1').ofereceuRadar, undefined, 'desligado nao grava a marca');
+    escrever(dir, '.claude/esquadro/projeto.json', JSON.stringify({}));
+    assert.ok(abrirComPrompt(dir, 'oc2', 'sugere melhorias'), 'sem a chave tem de estar ligado');
+    escrever(dir, '.claude/esquadro/projeto.json', JSON.stringify({ oferecerRadar: 'false' }));
+    assert.ok(abrirComPrompt(dir, 'oc3', 'sugere melhorias'), 'so o booleano false desliga');
+    escrever(dir, '.claude/esquadro/projeto.json', '{ quebrado');
+    assert.ok(abrirComPrompt(dir, 'oc4', 'sugere melhorias'), 'projeto.json ilegivel tem de seguir ligado');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T3b: no repositorio do proprio plugin o radar e do mantenedor - nao se oferece', () => {
+  const dir = temp('oferta-radar-plugin');
+  try {
+    escrever(dir, '.git/HEAD', 'ref: refs/heads/main\n');
+    escrever(dir, '.claude-plugin/plugin.json', JSON.stringify({ name: 'esquadro', version: '0.0.0' }));
+    assert.strictEqual(abrirComPrompt(dir, 'op', 'sugere melhorias'), null, 'ofereceu no repo do plugin');
+    assert.strictEqual(lerSessao(dir, 'op').ofereceuRadar, undefined);
+    // controle: o mesmo repo com outro nome de plugin e projeto de usuario
+    escrever(dir, '.claude-plugin/plugin.json', JSON.stringify({ name: 'outro-plugin', version: '0.0.0' }));
+    assert.ok(abrirComPrompt(dir, 'op2', 'sugere melhorias'), 'plugin com outro nome e projeto do usuario');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T3b: retorno de subagente que cita um pedido de melhoria NAO oferece; o pedido do dono segue oferecendo', () => {
+  const dir = temp('oferta-radar-subagente');
+  try {
+    const relatorio = '<task-notification>\n<task-id>a2b689610322d871a</task-id>\n<result>o dono pediu: quero adicionar uma funcao de exportar</result>\n</task-notification>';
+    assert.strictEqual(abrirComPrompt(dir, 'osub', relatorio), null, 'retorno de subagente ofereceu');
+    assert.strictEqual(lerSessao(dir, 'osub').ofereceuRadar, undefined, 'gastou a oferta da sessao');
+    assert.ok(abrirComPrompt(dir, 'osub', 'quero adicionar uma função de exportar'), 'o pedido do dono tem de oferecer');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T3b: oferta, saude e correcao no mesmo prompt viram UM additionalContext, a saude primeiro', () => {
+  const dir = temp('oferta-radar-junto');
+  try {
+    const j = abrirComPrompt(dir, 'oj', 'o contexto está bom? eu já te disse para sugerir melhorias');
+    const t = j.hookSpecificOutput.additionalContext;
+    const a = t.indexOf('/esquadro:handoff');
+    const b = t.indexOf('/esquadro:aprender');
+    const c = t.indexOf('/esquadro:radar');
+    assert.ok(a !== -1 && b !== -1 && c !== -1 && a < b && b < c, 'ordem saude, correcao, oferta: ' + t);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // ------------------------------- Bloco A2 (D426): a auditoria roda sozinha na abertura, de N em N dias
 
 /** Projeto com a fonte canonica estourando o teto de 200 itens (205), para a auditoria ter o que avisar. */
@@ -1786,6 +1901,29 @@ test('V: com "vigia": true a abertura mostra a novidade da semana uma vez, e o r
     assert.strictEqual(r2.status, 0, r2.stderr);
     assert.strictEqual(r2.stdout.indexOf('novidade da semana de'), -1, 'mostrou a mesma semana duas vezes: ' + r2.stdout);
     assert.ok(/qualidade de resposta/.test(r2.stdout), 'o resto da abertura sumiu');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(pastaVigia, { recursive: true, force: true });
+  }
+});
+
+// Plano do radar, T4: a ficha da semana puxada para <pasta do vigia>/radar/ vira uma linha com a conta, uma vez.
+test('V: com "vigia": true a abertura mostra o radar da semana uma vez, depois do vigia', () => {
+  const dir = temp('radar-liga');
+  const pastaVigia = temp('radar-pasta');
+  try {
+    escrever(dir, '.claude/esquadro/projeto.json', JSON.stringify({ vigia: true }));
+    escrever(pastaVigia, 'novidades.md', 'semana: 2026-10-05\n\n- Novidade\n');
+    escrever(pastaVigia, 'radar/novidades.md', 'semana: 2026-10-19\n\n## Candidatos\n\n' +
+      '| Repo | Licença | Como entra | Como melhora | Esforço | Valor | Veredito |\n|---|---|---|---|---|---|---|\n' +
+      '| a/b | MIT | no fecho | barra | P | alto | adotar |\n');
+    const r1 = abrirVigia(dir, 'r1', pastaVigia);
+    assert.strictEqual(r1.status, 0, r1.stderr);
+    const i = r1.stdout.indexOf('esquadro: radar - ficha da semana de 2026-10-19: 1 candidato, 1 para adotar.');
+    assert.ok(i !== -1, r1.stdout);
+    assert.ok(r1.stdout.indexOf('novidade da semana de 2026-10-05') < i, 'o radar veio antes do vigia');
+    const r2 = abrirVigia(dir, 'r2', pastaVigia);
+    assert.strictEqual(r2.stdout.indexOf('esquadro: radar'), -1, 'mostrou o radar duas vezes: ' + r2.stdout);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
     fs.rmSync(pastaVigia, { recursive: true, force: true });

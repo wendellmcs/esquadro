@@ -20,6 +20,13 @@ const SEM_SABER = '## O que ficou sem saber';
 const CAB_ACHADOS = ['camada', 'achado', 'origem', 'grau', 'quem agiu'];
 const CAB_SEM_SABER = ['pergunta', 'estado', 'o que mediria'];
 const SEM_BARRA = 'linha de tabela sem a barra do começo (|): no markdown ela sai da tabela e some da conta';
+// Plano do radar, T2 (D609): a ficha do radar e esta mesma ficha mais a secao dos candidatos. Valor sem acento tambem
+// vale, como no "Nao li:".
+const CANDIDATOS = '## Candidatos';
+const CAB_CANDIDATOS = ['repo', 'licença', 'como entra', 'como melhora', 'esforço', 'valor', 'veredito'];
+const ESFORCOS = ['p', 'm', 'g'];
+const VALORES = ['baixo', 'médio', 'medio', 'alto'];
+const VEREDITOS = ['adotar', 'inspiração', 'inspiracao', 'descartar'];
 // D580: uma ficha por tipo de entrega, em .claude/esquadro/referencias/<tipo>-<assunto>.md, sem subpasta.
 const RE_FICHA = /^\.claude\/esquadro\/referencias\/(tela|codigo|texto)-[^/]+\.md$/;
 
@@ -55,10 +62,38 @@ function linhasDaSecao(linhas, titulo, cabecalho) {
   return dados;
 }
 
-/** { problemas, achados, semSaber, abertos, bytes }. Problema de linha comeca com "linha <n>: ". */
-function conferir(texto) {
+/** Os candidatos do radar: { candidatos, adotar }, com os problemas empurrados em `problemas`. */
+function conferirCandidatos(linhas, problemas) {
+  const cand = linhasDaSecao(linhas, CANDIDATOS, CAB_CANDIDATOS);
+  if (!cand) problemas.push('falta a secao "' + CANDIDATOS + '" (| ' + CAB_CANDIDATOS.join(' | ') + ' |)');
+  else if (!cand.length) problemas.push('nenhum candidato na secao "' + CANDIDATOS + '": a semana sem nada diz isso numa linha com veredito descartar');
+  let adotar = 0;
+  for (const c of cand || []) {
+    const p = 'linha ' + c.n + ': ';
+    if (!c.c) { problemas.push(p + SEM_BARRA); continue; }
+    if (c.c.length !== CAB_CANDIDATOS.length) { problemas.push(p + 'o candidato tem ' + c.c.length + ' colunas, e sao ' + CAB_CANDIDATOS.length); continue; }
+    const veredito = valor(c.c[6]);
+    if (!temTexto(c.c[0])) problemas.push(p + 'candidato sem o repo');
+    if (!temTexto(c.c[1])) problemas.push(p + 'candidato sem licença (o que a fonte diz, ou "sem licença")');
+    // descartado nao entra: so ele pode deixar "como entra" e "como melhora" vazios
+    if (veredito !== 'descartar' && !temTexto(c.c[2])) problemas.push(p + 'candidato sem como entra');
+    if (veredito !== 'descartar' && !temTexto(c.c[3])) problemas.push(p + 'candidato sem como melhora (o que fica melhor que o original)');
+    if (ESFORCOS.indexOf(valor(c.c[4])) === -1) problemas.push(p + 'candidato sem esforço (P, M ou G)');
+    if (VALORES.indexOf(valor(c.c[5])) === -1) problemas.push(p + 'candidato sem valor (baixo, médio ou alto)');
+    if (VEREDITOS.indexOf(veredito) === -1) problemas.push(p + 'candidato sem veredito (adotar, inspiração ou descartar)');
+    if (veredito === 'adotar') adotar++;
+  }
+  return { candidatos: (cand || []).length, adotar: adotar };
+}
+
+/**
+ * { problemas, achados, semSaber, abertos, bytes }; com `opcoes.tipo === 'radar'`, tambem { candidatos, adotar }.
+ * Problema de linha comeca com "linha <n>: ".
+ */
+function conferir(texto, opcoes) {
   const linhas = String(texto).split(/\r?\n/);
   const problemas = [];
+  const radar = opcoes && opcoes.tipo === 'radar' ? conferirCandidatos(linhas, problemas) : null;
   const achados = linhasDaSecao(linhas, ACHADOS, CAB_ACHADOS);
   if (!achados || !achados.length) problemas.push('nenhum achado: falta a tabela da secao "' + ACHADOS + '"');
   for (const a of achados || []) {
@@ -88,13 +123,13 @@ function conferir(texto) {
   if (bytes > TETO_DA_REFERENCIA) {
     problemas.push('a ficha tem ' + bytes + ' bytes e o /esquadro:revisar le inteira so ate 100 KB (' + TETO_DA_REFERENCIA + ')');
   }
-  return {
+  return Object.assign({
     problemas: problemas,
     achados: (achados || []).length,
     semSaber: (semSaber || []).length,
     abertos: (semSaber || []).filter(function (s) { return !!s.c && valor(s.c[1] || '') === 'aberto'; }).length,
     bytes: bytes
-  };
+  }, radar);
 }
 
 /** O tipo pelo caminho relativo a raiz do projeto (`\` ou `/`), ou null fora de .claude/esquadro/referencias/<tipo>-<assunto>.md. */
@@ -125,4 +160,4 @@ function naReferencia(antigo, tipo, rel) {
   return { config: config, erros: errosDaReferencia(config) };
 }
 
-module.exports = { GRAUS, QUEM, ESTADOS, conferir, tipoDaFicha, naReferencia };
+module.exports = { GRAUS, QUEM, ESTADOS, ESFORCOS, VALORES, VEREDITOS, conferir, tipoDaFicha, naReferencia };

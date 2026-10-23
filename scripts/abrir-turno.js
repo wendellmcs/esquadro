@@ -4,6 +4,7 @@ const io = require('./lib/io.js');
 const estado = require('./lib/estado.js');
 const saude = require('./lib/saude.js');
 const correcao = require('./lib/correcao.js');
+const radarOferta = require('./lib/radar-oferta.js');
 const config = require('./lib/config.js');
 const volta = require('./lib/volta.js');
 
@@ -47,8 +48,20 @@ io.blindar(function () {
     } catch (err) { aviso = null; }
     if (aviso) return io.segurarMensagem(aviso);
     // A1 (D426): a chave sugerirAprender (padrao ligado) vem do projeto.json; ilegivel ou ausente = ligado.
-    const parece = correcao.pareceCorrecao(e.prompt) &&
-      correcao.ligada(config.carregarProjeto(config.raizDoProjeto(e.cwd || process.cwd())));
+    // O projeto.json so e lido quando algum detector bateu (como antes: prompt comum nao toca o disco).
+    const candidataCorrecao = correcao.pareceCorrecao(e.prompt);
+    const candidataOferta = radarOferta.parecePedidoDeMelhoria(e.prompt);
+    const projetoDoTurno = candidataCorrecao || candidataOferta
+      ? config.carregarProjeto(config.raizDoProjeto(e.cwd || process.cwd())) : null;
+    const parece = candidataCorrecao && correcao.ligada(projetoDoTurno);
+    // T3b (D611): pedido de melhoria/funcao nova oferece o radar do usuario, 1 vez por sessao. Nunca no repositorio
+    // do proprio plugin (la o radar e do mantenedor). Qualquer falha ao decidir = sem oferta.
+    let ofertar = false;
+    try {
+      ofertar = candidataOferta && radarOferta.ligada(projetoDoTurno) &&
+        !require('./lib/vigia-local.js').ehRepoDoPlugin(e.cwd || process.cwd());
+    } catch (err) { ofertar = false; }
+    let oferecer = false;
     let sugerir = false;
     // A5-05: o estado que nao grava nao cala a resposta a pergunta sobre o contexto; sem a espera gravada, nada de
     // sugestao (sairia a cada prompt).
@@ -70,6 +83,11 @@ io.blindar(function () {
         const espera = bruto === undefined ? 0
           : (typeof bruto === 'number' && isFinite(bruto) ? Math.min(Math.max(bruto, 0), correcao.ESPERA_ENTRE_SUGESTOES)
             : correcao.ESPERA_ENTRE_SUGESTOES);
+        // T3b: campo da SESSAO (estado.CAMPOS_DA_SESSAO). Ofereceu uma vez, nao oferece mais nesta sessao.
+        if (ofertar && s.ofereceuRadar !== true) {
+          oferecer = true;
+          s.ofereceuRadar = true;
+        }
         if (parece && espera === 0) {
           sugerir = true;
           s.esperaAprender = correcao.ESPERA_ENTRE_SUGESTOES;
@@ -80,7 +98,7 @@ io.blindar(function () {
         }
         return s;
       });
-    } catch (err) { sugerir = false; }
+    } catch (err) { sugerir = false; oferecer = false; }
     // T10-4 (D357): quem pergunta se o contexto/memoria esta bom ja tem a resposta - dispara toda
     // vez que a pergunta vier (nao e "uma vez por sessao"). Sem projeto.json tambem.
     // A1: as duas podem valer no mesmo prompt ("o contexto esta bom? eu ja te disse isso"): um so
@@ -88,6 +106,7 @@ io.blindar(function () {
     const avisos = [];
     if (saude.perguntaSobreSaude(e.prompt)) avisos.push(saude.INSTRUCAO_DA_PERGUNTA);
     if (sugerir) avisos.push(correcao.INSTRUCAO_DA_CORRECAO);
+    if (oferecer) avisos.push(radarOferta.INSTRUCAO_DA_OFERTA);
     if (avisos.length) {
       return io.permitir({ hookSpecificOutput: {
         hookEventName: 'UserPromptSubmit', additionalContext: avisos.join('\n\n') } });

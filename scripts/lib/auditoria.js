@@ -76,6 +76,32 @@ function lerSkills(cwd) {
   });
 }
 
+// D615 (L10 do censo da D612): as skills do proprio plugin, com o nome como o ambiente as lista (esquadro:<nome>).
+// Entram so no cruzamento com as do projeto: o corpo delas carrega so quando chamadas, entao o peso nao as soma.
+const PASTA_DO_PLUGIN = path.join(__dirname, '..', '..', 'skills');
+
+function lerSkillsDoPlugin() {
+  let nomes = [];
+  try { nomes = fs.readdirSync(PASTA_DO_PLUGIN); } catch (e) { return []; }
+  const saida = [];
+  for (const nome of nomes) {
+    try {
+      const texto = fs.readFileSync(path.join(PASTA_DO_PLUGIN, nome, 'SKILL.md'), 'utf8');
+      const m = texto.match(/^description:\s*(.+)$/im);
+      saida.push({ nome: 'esquadro:' + nome, descricao: m ? m[1] : '' });
+    } catch (e) { /* pasta sem SKILL.md */ }
+  }
+  return saida;
+}
+
+/** Os pares projeto x plugin (a = do projeto, b = do plugin); par entre duas do mesmo lado fica de fora. */
+function cruzarComPlugin(doProjeto, doPlugin) {
+  const doLado = new Set(doPlugin.map(function (s) { return s.nome; }));
+  return sobreposicoes(doProjeto.concat(doPlugin)).filter(function (p) {
+    return !doLado.has(p.a) && doLado.has(p.b);
+  });
+}
+
 // Limite de CARGA do MEMORY.md, da documentacao oficial do Claude Code (memory.md): so as
 // primeiras 200 linhas ou 25 KB entram na sessao, o que vier primeiro. NAO e o teto de
 // instrucao do limites.json (esse e medido por nos, e nao soma o MEMORY.md): e o da doc.
@@ -223,6 +249,10 @@ function auditar(cwd, projeto, opcoes) {
     peso: instrucoes.contar(cwd, projeto || {}, candidatos),
     skills: skills.map(function (s) { return s.nome; }),
     sobreposicoes: sobreposicoes(skills),
+    doPlugin: (function () {
+      const plugin = lerSkillsDoPlugin();
+      return { skills: plugin.map(function (s) { return s.nome; }), sobreposicoes: cruzarComPlugin(skills, plugin) };
+    })(),
     contradicoes: contradicoes(regras),
     regras: lidas.estado,
     foraDaRubrica: foraDaRubrica,

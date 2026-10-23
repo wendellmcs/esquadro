@@ -32,7 +32,9 @@ Em `.claude/esquadro/handoff/AAAA-MM-DD-<slug>.md`, com **todas** estas seções
 1. **Ordem de leitura** — caminho absoluto do plano, do ledger e do handoff anterior, na ordem.
 2. **Topologia** — cada repositório envolvido, com branch e **SHA do HEAD**, colados do passo 1.
 3. **Onde estamos** — em que etapa do plano, e qual é a próxima, **com o texto da etapa conferido no
-   arquivo**, não parafraseado.
+   arquivo**, não parafraseado. Com estudo em andamento, o caminho de cada ficha: a do radar
+   (`.claude/esquadro/radar/<AAAA-MM-DD>.md`) e a de referência (`.claude/esquadro/referencias/`), e se ela
+   já entrou em `referencias` ou espera o sim do dono — senão o chat novo estuda tudo de novo.
 4. **Decisões humanas já tomadas** — na forma "não perguntar de novo", com a data.
 5. **Pendências e bloqueios que NÃO são achado desta sessão** — falha pré-existente é isto, e sem
    esta seção o próximo chat vai "descobrir" e perder tempo. **Pendência não fica arrastada de handoff

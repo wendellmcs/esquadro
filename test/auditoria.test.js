@@ -563,3 +563,25 @@ test('peso (D370): auditar.js sem projeto.json pesa o CLAUDE.md como candidata; 
     assert.strictEqual(com.total, 0);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// D615 (L10 do censo da D612): as skills do PLUGIN entram na auditoria so no cruzamento com as do projeto - o corpo
+// delas carrega so quando chamadas, entao o peso nao muda. Caso real do workspace do dono: padrao-aaa x esquadro:padrao.
+test('auditoria (D615): skill do projeto que disputa o gatilho de uma skill do plugin e apontada em doPlugin', () => {
+  const dir = pasta('plugin-cruzado');
+  try {
+    const plugin = fs.readFileSync(path.join(__dirname, '..', 'skills', 'revisar', 'SKILL.md'), 'utf8');
+    const desc = plugin.match(/^description:\s*(.+)$/m)[1];
+    fs.mkdirSync(path.join(dir, '.claude', 'skills', 'minha-revisao'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.claude', 'skills', 'minha-revisao', 'SKILL.md'),
+      '---\nname: minha-revisao\ndescription: ' + desc + '\n---\n\n# minha revisao\n');
+    const r = aud.auditar(dir, { fontesCanonicas: [] });
+    assert.ok(r.doPlugin, 'a saida traz as skills do plugin');
+    assert.ok(r.doPlugin.skills.includes('esquadro:revisar') && r.doPlugin.skills.includes('esquadro:radar'));
+    const par = r.doPlugin.sobreposicoes.filter(function (s) { return s.a === 'minha-revisao' && s.b === 'esquadro:revisar'; });
+    assert.strictEqual(par.length, 1, JSON.stringify(r.doPlugin.sobreposicoes));
+    // so o cruzamento: par entre duas skills do plugin nao e assunto do projeto
+    assert.ok(r.doPlugin.sobreposicoes.every(function (s) { return s.b.indexOf('esquadro:') === 0 && s.a.indexOf('esquadro:') !== 0; }));
+    // o peso nao soma o plugin
+    assert.ok(!r.peso.porArquivo.some(function (p) { return /revisar/.test(p.arquivo) && !/minha-revisao/.test(p.arquivo); }));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

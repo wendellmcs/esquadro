@@ -146,6 +146,17 @@ nunca de memória nem do handoff.
 
 Tarefa simples usa o mesmo raciocínio de forma compacta. "Rápido" nunca significa improvisado.
 
+**Cada peça na hora em que ajuda.** O esquadro tem comandos para momentos certos; ofereça-os ali, nunca
+em toda tarefa, e só rode o que custa com o sim do dono:
+
+- pedido de função nova ou de melhoria no projeto → `/esquadro:radar` (projetos públicos parecidos);
+- marcha AAA sem referência que se abra → `/esquadro:referencia` (§4.1);
+- trabalho escrito, antes de dar por pronto → `/esquadro:revisar`;
+- antes de um release, ou ao fechar AAA de código → `/esquadro:atalhos` (atalho sem gatilho de troca);
+- skills e regras acumuladas → `/esquadro:auditar`; dúvida se o limiar de troca de chat serve →
+  `/esquadro:calibrar`;
+- correção do dono que vale para as próximas vezes → `/esquadro:aprender`.
+
 ## 4. O padrão AAA
 
 O rito de qualidade máxima. Quatro mecanismos, nesta ordem.
@@ -168,8 +179,9 @@ que existe para este tipo de entrega, no mercado ou no próprio projeto. Ela tem
 cópias A e B, sem dizer qual é o novo) como `R.txt`, o arquivo com o texto dela. Cada lente julga duas
 vezes: na ordem normal e numa 2ª passada com A e B trocados, e contra a referência só vale o que se repete
 nas duas. Pronto, contra ela, é empatar ou vencer em cada lente,
-nas duas ordens, sem lacuna P0/P1. Sem referência que se abra, diga "sem referência" e use o artefato
-irmão acima.
+nas duas ordens, sem lacuna P0/P1. Sem referência que se abra, ofereça o `/esquadro:referencia`: ele
+estuda os líderes do mesmo tipo e, com o sim do dono, grava a ficha em `referencias`. Se não couber agora,
+diga "sem referência" e use o artefato irmão acima.
 
 ### 4.2 Lentes distintas, não inspetores repetidos
 

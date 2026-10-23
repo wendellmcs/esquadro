@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.13.0 — radar: projetos públicos parecidos com o seu, cruzados com o seu projeto
+
+Comando novo de estudo, o `/esquadro:radar`, e as peças do plugin passam a se chamar umas às outras na hora em que
+ajudam. Cada mudança ganhou antes um teste que falhava e passou pela revisão cega.
+
+**Novo**
+
+- **`/esquadro:radar`.** Busca projetos públicos parecidos com o que você está construindo (até 10, por tema, pela
+  busca do GitHub), ou uma lista que você passar. Lê todos por cima, até 5 a fundo, e grava uma ficha em
+  `.claude/esquadro/radar/<AAAA-MM-DD>.md` com o que vale trazer, como entra, como fica melhor que o original,
+  esforço, valor, licença e veredito (adotar, inspiração ou descartar). Licença fechada, ELv2 ou AGPL: só a ideia,
+  reescrita. Na dúvida sobre o encaixe, faz no máximo 3 perguntas. Só lê e propõe: o que você escolher entra com teste
+  antes e revisão cega. Medido numa rodada real: cerca de US$ 1,20 e 6 minutos numa sessão Sonnet, com 4 projetos a
+  fundo.
+- **O radar se oferece sozinho.** Quando você pede melhoria, sugestão ou função nova, o Claude pergunta, uma vez por
+  sessão e com o custo, se quer a busca; nada roda sem o seu sim. Nunca no repositório do próprio plugin;
+  `"oferecerRadar": false` desliga.
+- **`referencia.js --tipo radar`** confere a ficha do radar em qualquer pasta, mais a tabela dos candidatos.
+- **Para quem mantém o plugin: o radar da semana.** Toda segunda, uma rotina na nuvem lê os projetos em alta da semana
+  no GitHub e grava a ficha num repositório privado; uma tarefa agendada do Windows a traz para
+  `~/.claude/esquadro/vigia/radar/`, e o começo de cada sessão mostra uma linha só, com quantos candidatos e quantos
+  para adotar. Usa a mesma chave da novidade da semana do vigia (o outro aviso semanal da abertura, que já existia):
+  `"vigia": true` em `.claude/esquadro/projeto.json` mostra as duas linhas, `false` tira as duas.
+
+**Melhora: cada peça na hora em que ajuda**
+
+- O manual (`padrao`) indica o `/esquadro:referencia` na marcha AAA e, no ciclo de trabalho, qual comando ajuda em
+  cada momento (função nova, antes de publicar, a troca de chat).
+- O candidato escolhido no radar é estudado pelo método do `/esquadro:referencia` antes da proposta, e o fecho dele cita
+  os atalhos deliberados e a lente de código enxuto. O `/esquadro:referencia` lê a lista do que o radar já estudou e
+  divide a leitura com o `/esquadro:paralelo`.
+- O `/esquadro:init` termina com os próximos comandos, uma frase cada; o `/esquadro:handoff` leva os estudos em
+  andamento; o `/esquadro:revisar` lembra o `/esquadro:atalhos`.
+- A abertura avisa ficha de referência guardada fora da lista `referencias`, ou com mais de 180 dias.
+- O `/esquadro:auditar` também mede as skills do plugin contra as do seu projeto e aponta as que se sobrepõem.
+
 ## 0.12.0 — revisão do plugin inteiro: portões que deixavam passar, revisão cega que aprovava sem voto, init que liga a atualização
 
 Uma revisão de todo o plugin, em 12 áreas, deu 40 consertos, feitos em 6 lotes; dois deles são testes que faltavam.

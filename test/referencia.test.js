@@ -242,6 +242,89 @@ test('script: ficha com problema, fora da pasta ou do nome, ou sem projeto.json 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// ── a ficha do radar (plano do radar, T2; D609) ──────────────────────────
+// A ficha do radar e a da referencia mais a secao dos candidatos. Mora fora do projeto (o arquivo puxado da nuvem fica
+// em ~/.claude/esquadro/), por isso o tipo vem de --tipo radar, nao do caminho; e nunca entra na `referencias`.
+
+const CANDIDATOS = [
+  '## Candidatos',
+  '',
+  '| Repo | Licença | Como entra | Como melhora | Esforço | Valor | Veredito |',
+  '|---|---|---|---|---|---|---|',
+  '| anomalyco/opencode | MIT | regras allow/ask/deny no portão de escopo | determinístico, sem modelo no meio | M | médio | INSPIRAÇÃO |',
+  '| cursor/plugins | MIT | gatilho "travado" no portão de fecho | barra em vez de só lembrar | P | alto | adotar |',
+  '| NationalSecurityAgency/ghidra | Apache-2.0 | não entra | - | P | baixo | descartar |',
+  ''
+].join('\n');
+const FICHA_RADAR = FICHA.replace('## O que ficou sem saber', CANDIDATOS + '\n## O que ficou sem saber');
+
+test('conferir radar: a ficha com os candidatos passa e conta candidatos e adotados', () => {
+  const r = referencia.conferir(FICHA_RADAR, { tipo: 'radar' });
+  assert.deepStrictEqual(r.problemas, []);
+  assert.strictEqual(r.candidatos, 3);
+  assert.strictEqual(r.adotar, 1);
+  assert.strictEqual(r.achados, 4, 'os achados seguem contados');
+  assert.deepStrictEqual(referencia.conferir(FICHA_RADAR).problemas, [], 'controle: sem tipo, a secao a mais nao atrapalha');
+});
+
+test('conferir radar: sem a secao dos candidatos, ou com ela vazia, nao passa', () => {
+  assert.match(referencia.conferir(FICHA, { tipo: 'radar' }).problemas.join(' '), /## Candidatos/);
+  const vazia = FICHA_RADAR.split('\n').filter((l) => !/^\| (anomalyco|cursor|National)/.test(l)).join('\n');
+  assert.match(referencia.conferir(vazia, { tipo: 'radar' }).problemas.join(' '), /nenhum candidato/);
+});
+
+test('conferir radar: esforco, valor, veredito fora da lista, licenca vazia ou como entra vazio viram problema com a linha', () => {
+  const boa = '| cursor/plugins | MIT | gatilho "travado" no portão de fecho | barra em vez de só lembrar | P | alto | adotar |';
+  const casos = [
+    ['| cursor/plugins | MIT | gatilho | barra | XL | alto | adotar |', /esforço/],
+    ['| cursor/plugins | MIT | gatilho | barra | P | enorme | adotar |', /valor/],
+    ['| cursor/plugins | MIT | gatilho | barra | P | alto | talvez |', /veredito/],
+    ['| cursor/plugins |  | gatilho | barra | P | alto | adotar |', /licença/],
+    ['| cursor/plugins | MIT | - | barra | P | alto | adotar |', /como entra/],
+    ['| cursor/plugins | MIT | gatilho | ? | P | alto | inspiracao |', /como melhora/],
+    ['| cursor/plugins | MIT | gatilho | barra | P | alto |', /colunas/],
+    ['cursor/plugins | MIT | gatilho | barra | P | alto | adotar |', /barra/]
+  ];
+  for (const [torta, re] of casos) {
+    const p = referencia.conferir(FICHA_RADAR.replace(boa, torta), { tipo: 'radar' }).problemas;
+    assert.strictEqual(p.length, 1, torta + ' -> ' + JSON.stringify(p));
+    assert.match(p[0], re);
+    assert.match(p[0], /^linha \d+: /, 'o problema diz a linha');
+  }
+  // descartado nao entra: "como entra" e "como melhora" podem ficar vazios; sem acento tambem vale
+  assert.deepStrictEqual(referencia.conferir(FICHA_RADAR.replace(boa,
+    '| cursor/plugins | MIT | - | - | p | medio | Descartar |'), { tipo: 'radar' }).problemas, []);
+});
+
+test('script --tipo radar: confere a ficha em qualquer pasta, recusa --gravar e tipo desconhecido', () => {
+  const dir = pasta();
+  try {
+    escrever(dir, '.claude/esquadro/projeto.json', JSON.stringify(PROJETO));
+    escrever(dir, 'fora/semana.md', FICHA_RADAR);
+    const ok = rodar(['fora/semana.md', '--tipo', 'radar'], dir);
+    assert.strictEqual(ok.status, 0, ok.saida);
+    assert.strictEqual(ok.json.ok, true, ok.saida);
+    assert.strictEqual(ok.json.tipo, 'radar');
+    assert.strictEqual(ok.json.candidatos, 3);
+    assert.strictEqual(ok.json.adotar, 1);
+    // s116 (mutacao que escapou): a ficha depois da flag; o valor do --tipo nao e tomado pela ficha.
+    const depois = rodar(['--tipo', 'radar', 'fora/semana.md'], dir);
+    assert.strictEqual(depois.status, 0, depois.saida);
+    assert.match(depois.json.ficha, /semana\.md$/, depois.saida);
+    const g = rodar(['fora/semana.md', '--tipo', 'radar', '--gravar'], dir);
+    assert.strictEqual(g.status, 1, g.saida);
+    assert.strictEqual(g.json.gravou, false);
+    assert.match(g.json.erro, /radar nao entra na referencias.*chat/, 'a recusa e a do radar, nao a validacao do projeto.json');
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, '.claude/esquadro/projeto.json'), 'utf8')).referencias,
+      undefined, 'nada gravado');
+    const torto = rodar(['fora/semana.md', '--tipo', 'radr'], dir);
+    assert.strictEqual(torto.status, 1, torto.saida);
+    assert.match(torto.json.erro, /--tipo/);
+    const semCand = rodar(['fora/semana.md'], dir);
+    assert.strictEqual(semCand.status, 1, 'controle: sem --tipo, fora da pasta das referencias segue recusada');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // ── a skill: o texto do mock e da D580 ───────────────────────────────────
 
 function lerSkill() { return fs.readFileSync(SKILL, 'utf8').replace(/\r\n/g, '\n'); }

@@ -183,7 +183,9 @@ const CAMPOS_DA_SESSAO = ['avisouSemConfig', 'avisouTipoErrado', 'avisouApelido'
   // Plano 091 T6: as ordens dadas e ainda nao cumpridas (lib/ordens.js); a skill que roda depois as cumpre.
   'ordensPendentes',
   // D569 (0.9.1): o aviso inteiro do cd corrigido ja saiu nesta sessao; os seguintes vao curtos.
-  'avisouCdCorrigido'];
+  'avisouCdCorrigido',
+  // T3b (D611): a oferta do radar sai 1 vez por sessao; sem isto, o fecho do turno apagava a marca e a oferta repetia.
+  'ofereceuRadar'];
 const CAMPOS_DO_TURNO = ['trabalhoReal', 'bloqueouNesteTurno', 'buscouNesteTurno', 'contadores', 'gravouHandoff'];
 
 /** Os campos da sessao que este estado tem, para o fecho carregar adiante. */

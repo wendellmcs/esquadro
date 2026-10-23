@@ -125,6 +125,12 @@ serve para qual papel, e quanto ele aceita pagar. Com os fatos na mão, a pergun
    documentado); nunca "0 injeções". Se vier `aviso`, mostre-o ao lado do zero.
 2. **Sobreposições.** Pares de skills cujos gatilhos disputam a mesma situação. Duas skills que
    disparam no mesmo momento significam que **nenhuma das duas dispara de forma confiável.**
+
+   2b. **Contra as skills do plugin.** A chave `doPlugin`: `sobreposicoes` traz os pares em que uma
+   skill do projeto (`a`) disputa o gatilho de uma do esquadro (`b`, como `esquadro:padrao`). Diga
+   qual das duas o projeto quer que mande naquele momento; a do plugin não se apaga, mas a do projeto
+   pode passar a chamá-la em vez de repeti-la. O peso não soma o plugin: o corpo das skills dele só
+   carrega quando são chamadas.
 3. **Contradições.** Mesmo gatilho, ações diferentes. Isto não é preferência: é o agente escolhendo
    sozinho qual regra obedecer, que é o mesmo que não ter regra.
 

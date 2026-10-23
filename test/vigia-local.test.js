@@ -131,6 +131,8 @@ test('091 #10: o proprio repositorio do esquadro e reconhecido', () => {
 test('091 #10: a abertura passa ao vigia o cwd cru da sessao (nao a raiz do projeto.json)', () => {
   const abertura = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'abertura.js'), 'utf8');
   assert.ok(/avisoDoVigia\(projeto, \{ cwd: e\.cwd \|\| process\.cwd\(\) \}\)/.test(abertura), 'abertura sem o cwd cru');
+  // T4: o radar tambem liga sozinho no repositorio do plugin, entao precisa do mesmo cwd (a mutacao dele escapava)
+  assert.ok(/avisoDoRadar\(projeto, \{ cwd: e\.cwd \|\| process\.cwd\(\) \}\)/.test(abertura), 'radar sem o cwd cru');
 });
 
 test('pasta(env): ESQUADRO_VIGIA vence; sem ela cai em ~/.claude/esquadro/vigia', () => {
@@ -364,4 +366,155 @@ test('D148: a lib do vigia e a abertura nao abrem rede', () => {
     assert.strictEqual(abertura.indexOf(proibido), -1, 'abertura.js contem ' + proibido);
   }
   assert.ok(abertura.indexOf('vigia-local.js') !== -1, 'a abertura nao liga o vigia');
+});
+
+// ------------------------------------------------ Plano do radar, T4: o bloco do radar na abertura
+// A tarefa agendada roda o vigia-puxar.js de novo com --destino <pasta do vigia>/radar, que grava ali o mesmo
+// novidades.md (a ficha da semana, 1a linha `semana:`). A abertura so conta: candidatos e quantos para adotar; o
+// texto da ficha (de terceiros) nao entra, quem mostra e o /esquadro:radar.
+
+const FICHA_RADAR = [
+  'semana: 2026-10-19',
+  '',
+  '# Radar da semana',
+  '',
+  '## Achados',
+  '',
+  '| Camada | Achado | Origem | Grau | Quem agiu |',
+  '|---|---|---|---|---|',
+  '| 1 o que se vê | opencode separa allow/ask/deny | opencode README.md:10 | observado | agente |',
+  '',
+  '## Candidatos',
+  '',
+  '| Repo | Licença | Como entra | Como melhora | Esforço | Valor | Veredito |',
+  '|---|---|---|---|---|---|---|',
+  '| anomalyco/opencode | MIT | regras no portão de escopo | determinístico | M | médio | INSPIRAÇÃO |',
+  '| cursor/plugins | MIT | gatilho no portão de fecho | barra em vez de lembrar | P | alto | adotar |',
+  '| NationalSecurityAgency/ghidra | Apache-2.0 | não entra | - | P | baixo | descartar |',
+  '',
+  '## O que ficou sem saber',
+  '',
+  '| Pergunta | Estado | O que mediria |',
+  '|---|---|---|',
+  '| Como o opencode roda instalado | aberto | Instalar numa pasta de teste |',
+  '',
+  'Não li: as imagens.',
+  ''
+].join('\n');
+
+function avisoRadar(base, agora, projeto) {
+  return vigia.avisoDoRadar(projeto === undefined ? LIGADO : projeto, { pasta: base, agora: agora });
+}
+
+test('radar desligado (sem a chave fora do plugin, vigia:false, sem projeto) devolve vazio e nao toca o disco', () => {
+  const base = temp('radar-off');
+  const dir = path.join(base, 'nao-existe');
+  try {
+    for (const p of [{}, { vigia: false }, { vigia: 'true' }, null, 'lixo']) {
+      assert.strictEqual(vigia.avisoDoRadar(p, { pasta: dir, agora: AGORA, cwd: base }), '', JSON.stringify(p));
+    }
+    assert.ok(!fs.existsSync(dir), 'tocou o disco desligado');
+  } finally { fs.rmSync(base, { recursive: true, force: true }); }
+});
+
+test('radar: ficha nova mostra a semana e a conta, sem o texto da ficha; grava visto na pasta do radar; 2a calada', () => {
+  const base = temp('radar-nova');
+  const dir = path.join(base, 'radar');
+  try {
+    novidades(dir, FICHA_RADAR);
+    const t = avisoRadar(base, AGORA + 9 * DIA);
+    const linhas = t.split('\n');
+    assert.strictEqual(linhas.length, 2, t);
+    assert.strictEqual(linhas[0], 'esquadro: radar - ficha da semana de 2026-10-19: 3 candidatos, 1 para adotar. Para ver e escolher: /esquadro:radar.');
+    assert.ok(/^Arquivo inteiro: .*radar[\\/]novidades\.md\. Para desligar: "vigia": false em \.claude\/esquadro\/projeto\.json\.$/.test(linhas[1]), t);
+    assert.strictEqual(t.indexOf('opencode'), -1, 'o texto de terceiros entrou na abertura: ' + t);
+    assert.deepStrictEqual(lerJson(dir, 'visto.json'), { semana: '2026-10-19' });
+    assert.ok(!fs.existsSync(path.join(base, 'visto.json')), 'marcou a visto do vigia');
+    assert.strictEqual(avisoRadar(base, AGORA + 9 * DIA), '', 'mostrou a mesma ficha duas vezes');
+  } finally { fs.rmSync(base, { recursive: true, force: true }); }
+});
+
+test('radar: 1 candidato no singular; ficha fora do formato diz quantos problemas', () => {
+  const base = temp('radar-formato');
+  const dir = path.join(base, 'radar');
+  try {
+    const um = FICHA_RADAR.split('\n').filter((l) => !/^\| (anomalyco|cursor)/.test(l)).join('\n');
+    novidades(dir, um);
+    assert.strictEqual(avisoRadar(base, AGORA).split('\n')[0],
+      'esquadro: radar - ficha da semana de 2026-10-19: 1 candidato, 0 para adotar. Para ver e escolher: /esquadro:radar.');
+    novidades(dir, 'semana: 2026-10-26\n\n## Candidatos\n\n| Repo | Licença |\n|---|---|\n| x/y | MIT |\n');
+    const t = avisoRadar(base, AGORA).split('\n')[0];
+    // o cabecalho de 2 colunas nao e o do radar e conta como linha (lib/referencia.js): a conta aqui e o de menos
+    assert.ok(/^esquadro: radar - ficha da semana de 2026-10-26: \d+ candidatos?, 0 para adotar\. Ficha fora do formato \(\d+ problemas\): o \/esquadro:radar confere\. Para ver e escolher: \/esquadro:radar\.$/.test(t), t);
+  } finally { fs.rmSync(base, { recursive: true, force: true }); }
+});
+
+// Revisao da T5, R1: 1 problema saia "1 problemas"; e a conta que lanca deixava o radar mudo para sempre (o catch
+// devolvia '' antes de gravar a semana). A lib de referencia e a mesma instancia em cache: o teste troca a conta.
+test('radar: 1 problema no singular; a conta que falha nao cala a ficha e marca a semana', () => {
+  const referencia = require('../scripts/lib/referencia.js');
+  const original = referencia.conferir;
+  const base = temp('radar-conta');
+  const dir = path.join(base, 'radar');
+  try {
+    novidades(dir, FICHA_RADAR);
+    referencia.conferir = () => ({ problemas: ['x'], candidatos: 2, adotar: 0 });
+    assert.ok(avisoRadar(base, AGORA).indexOf('Ficha fora do formato (1 problema): ') !== -1, 'plural fixo');
+    novidades(dir, FICHA_RADAR.replace('semana: 2026-10-19', 'semana: 2026-10-26'));
+    referencia.conferir = () => { throw new Error('conta quebrada'); };
+    const t = avisoRadar(base, AGORA);
+    assert.ok(t.indexOf('esquadro: radar - ficha da semana de 2026-10-26: nao consegui contar os candidatos (Error: conta quebrada). Para ver e escolher: /esquadro:radar.') === 0, t);
+    assert.deepStrictEqual(lerJson(dir, 'visto.json'), { semana: '2026-10-26' });
+    // R2: a conta que devolve fora da forma (sem problemas, null) lancava fora do try e calava a ficha do mesmo jeito
+    // R3: e a que devolve lista sem as contas, ou problemas que nao e lista, saia "undefined candidatos" ou "3 problemas"
+    [['2026-11-02', () => ({})], ['2026-11-09', () => null], ['2026-11-16', () => ({ problemas: [] })],
+      ['2026-11-23', () => ({ problemas: 'xyz', candidatos: 1, adotar: 0 })]].forEach(function (c) {
+      novidades(dir, FICHA_RADAR.replace('semana: 2026-10-19', 'semana: ' + c[0]));
+      referencia.conferir = c[1];
+      const s = avisoRadar(base, AGORA);
+      assert.ok(s.indexOf('esquadro: radar - ficha da semana de ' + c[0] + ': nao consegui contar os candidatos (') === 0, s);
+      assert.deepStrictEqual(lerJson(dir, 'visto.json'), { semana: c[0] });
+    });
+  } finally {
+    referencia.conferir = original;
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('radar: problemas (ausente, ilegivel, velha) avisam 1 vez por dia, com a ultima busca, sem calar o vigia', () => {
+  const base = temp('radar-problema');
+  const dir = path.join(base, 'radar');
+  try {
+    novidades(base, RELATORIO);
+    const t = avisoRadar(base, AGORA);
+    assert.ok(t.indexOf('esquadro: radar ligado, mas nenhuma ficha chegou ainda em ') === 0, t);
+    assert.ok(/radar \(a tarefa agendada puxa toda segunda\)\.$/.test(t), t);
+    assert.strictEqual(avisoRadar(base, AGORA + 3600000), '', 'repetiu no mesmo dia');
+    assert.ok(aviso(base, AGORA).indexOf('novidade da semana de 2026-10-05') !== -1, 'o radar calou o vigia');
+
+    novidades(dir, 'sem a linha\n');
+    fs.writeFileSync(path.join(dir, 'ultima-busca.json'), JSON.stringify({ ok: false, quando: '2026-10-12T10:30:00.000Z', motivo: 'git fetch saiu com 128' }));
+    const i = avisoRadar(base, AGORA + DIA);
+    assert.ok(i.indexOf('esquadro: radar - nao consegui ler ') === 0 && i.indexOf('sem a linha "semana: AAAA-MM-DD"') !== -1, i);
+    assert.ok(i.indexOf(' Ultima busca falhou em 2026-10-12T10:30:00.000Z: git fetch saiu com 128.') !== -1, i);
+
+    novidades(dir, FICHA_RADAR);
+    fs.rmSync(path.join(dir, 'ultima-busca.json'));
+    assert.ok(avisoRadar(base, AGORA + 2 * DIA).indexOf('ficha da semana de 2026-10-19') !== -1);
+    const dia14 = Date.UTC(2026, 10, 2);
+    assert.strictEqual(avisoRadar(base, dia14), 'esquadro: radar sem ficha nova desde 2026-10-19: confira a rotina na nuvem e a tarefa agendada.');
+    assert.strictEqual(avisoRadar(base, dia14 + 3600000), '');
+  } finally { fs.rmSync(base, { recursive: true, force: true }); }
+});
+
+test('radar: toda saida e ASCII, mesmo com acento no caminho; nunca lanca', () => {
+  const base = path.join(temp('radar-ascii'), 'pasta-ção');
+  try {
+    assert.ok(/^[\x20-\x7E\n]*$/.test(avisoRadar(base, AGORA)));
+    novidades(path.join(base, 'radar'), FICHA_RADAR);
+    const t = avisoRadar(base, AGORA);
+    assert.ok(t && /^[\x20-\x7E\n]*$/.test(t), JSON.stringify(t));
+    assert.doesNotThrow(() => vigia.avisoDoRadar(LIGADO, { pasta: base, agora: NaN }));
+    assert.strictEqual(vigia.avisoDoRadar(LIGADO, { pasta: { toString() { throw new Error('x'); } } }), '');
+  } finally { fs.rmSync(path.dirname(base), { recursive: true, force: true }); }
 });
