@@ -39,7 +39,7 @@ function secaoDaRegua(texto) {
   return linhas.slice(ini, fim).join('\n').trim() + '\n';
 }
 
-const USO = 'uso: preparar-revisao.js --arquivo <caminho relativo> [--semente <texto>]\n';
+const USO = 'uso: preparar-revisao.js --arquivo <caminho relativo> [--completa] [--semente <texto>]\n';
 
 // 0.3.2, item 10: flag presente sem valor (ultima da linha) ou seguida de outra flag ("--arquivo
 // --semente x") deixava o alvo virar "--semente", ou a semente cair calada no pid. Agora e erro de uso
@@ -47,7 +47,7 @@ const USO = 'uso: preparar-revisao.js --arquivo <caminho relativo> [--semente <t
 //
 // 0.3.3, itens 13 e 14: so e "valor que falta" quando o proximo argumento e outra flag do USO (um arquivo
 // chamado `--x.js` vale) ou quando e vazio (`--semente ''` caia no pid, calado).
-const FLAGS_DO_USO = ['--arquivo', '--semente'];
+const FLAGS_DO_USO = ['--arquivo', '--semente', '--completa'];
 function arg(nome) {
   const i = process.argv.indexOf('--' + nome);
   if (i === -1) return null;
@@ -174,11 +174,15 @@ const diff = novo || identico ? null : git.diffContraHead(cwd, rel);
 const linhasMudadas = identico ? 0 : (diff ? Math.max(diff.removidas, diff.acrescentadas) : null);
 const projetoCfg = config.carregarProjeto(raizProjeto);
 const ehEstilo = design.ehArquivoDeEstilo(relNaRaiz, projetoCfg);
-const faixa = veredito.faixaDaMudanca({
+const faixaMedida = veredito.faixaDaMudanca({
   novo: novo, identico: identico, linhasMudadas: linhasMudadas,
   estilo: ehEstilo,
   texto: /\.(md|markdown|txt)$/i.test(rel)
 });
+// L3 (A3-04): o revisar manda subir de faixa por julgamento (mudanca que monta tela, duas sem teste vermelho); sem a
+// flag o pacote seguia recortado. --completa sobe a completa (arquivo inteiro); descer nao tem flag.
+const pediuCompleta = process.argv.indexOf('--completa') !== -1;
+const faixa = pediuCompleta ? 'completa' : faixaMedida;
 
 // D503/D508 (escolhas E1-E4 do plano d503): a referencia de topo do tipo deste arquivo, do projeto.json. Sem ela, o
 // pacote e o de hoje. Torta (nao objeto, ou o tipo nao e lista de texto) nao estoura: fica sem referencia, e o aviso
@@ -388,7 +392,8 @@ try {
   // defeito; o recorte das faixas pequenas (D486) marca cada vao e o aviso manda dizer isso no briefing.
   fs.writeFileSync(path.join(dir, 'A.txt'), r.A.conteudo, 'utf8');
   fs.writeFileSync(path.join(dir, 'B.txt'), r.B.conteudo, 'utf8');
-  const mapaJson = { arquivo: rel, mapa: r.mapa };
+  // L3 (A3-03): a faixa vai no mapa.json; com a da ronda 1, o apurar-ronda.js confere as lentes que votaram.
+  const mapaJson = { arquivo: rel, mapa: r.mapa, faixa: faixa };
   if (novo) mapaJson.novo = true;
   // RV-01 (D422): revisar depois de commitar deixa os dois lados iguais; o apurar le este campo.
   if (identico) mapaJson.identico = true;
@@ -432,6 +437,10 @@ if (arquivada) {
   aviso += ' A revisao anterior deste arquivo ja estava fechada (fechada.json): foi movida inteira, sem apagar ' +
     'nada, para ' + path.relative(cwd, arquivada).replace(/\\/g, '/') + '. Esta e a ronda 1 de uma revisao ' +
     'nova, com o teto de 3 rondas inteiro.';
+}
+if (pediuCompleta && faixaMedida !== 'completa') {
+  aviso += ' Faixa completa pedida por --completa (a medida do diff dava "' + faixaMedida + '"): A e B sao o arquivo ' +
+    'inteiro, e as lentes sao as da tabela de familias.';
 }
 if (recorte) {
   aviso += ' A e B sao recortes (faixa ' + faixa + '): so o trecho mudado, com ' + cegar.TRECHO_MARGEM + ' linhas de ' +

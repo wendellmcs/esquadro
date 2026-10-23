@@ -1,5 +1,81 @@
 # Changelog
 
+## 0.12.0 — revisão do plugin inteiro: portões que deixavam passar, revisão cega que aprovava sem voto, init que liga a atualização
+
+Uma revisão de todo o plugin, em 12 áreas, deu 40 consertos, feitos em 6 lotes; dois deles são testes que faltavam.
+Abaixo eles vêm agrupados pelo que você nota, então um item pode juntar vários. Cada conserto ganhou antes um teste que
+falhava e passou pela revisão cega. Os defeitos menores que sobraram ficaram registrados para uma versão própria.
+
+**Novo**
+
+- **O `/esquadro:init` oferece ligar a atualização automática do plugin.** Marketplace de terceiros vem com ela
+  desligada, então quem instalava ficava parado na versão do dia. Agora o init pergunta e, com o seu sim, grava a
+  chave em `~/.claude/settings.json` (`scripts/ligar-atualizacao.js`; sem `--gravar` ele só mostra o que faria).
+
+**Corrige: portão de comando destrutivo**
+
+- **Apagar com a opção fora do lugar de costume passava.** `rm dist -rf`, `rm --verbose -rf x`, `rm x -Rf` e
+  `sudo rm --verbose -rf x` não eram barrados. Agora a opção vale em qualquer posição.
+- **Opção longa abreviada passava.** O git aceita `reset --har`, `checkout --forc` e `push --del`, mas o portão só
+  conhecia a forma inteira. Agora conhece as abreviações.
+- **Descartar a árvore inteira por outro nome passava.** `git checkout :/`, `./`, `*` e `git restore ./` agora barram
+  como `checkout .`; `dd` com `of=` antes de `if=` e `git branch -d -f` (ou `-df`, `--delete --force`) também.
+- **Um teste publicado levava um ID de sessão real.** Trocado por um inventado, e o `sanitar` passou a acusar ID de
+  sessão que exista nesta máquina.
+
+**Corrige: escopo, commit e agentes**
+
+- **`git -C /outro status && git commit` fazia o portão do commit olhar a pasta errada.** Agora vale o `-C` do próprio
+  commit.
+- **A catraca só olhava o trecho trocado de um Edit.** Um Write por cima do arquivo inteiro passava sem conferência.
+  Agora ela compara o arquivo inteiro, e o portão de estilo não cobra de novo o que já estava fora antes da edição.
+- **O aviso de escopo dava um remédio que não funcionava para nome com espaço, parênteses ou `#`.** Agora o item sai
+  entre crases.
+- **Padrão com barra no fim ou com `{js,ts}` no `projeto.json` não casava nada, e o aviso se calava.** Agora o aviso diz
+  a forma certa.
+- **Subagente `fork` passava pelo portão de custo como o mais barato.** Agora conta como o topo da escada.
+- **O `NotebookEdit` passava sem o portão de escopo.** Agora passa por ele, como o Write e o Edit.
+- **Uma falha ao gravar o estado derrubava o portão de agente.** Agora ele segue e decide.
+
+**Corrige: revisão cega**
+
+- **Dois defeitos diferentes na mesma linha contavam como um só.** Agora cada descrição conta.
+- **Uma ronda com uma lente só, ou com uma lente inventada, aprovava.** Agora a ronda 1 exige as lentes da faixa, e a
+  lente que achou P0 ou P1 tem de votar de novo na ronda seguinte.
+- **Severidade escrita "p1" ou linha escrita "L42" sumia da conta.** Agora se lê. Quando a aprovação descarta algum
+  veredito fora do formato, ela diz quantos.
+- **A skill prometia subir de faixa, e o `preparar-revisao.js` não deixava.** Agora aceita `--completa`.
+- **Justificar um arquivo "fora" sem citar decisão passava.** Agora a justificativa tem de citar a decisão.
+
+**Corrige: init, sanitização e regras**
+
+- **Um `settings.json` com BOM (uma marca invisível que alguns editores põem no começo do arquivo) quebrava a leitura
+  do ambiente.** Agora a marca é ignorada.
+- **O `sanitar` varria o e-mail do autor, mas não o nome.** E num projeto qualquer dizia "LIMPO" deixando `docs/` de
+  fora. Agora varre o nome, e diz que só fica de fora o que o `.gitignore` cobre.
+- **O `/esquadro:aprender` chamado de uma subpasta gravava a regra no lugar errado**, e um arquivo de regras salvo
+  em outra codificação de caracteres (UTF-16) saía estragado. Agora grava na raiz do projeto e recusa o arquivo que não consegue ler, sem mexer nele.
+
+**Corrige: abertura, volta e painel**
+
+- **O resumo do chat parado contava o resumo de compactação como pedido seu.** Agora o ignora.
+- **Uma falha ao gravar o estado da sessão apagava a abertura inteira, regras inclusive.** Agora a abertura sai, com
+  uma linha dizendo que o estado não gravou.
+- **O gasto do mês não dizia quantas linhas ficaram fora da conta** (sem preço ou ilegíveis). Agora diz.
+- **O portão de fecho contava as caixas de uma seção "Critérios" como se fossem da tarefa acima dela.** Agora só um
+  cabeçalho de nível acima fecha a tarefa, e o que está dentro de bloco de código não conta como cabeçalho.
+
+**Corrige: textos**
+
+- A skill gerada para o projeto mandava rodar `node scripts/uso.js` na pasta do projeto, mas o script mora no plugin.
+- O `/esquadro:aprender` dizia que aceita quebra de linha (o script recusa) e que só oferece a regra em uma linha (o
+  gancho manda rodar na mesma resposta e perguntar em 3 opções).
+- O init dizia que `aaa` e `padrao` barram igual; o `aaa` exige também o manual carregado. E ensinava a escrever
+  "Prova de pronto", que o portão de fecho lê como alegação de sucesso.
+- O README mostrava saídas de portão de versões antigas. Agora um teste roda os portões e compara.
+- O "Como instalar" ganhou o caminho de quem não tem chave SSH no GitHub e o aviso de que a política da empresa pode
+  desligar os ganchos de plugin.
+
 ## 0.11.1 — o aviso de volta não some com um resumo estranho, e a descrição conta as oito travas
 
 **Corrige**

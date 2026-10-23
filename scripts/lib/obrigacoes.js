@@ -129,6 +129,16 @@ function acentoFora(s) {
   return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+// A citacao de decisao do FORA (ver conferirResultado): a letra D com o numero, ou a palavra decisao com o numero.
+// O lookahead final recusa o numero que continua em letra ou extensao ("D82abc", "d3.js"). Sem repeticao aninhada:
+// cada espaco so cabe num \s*, e o texto montado de proposito nao faz o regex retroceder em tempo exponencial (D601).
+const CITA_D = /(?:^|[^A-Za-z0-9_])(?:D[\s.#-]{0,2}|d)\d+(?![A-Za-z0-9_]|\.[A-Za-z])/;
+const CITA_DECISAO = /\bdecis(?:ao|oes)\s*(?:(?:numero|nr|n)\.?\s*)?(?:[#\u00ba\u00b0:]\s*)?\d+/i;
+function citaDecisao(texto) {
+  const t = acentoFora(texto);
+  return CITA_D.test(t) || CITA_DECISAO.test(t);
+}
+
 /**
  * A chave com que duas obrigacoes de manuais DIFERENTES se reconhecem como a
  * mesma. Tira o que e enfeite (negrito, codigo, link) e o que e do projeto (a
@@ -390,6 +400,16 @@ function conferirResultado(linhas, resultado) {
     if (mec !== 'NADA' && prova === '') {
       r.invalidez.push('linha "' + l.id + '" afirma cobertura por ' + mec + ' e nao cita nada. ' +
         'Este plugin existe para obrigar a provar em vez de afirmar; a propria tabela nao escapa');
+      continue;
+    }
+    // L3 (A3-20): a exigencia do comentario acima, que o codigo nao cobrava - FORA cita a decisao pelo numero: D82,
+    // D 82, D-82, D.82, D#82, d82 colado, ou "decisao"/"decisoes" (com ou sem til) seguida de numero, "numero", "nr."
+    // ou "n" antes dele. Prosa com numero ("a decisao de 5 minutos", "tela d 5", "d3.js") nao cita.
+    // atalho: D-1 passa como citacao. limite: o regex nao sabe se a decisao existe. trocar quando: o FORA puder
+    // conferir o numero contra o registro de decisoes do projeto.
+    if (mec === 'FORA' && !citaDecisao(prova)) {
+      r.invalidez.push('linha "' + l.id + '" diz FORA sem citar a decisao que a pos fora do plugin: cite a decisao ' +
+        'pelo numero (a letra D seguida do numero dela) e diga o que ela decidiu');
       continue;
     }
     r.classificadas++;

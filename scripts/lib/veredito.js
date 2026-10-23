@@ -120,6 +120,17 @@ function lentesDaFaixa(faixa) {
 
 const SEVERIDADES = ['P0', 'P1', 'P2'];
 
+// L3 (A3-03): a faixa completa nao tem lista fixa (a tabela de familias e do orquestrador); o menor numero dela e o do
+// arquivo so de logica, as LENTES sem as de SAEM_SO_LOGICA.
+const MINIMO_DA_COMPLETA = LENTES.length - SAEM_SO_LOGICA.length;
+
+/** L3 (A3-03): o voto que falta para a apuracao (como a ronda vazia); o codigo deixa o CLI dizer so o que fazer. */
+function votoQueFalta(texto) {
+  const e = new Error(texto);
+  e.codigo = 'VOTO_QUE_FALTA';
+  return e;
+}
+
 // Ronda 1 do 8c.5: a lente entra na chave. Dois defeitos de lentes diferentes na mesma
 // linha sao dois achados; a mesma lente repetindo o mesmo lugar segue sendo um. A
 // severidade continua primeiro: o motivo do teto conta os abertos pelo prefixo P0| e P1|.
@@ -168,6 +179,13 @@ function linhaDoAchado(linha) {
   return Number.isSafeInteger(n) && n >= 1 ? n : null;
 }
 
+/** L3 (A3-05): o achado (ou lacuna) com a severidade sem espaco nas pontas e em maiuscula; o resto como veio. */
+function severidadeCanonica(x) {
+  if (!x || typeof x.severidade !== 'string') return x;
+  const s = x.severidade.trim().toUpperCase();
+  return s === x.severidade ? x : Object.assign({}, x, { severidade: s });
+}
+
 /** O comeco da descricao do achado descartado, para a mensagem; sem descricao, diz isso (e nao "undefined"). */
 function trechoDaDescricao(d) {
   return d === undefined || d === null || String(d).trim() === '' ? '(sem descricao)' : String(d).slice(0, 60);
@@ -184,7 +202,9 @@ function validarVeredito(vd, opcoes) {
   const lacunas = [];
   if (!vd || typeof vd !== 'object') return { ok: false, erros: erros, achadosValidos: [], lacunasValidas: [] };
 
-  for (const a of (vd.achados || [])) {
+  for (const bruto of (vd.achados || [])) {
+    // L3 (A3-05): "p1" e " P1 " sao P1; antes o achado saia descartado e a ronda seca.
+    const a = severidadeCanonica(bruto);
     if (SEVERIDADES.indexOf(a && a.severidade) === -1) {
       erros.push('achado com severidade invalida: ' + (a && a.severidade));
       continue;
@@ -205,7 +225,8 @@ function validarVeredito(vd, opcoes) {
   }
   // D503 (E5): a lacuna para a referencia segue o anti-teatro do achado, e cita o lado que fica atras (A ou B).
   if (opcoes && opcoes.comReferencia && Array.isArray(vd.lacunas)) {
-    for (const l of vd.lacunas) {
+    for (const brutaL of vd.lacunas) {
+      const l = severidadeCanonica(brutaL);
       if (SEVERIDADES.indexOf(l && l.severidade) === -1) {
         erros.push('lacuna com severidade invalida: ' + (l && l.severidade));
         continue;
@@ -399,6 +420,10 @@ function chavePeloTexto(kBase, bruto, variantesDaChave, ronda) {
   return chave;
 }
 
+function descricaoNormal(d) {
+  return String(d).replace(/\s+/g, ' ').trim();
+}
+
 /**
  * rondas: lista de rondas; cada ronda e uma lista de vereditos.
  * Ronda seca = zero achado NOVO de P1 ou acima.
@@ -417,6 +442,9 @@ function chavePeloTexto(kBase, bruto, variantesDaChave, ronda) {
  *                vereditos das duas passadas exigem vsReferencia e lacunas, e os mapas das duas passadas exigem o
  *                lado de A e de B (mapaDoTrabalho); os achados da 2a contam pelo mapa dela e saem com passada 2. Sai `referencia` (null sem ela): { pronta, lentes, lacunas, lentesAtras };
  *                com a ultima ronda fora da referencia, duas secas nao aprovam.
+ *   faixas[i]  = a faixa do mapa.json da ronda i (L3, A3-03). Com a da ronda 1: a ronda 1 sem as lentes da faixa (na
+ *                completa, menos de MINIMO_DA_COMPLETA lentes conhecidas) e a ronda sem a lente que achou P0/P1 do lado
+ *                novo na anterior lancam erro com codigo VOTO_QUE_FALTA.
  * paresCandidatos sai sempre: achado P0/P1 novo da ultima ronda x outro achado do lado novo, mesmo
  * arquivo (o lado, com mapa; o rotulo, sem), a ate DISTANCIA_PAR linhas, chave diferente.
  */
@@ -428,6 +456,8 @@ function apurar(rondas, opcoes) {
   const refutados = conferirRefutados(op.refutados);
   const vistos = new Set();
   const variantesDaChave = new Map();
+  // D602: chave sem ordinal -> as descricoes ja vistas nela, na ordem do ordinal (a 1a e a base)
+  const historicoDaChave = new Map();
   const abertos = new Set();
   let secas = 0;
   let novosDaUltima = [];
@@ -443,10 +473,42 @@ function apurar(rondas, opcoes) {
   const refLentes = new Map();
   let ultimaComReferencia = false;
 
+  // L3 (A3-03): com a faixa da ronda 1 (o mapa.json do preparar-revisao.js a grava), o script confere as lentes; sem
+  // ela (base de antes), a conta de antes.
+  const faixa1 = Array.isArray(op.faixas) && typeof op.faixas[0] === 'string' ? op.faixas[0] : null;
+  let lentesComNovosAntes = new Set();
+  function conferirLentes(indice, ronda, comNovosAntes) {
+    const presentes = new Set(ronda.map(function (vd) { return vd && lenteCanonica(vd.lente); }));
+    const conhecidas = Array.from(presentes).filter(function (l) { return l && chaveDaLente(l) !== null; });
+    const grave = 'grave o veredito de cada uma na pasta vereditos da ronda ' + (indice + 1) +
+      ' (Passo 2 do /esquadro:revisar) e rode de novo';
+    if (indice === 0) {
+      const esperadas = lentesDaFaixa(faixa1);
+      const faltam = esperadas ? esperadas.filter(function (l) { return !presentes.has(l); }) : [];
+      if (faltam.length) {
+        throw votoQueFalta('ronda 1 da faixa ' + faixa1 + ' sem o voto da(s) lente(s) ' + faltam.join(', ') +
+          ': a ronda 1 chama todas as lentes da faixa; ' + grave);
+      }
+      if (!esperadas && conhecidas.length < MINIMO_DA_COMPLETA) {
+        throw votoQueFalta('ronda 1 da faixa ' + faixa1 + ' com ' + conhecidas.length + ' lente(s) conhecida(s) (' +
+          (conhecidas.join(', ') || 'nenhuma') + '): o minimo e ' + MINIMO_DA_COMPLETA + ' (a tabela de familias do ' +
+          'Passo 2 do /esquadro:revisar); chame as que faltam, ' + grave);
+      }
+      return;
+    }
+    const naoVoltaram = Array.from(comNovosAntes).filter(function (l) { return !presentes.has(l); });
+    if (naoVoltaram.length) {
+      throw votoQueFalta('ronda ' + (indice + 1) + ' sem o voto da(s) lente(s) que acharam P0/P1 do lado novo na ronda ' +
+        indice + ': ' + naoVoltaram.join(', ') + '. A ronda seguinte confere o proprio achado (Passo 4 do ' +
+        '/esquadro:revisar): ' + grave + '. Achado refutado na fonte vai em refutados.json e nao obriga a lente a voltar');
+    }
+  }
+
   rondas.forEach(function (ronda, indice) {
     const novos = [];
     const novosChaves = [];
     const antigos = [];
+    const lentesComNovos = new Set();
     const mapa = mapas[indice] && typeof mapas[indice] === 'object' ? mapas[indice] : null;
     const inv = invertidas[indice] && typeof invertidas[indice] === 'object' ? invertidas[indice] : null;
     const comReferencia = inv !== null;
@@ -502,10 +564,42 @@ function apurar(rondas, opcoes) {
               arquivo: lacuna.arquivo, linha: lacuna.linha, descricao: lacuna.descricao });
           }
         }
+        // L3 (A3-01): no MESMO veredito, a mesma chave com outra descricao e outro defeito, nao repeticao: leva o
+        // ordinal (|n2, |n3...). A mesma descricao repetida segue um achado so (D387/pares).
+        // D602 (revisao L3 R3): o ordinal sai do historico da chave entre rondas, nao da ordem do veredito. A descricao
+        // ja vista fica com o ordinal dela; com 2 ou mais descricoes na chave no veredito, a que nao bate ganha ordinal
+        // novo (ali nenhum defeito some; 2 repetidos reescritos molham - custo aceito). Uma descricao so, que nao bate,
+        // fica na base e conta como reescrita: um defeito novo SOZINHO na linha de um ja visto some (desenho D475).
+        const semOrdem = function (a) {
+          const rotulo = rotuloDoArquivo(a.arquivo);
+          const lado = mapaP && rotulo ? mapaP[rotulo] : null;
+          return lado ? [a.severidade, lado, a.linha, lenteChave].join('|') : chaveAchado(a, lenteChave);
+        };
+        const grupos = new Map();
+        for (const a of r.achadosValidos) {
+          const k = semOrdem(a);
+          if (!grupos.has(k)) grupos.set(k, []);
+          const g = grupos.get(k);
+          const d = descricaoNormal(a.descricao);
+          if (g.indexOf(d) === -1) g.push(d);
+        }
+        const vezDaDescricao = new Map();
+        grupos.forEach(function (descricoes, k) {
+          const historico = historicoDaChave.get(k);
+          if (!historico) historicoDaChave.set(k, descricoes.slice());
+          descricoes.forEach(function (d, i) {
+            let vez = historico ? historico.indexOf(d) : i;
+            if (vez === -1 && descricoes.length === 1) vez = 0;
+            else if (vez === -1) vez = historico.push(d) - 1;
+            vezDaDescricao.set(k + '\n' + d, vez + 1);
+          });
+        });
         for (const a of r.achadosValidos) {
           const rotulo = rotuloDoArquivo(a.arquivo);
           const lado = mapaP && rotulo ? mapaP[rotulo] : null;
-          const kBase = lado ? [a.severidade, lado, a.linha, lenteChave].join('|') : chaveAchado(a, lenteChave);
+          const kSemOrdem = semOrdem(a);
+          const vez = vezDaDescricao.get(kSemOrdem + '\n' + descricaoNormal(a.descricao));
+          const kBase = vez === 1 ? kSemOrdem : kSemOrdem + '|n' + vez;
           // D475 (s99): a mesma chave sobre uma linha REESCRITA entre rondas e evidencia nova, nao repeticao.
           const bruto = typeof op.textoDaLinha === 'function' && rotulo ? op.textoDaLinha(indice, rotulo, a.linha, passada) : null;
           const k = chavePeloTexto(kBase, bruto, variantesDaChave, indice + 1);
@@ -527,9 +621,12 @@ function apurar(rondas, opcoes) {
           abertos.add(k);
           novos.push(marcado);
           novosChaves.push(k);
+          lentesComNovos.add(lenteChave);
         }
       }
     }
+    if (faixa1 !== null) conferirLentes(indice, ronda, lentesComNovosAntes);
+    lentesComNovosAntes = lentesComNovos;
     daRonda.forEach(function (e, lente) {
       refLentes.set(lente, { lente: lente, ronda: indice + 1, ordem1: e.ordem1, ordem2: e.ordem2,
         resultado: resultadoDasDuasOrdens(e.ordem1, e.ordem2), lacunas: e.lacunas });

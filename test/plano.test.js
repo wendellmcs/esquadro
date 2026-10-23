@@ -38,6 +38,65 @@ test('plano: conta subitem aberto e fechado por tarefa', () => {
   assert.deepStrictEqual([t[1].n, t[1].abertos, t[1].total], [2, 2, 3]);
 });
 
+// A7-01/A9-07: caixa sob cabecalho que nao e tarefa, de nivel ACIMA dela, nao e passo da tarefa de cima (D604).
+const PLANO_COM_SECAO = [
+  '# Plano',
+  '### Tarefa 1: a',
+  '- [x] a',
+  '- [X] b',
+  '#### Notas da tarefa',
+  '- [ ] passo sob subcabecalho',
+  '```bash',
+  '# comentario no bloco de codigo nao e cabecalho',
+  '```',
+  '- [ ] passo depois do bloco',
+  '## Criterios de aceite',
+  '- [ ] testes passam',
+  '- [ ] doc'
+].join('\n');
+
+test('plano: cabecalho que nao e tarefa fecha a tarefa; subcabecalho e bloco de codigo nao (A7-01)', () => {
+  const t = plano.parseTarefas(PLANO_COM_SECAO);
+  assert.deepStrictEqual(t.map(function (x) { return [x.n, x.abertos, x.total]; }), [[1, 2, 4]]);
+  const i = plano.parseItens(PLANO_COM_SECAO);
+  assert.deepStrictEqual(i.map(function (x) { return [x.id, x.abertos, x.total, x.estado]; }), [['1', 2, 4, 'aberta']]);
+  const fechada = PLANO_COM_SECAO.replace(/- \[ \] passo/g, '- [x] passo');
+  assert.deepStrictEqual(plano.parseTarefas(fechada).map(function (x) { return [x.abertos, x.total]; }), [[0, 4]]);
+  assert.deepStrictEqual(plano.parseItens(fechada).map(function (x) { return x.estado; }), ['feita']);
+});
+
+// D604 (R2 da s107): cabecalho no MESMO nivel da tarefa segue dentro dela - "### Passo 1" sob "### Tarefa 2" nao
+// esconde do portao o passo aberto; "## Criterios" no nivel da "## Tarefa" conta nela (erro do lado seguro).
+test('plano: cabecalho no mesmo nivel da tarefa nao fecha - o passo aberto segue cobrado (D604)', () => {
+  const texto = '### Tarefa 2: a\n- [x] y\n### Passo 1\n- [ ] x\n### Tarefa 3: b\n- [x] z\n';
+  assert.deepStrictEqual(plano.parseTarefas(texto).map(function (x) { return [x.n, x.abertos, x.total]; }), [[2, 1, 2], [3, 0, 1]]);
+  assert.deepStrictEqual(plano.parseItens(texto).map(function (x) { return [x.id, x.abertos, x.total]; }), [['2', 1, 2], ['3', 0, 1]]);
+  const semCaixaPropria = '### Tarefa 2: a\n### Passo 1\n- [ ] x\n';
+  assert.deepStrictEqual(plano.parseTarefas(semCaixaPropria).map(function (x) { return [x.abertos, x.total]; }), [[1, 1]]);
+  const mesmoNivel = '## Tarefa 1: a\n- [x] a\n## Criterios de aceite\n- [ ] testes passam\n';
+  assert.deepStrictEqual(plano.parseTarefas(mesmoNivel).map(function (x) { return [x.abertos, x.total]; }), [[1, 2]]);
+});
+
+// R2 da s107: a cerca so fecha com o marcador que a abriu (mesmo caractere, comprimento igual ou maior); senao a
+// linha ~~~ dentro de um bloco ``` "fechava" a cerca e o "# comentario" depois escondia do portao o passo aberto.
+test('plano: cerca so fecha com o marcador que abriu - "# " dentro do bloco nao fecha a tarefa (A7-01, R2 s107)', () => {
+  ['```md\n~~~\n# comentario\n```', '````\n```\n# comentario\n````', '~~~\n```\n# comentario\n~~~'].forEach(function (bloco) {
+    const texto = '## Tarefa 1: a\n- [x] a\n' + bloco + '\n- [ ] passo depois do bloco\n';
+    assert.deepStrictEqual(plano.parseTarefas(texto).map(function (x) { return [x.abertos, x.total]; }), [[1, 2]], bloco);
+    assert.deepStrictEqual(plano.parseItens(texto).map(function (x) { return [x.abertos, x.total]; }), [[1, 2]], bloco);
+  });
+});
+
+test('plano: "Tarefa 2b" nao fecha a Tarefa 2 no portao - as caixas dela seguem cobradas (A7-01)', () => {
+  const t = plano.parseTarefas('### Tarefa 2: a\n- [x] a\n### Tarefa 2b: b\n- [ ] b\n### Tarefa 3: c\n- [x] c\n');
+  assert.deepStrictEqual(t.map(function (x) { return [x.n, x.abertos, x.total]; }), [[2, 1, 2], [3, 0, 1]]);
+});
+
+test('plano: [X] maiusculo conta como feito (A9-07)', () => {
+  const t = plano.parseTarefas('## Tarefa 1: a\n- [X] a\n- [x] b\n');
+  assert.deepStrictEqual([t[0].abertos, t[0].total], [0, 2]);
+});
+
 test('plano: le o titulo da tarefa junto com o numero', () => {
   assert.strictEqual(plano.parseTarefas(PLANO)[1].titulo, 'marcha');
 });

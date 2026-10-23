@@ -49,7 +49,8 @@ function pedidoDaLinha(o) {
   if (o.isSidechain === true) return null;
   let origem, bruto, horario = o.timestamp;
   if (o.type === 'user') {
-    if (o.isMeta) return null;
+    // A5-01: o resumo da compactacao e do harness (o mesmo filtro do calibracao.js), nao pedido do dono
+    if (o.isMeta || o.isCompactSummary) return null;
     origem = o.origin;
     bruto = textoDoConteudo(o.message && o.message.content);
   } else if (o.type === 'attachment' && o.attachment && o.attachment.type === 'queued_command') {

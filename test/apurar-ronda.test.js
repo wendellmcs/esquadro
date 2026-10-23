@@ -278,6 +278,40 @@ test('apurar-ronda: o que se le mas nao e veredito para a apuracao, e diz por qu
       assert.strictEqual(r.status, 0, 'achado invalido em veredito bom nao para a apuracao: ' + r.stdout);
       assert.ok(r.json && r.json.vereditosDescartados.some((e) => e.includes('sem lugar')),
         'o achado sem arquivo:linha segue descartado: ' + r.stdout);
+      // L3 (s104), A3-05: a aprovacao com achado descartado diz isso no motivo; o descarte segue sem travar (D422).
+      assert.strictEqual(r.json.encerrar, true, r.stdout);
+      assert.match(r.json.motivo, /^duas rondas secas seguidas: aprovado/);
+      assert.match(r.json.motivo, /1 achado\(s\) descartado\(s\)/);
+      assert.match(r.json.motivo, /vereditosDescartados/);
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
+// L3 (s104), A3-03: o mapa.json da ronda 1 traz a faixa (o preparar-revisao.js grava); a ronda 1 sem as lentes dela
+// para a apuracao, como o voto que falta, e nao conta o fecho.
+test('L3 A3-03: pelo CLI, ronda 1 sem as lentes da faixa para com erro e nao fecha', () => {
+  comTmp((tmp) => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-repo-'));
+    try {
+      for (const n of [1, 2]) {
+        const dir = path.join(cwd, '.claude', 'esquadro', 'revisao', String(n));
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'mapa.json'), JSON.stringify({ arquivo: 'src/a.js',
+          mapa: { A: 'trabalho', B: 'HEAD' }, faixa: 'duas' }), 'utf8');
+        gravarRonda(cwd, n, [{ lente: 'correcao', melhor: 'A', achados: [] }]);
+      }
+      let r = rodar(['--sessao', 'cob1'], cwd, tmp);
+      assert.strictEqual(r.status, 1, r.stdout);
+      assert.strictEqual(r.json, null, r.stdout);
+      assert.match(r.stdout, /^ERRO: .*ronda 1.*borda/m);
+      assert.doesNotMatch(r.stdout, /refutados\.json/, 'o voto que falta nao manda corrigir a refutacao');
+      assert.strictEqual(contadorDe(tmp, 'cob1'), 0, 'revisao que nao se apurou nao fecha');
+      gravarRonda(cwd, 1, [{ lente: 'borda', melhor: 'A', achados: [] }]);
+      r = rodar(['--sessao', 'cob2'], cwd, tmp);
+      assert.strictEqual(r.status, 0, r.stdout);
+      assert.strictEqual(r.json.motivo, 'duas rondas secas seguidas: aprovado');
     } finally {
       fs.rmSync(cwd, { recursive: true, force: true });
     }

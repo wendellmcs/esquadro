@@ -258,6 +258,21 @@ test('portao-apelido --corrigir --para arquivo: conserta E a conferencia para de
   });
 });
 
+// A1-15 (revisao completa, L2): o nome do agente vem do `name:` do frontmatter, e o arquivo pode ter
+// outro nome; o --corrigir montava o caminho pelo nome e dava ENOENT no arquivo que o --mapa mostra.
+test('A1-15: --corrigir --para arquivo acha o agente cujo arquivo tem outro nome', () => {
+  comTmp(() => {
+    const dir = projeto(DOIS);
+    agente(dir, 'busca-codigo', '---\nname: busca\nmodel: caro\n---\n\n# busca\n');
+    agente(dir, 'arquiteto', '---\nname: arquiteto\nmodel: caro\n---\n');
+    const c = cli(dir, ['--corrigir', 'busca', '--para', 'arquivo']);
+    assert.strictEqual(c.status, 0, c.stdout + c.stderr);
+    assert.ok(fs.readFileSync(agentesLib.caminho(dir, 'busca-codigo'), 'utf8').includes('model: barato'));
+    assert.ok(!fs.existsSync(agentesLib.caminho(dir, 'busca')), 'criou um arquivo pelo nome em vez de corrigir o real');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 test('portao-apelido --corrigir --para mapa: conserta o outro lado', () => {
   comTmp((tmp) => {
     const dir = projeto(DOIS);

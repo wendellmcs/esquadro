@@ -108,7 +108,8 @@ inclusive depois de compactação de contexto.
 | Design | Valor cru fora dos tokens declarados |
 
 Revisão cega: `/esquadro:revisar`. Troca de chat: `/esquadro:handoff`. Regra nova:
-`/esquadro:aprender`. Contagem de disparos: `node scripts/uso.js`.
+`/esquadro:aprender`. Contagem de disparos: `node "<plugin>/scripts/uso.js"`, com `<plugin>` = a pasta do
+plugin instalado (o `uso.js` mora no plugin, não neste projeto).
 
 ## 11. O que este projeto NÃO promete
 

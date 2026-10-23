@@ -122,11 +122,12 @@ function pares(texto) {
       // (`maxWarnings: number = 0`), so quando o tipo vem seguido de `=`.
       // Aviso: `max` e `min` casam em QUALQUER uso (CSS, variavel de codigo) e geram falso positivo;
       // por isso `naoEhRegua` (abaixo, no laco) descarta esses casos so para as palavras GENERICAS.
-      const re = new RegExp('(?<![a-z0-9])' + palavra + '([a-z_-]*)(?::\\s*[a-z_$.]+(?=\\s*=))?["\'\\s:=>_-]{0,12}?(-?\\d+(?:\\.\\d+)?)', 'g');
+      const re = new RegExp('(?<![a-z0-9])' + palavra + '([a-z_-]*)(?::\\s*[a-z_$.]+(?=\\s*=))?["\'\\s:=>_-]{0,12}?(-?(?:infinity|\\d[\\d_]*(?:\\.\\d+)?(?:e\\+?\\d+)?))', 'g');
       let m;
       while ((m = re.exec(linha)) !== null) {
-        const valor = Number(m[2]);
-        if (!isFinite(valor)) continue;
+        // A2-02: `2_000`, `1e3` e `Infinity` eram lidos so pelo 1o digito (2, 1) ou nem lidos.
+        const valor = /infinity$/.test(m[2]) ? (m[2][0] === '-' ? -Infinity : Infinity) : Number(m[2].replace(/_/g, ''));
+        if (isNaN(valor)) continue;
         if (GENERICAS.indexOf(palavra) !== -1 && naoEhRegua(linha, m, orig, palavra, cache)) continue;
         // Sobreposicao, nao so o mesmo inicio: com `_` aceito antes da palavra, `min_coverage = 80`
         // casa "coverage" e "min" no mesmo trecho - e e um numero so, nao dois.

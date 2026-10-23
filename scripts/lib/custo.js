@@ -6,6 +6,7 @@ const { entreAspas } = require('./texto.js');
 // Vazia por padrao: sem escada configurada, o portao nao opina.
 // A entrevista pergunta a escada deste projeto e grava em projeto.json:agentes.escada.
 const ESCADA_PADRAO = [];
+const FORK = 'fork';
 
 function escada(projeto) {
   const e = projeto && projeto.agentes && projeto.agentes.escada;
@@ -16,6 +17,10 @@ function escada(projeto) {
 function nivelDoAgente(tipo, projeto) {
   const lista = escada(projeto);
   const i = lista.indexOf(String(tipo || ''));
+  // A12-01: o `fork` (Claude Code 2.1.302) roda no modelo do agente principal e nunca esta na escada.
+  // atalho: fork = topo da escada. limite: com o principal num modelo barato, o fork tambem e barrado.
+  // trocar quando: o gancho receber o modelo do agente principal.
+  if (i === -1 && tipo === FORK) return lista.length;
   return i === -1 ? 0 : i + 1;
 }
 
@@ -54,6 +59,8 @@ function permitido(tipo, marchaMax, projeto) {
       '',
       'Voce despachou ' + entreAspas(tipo) + ', da metade mais cara da escada deste projeto, mas o escopo',
       'declarado so toca caminho de marcha rapida (o nivel de rigor mais leve do projeto.json).',
+    ].concat(tipo === FORK && lista.indexOf(FORK) === -1
+      ? ['O "fork" roda no modelo do agente principal e conta como o topo da escada.'] : [], [
       'Escada deste projeto, do mais barato ao mais caro:',
       lista.map(function (a) { return '  - ' + entreAspas(a); }).join('\n'),
       '',
@@ -61,7 +68,7 @@ function permitido(tipo, marchaMax, projeto) {
       '  1. despache um agente mais barato da escada: ele escala sozinho se a tarefa passar do alcance dele;',
       '  2. se o trabalho exige mesmo este agente, acrescente ao escopo o caminho de marcha padrao ou AAA',
       '     que justifica a escolha - e a escolha fica visivel.'
-    ].join('\n')
+    ]).join('\n')
   };
 }
 

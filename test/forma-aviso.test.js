@@ -65,6 +65,22 @@ test('T5: gatilho 3 (apelidos) na forma unica, com o arquivo do agente entre asp
   assert.ok(t.indexOf('gatilho 3') === -1, 'sem o nome interno "gatilho 3" na tela');
 });
 
+// A1-08 (revisao completa, L2): o texto do dono (comando, nome e arquivo de agente) entrava cru no aviso; com
+// acento a saida saia de ASCII (R5). O nome sem acento nao e o real: o aviso diz para copiar o real.
+test('A1-08: comando e agente com acento saem em ASCII nos avisos de shell e de apelidos', () => {
+  const p = [{ achado: 'cd relatório', sugestao: 'Set-Location', motivo: 'idioma é bash' }];
+  confereForma('idioma acento', shell.motivo('cd relatório && ls', p, 1), { acao: 'destas' });
+  confereForma('cd acento', shell.motivoCdSolto('cd relatório; ls', { forma: 'bash', achado: 'cd relatório' }),
+    { acao: 'destas', ultima: LIBERAR });
+  assert.ok(ASCII.test(shell.avisoCdCorrigido({ forma: 'bash', achado: 'cd relatório' })), 'cd corrigido fora de ASCII');
+  const t = apelidos.motivo({ divergencias: [
+    { agente: 'revisão', arquivo: 'revisão.md', declarado: 'opus', gravado: 'sonnet' }] });
+  confereForma('apelidos acento', t, { caminhos: ['.claude/agents/revisao.md'], acao: 'destas' });
+  assert.match(t, /sem acento/, 'tinha de avisar que o nome real tem acento: ' + t);
+  assert.ok(apelidos.motivo({ divergencias: [{ agente: 'busca', arquivo: 'busca.md', declarado: 'a', gravado: 'b' }] })
+    .indexOf('sem acento') === -1, 'nome sem acento nao leva a linha');
+});
+
 test('T5: roteamento por custo na forma unica', () => {
   const r = custo.permitido('caro', 'rapida', { agentes: { escada: ['barato', 'medio', 'caro'] } });
   assert.strictEqual(r.ok, false);

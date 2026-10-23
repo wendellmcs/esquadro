@@ -406,13 +406,17 @@ function pastaFixa(padrao) {
   return fixos.length ? fixos.join('/') : null;
 }
 
+// A2-05: o glob.js so entende `*` e `**`; `?`, `[ ]`, `{a,b}` e a barra no fim ficam literais e nao casam o que o
+// dono quis. Padrao nessa forma e inerte pela forma, e a pasta fixa existir no disco nao o salva.
+const FORA_DO_GLOB = /[?[\]{}]|\/$/;
+
 function intocaveisInertes(projeto, arquivos, cwd) {
   const padroes = (projeto && Array.isArray(projeto.intocaveis)) ? projeto.intocaveis : [];
   if (!Array.isArray(arquivos) || arquivos.length === 0) return [];
   return padroes.filter(function (p) {
     if (typeof p !== 'string' || !p.trim()) return false;
     if (arquivos.some(function (a) { return glob.casa(p, a, false); })) return false;
-    const fixa = cwd ? pastaFixa(p) : null;
+    const fixa = cwd && !FORA_DO_GLOB.test(p.trim()) ? pastaFixa(p) : null;
     if (fixa) {
       try { if (require('node:fs').existsSync(require('node:path').join(cwd, fixa))) return false; } catch (e) { /* inerte */ }
     }
@@ -425,9 +429,10 @@ function motivoInerte(inertes) {
     'esquadro: ATENCAO - ' + inertes.length + ' padrao(oes) de `intocaveis` nao pegam arquivo nenhum:',
     inertes.map(function (p) { return '  - ' + p; }).join('\n'),
     'Padrao que nao casa nada nao protege nada. Se a pasta ainda nao existe, esta certo;',
-    'se e typo, o arquivo que voce quis proteger esta desprotegido AGORA.',
-    'Confira em .claude/esquadro/projeto.json, chave `intocaveis`.'
-  ].join('\n');
+    'se e typo, o arquivo que voce quis proteger esta desprotegido AGORA.'
+  ].concat(inertes.some(function (p) { return FORA_DO_GLOB.test(String(p).trim()); })
+    ? ['O esquadro so entende * e **: escreva "pasta/**" em vez de "pasta/", e um padrao para cada extensao em vez de {a,b}.']
+    : [], ['Confira em .claude/esquadro/projeto.json, chave `intocaveis`.']).join('\n');
 }
 
 module.exports = {

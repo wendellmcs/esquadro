@@ -90,7 +90,8 @@ io.blindar(function () {
   io.lerEntrada(function (e) {
     const cwd = config.raizDoProjeto(e.cwd || process.cwd());
     const entrada = e.tool_input || {};
-    const alvo = caminhoLib.relativoAoProjeto(entrada.file_path, cwd);
+    // A12-02: o NotebookEdit traz o arquivo em `notebook_path`, nao em `file_path`.
+    const alvo = caminhoLib.relativoAoProjeto(entrada.file_path || entrada.notebook_path, cwd);
     if (!alvo) return io.permitir();
 
     // Escopo por frente: o arquivo de UMA frente tem o mesmo passe livre do
@@ -223,19 +224,26 @@ io.blindar(function () {
     // 7. B7: subir a catraca e decisao humana, nunca efeito colateral de uma
     // correcao. So vale para Edit, que e onde ha um "antes" para comparar - em
     // Write de arquivo novo nao existe catraca anterior para afrouxar.
-    if (typeof entrada.old_string === 'string' && typeof entrada.new_string === 'string') {
-      const frouxo = catraca.afrouxou(entrada.old_string, entrada.new_string);
-      if (frouxo.length) {
-        try { estado.incrementar(e.session_id, 'catraca_afrouxada'); } catch (err) { contadorNaoGravou(); }
-        return negar(catraca.motivo(alvo, frouxo));
-      }
+    // A2-02: o fragmento do Edit nao basta (Edit so do numero nao leva a palavra; Write por cima nao tem fragmento):
+    // compara tambem o arquivo inteiro, o antes do disco com o depois calculado (D34).
+    let frouxo = (typeof entrada.old_string === 'string' && typeof entrada.new_string === 'string')
+      ? catraca.afrouxou(entrada.old_string, entrada.new_string) : [];
+    if (!frouxo.length && existe(cwd, alvo)) {
+      let atual = null;
+      try { atual = fs.readFileSync(path.join(cwd, alvo), 'utf8'); } catch (err) { atual = null; }
+      const depoisTexto = atual === null ? null : escopoLib.conteudoDepois(atual, entrada);
+      if (depoisTexto !== null) frouxo = catraca.afrouxou(atual, depoisTexto);
+    }
+    if (frouxo.length) {
+      try { estado.incrementar(e.session_id, 'catraca_afrouxada'); } catch (err) { contadorNaoGravou(); }
+      return negar(catraca.motivo(alvo, frouxo));
     }
     // Modulo opcional: sem .claude/esquadro/design.json, nada dispara.
     if (design.ehArquivoDeEstilo(alvo, projeto)) {
       const sistema = config.carregarDesign(cwd);
       const conteudo = (entrada.content !== undefined) ? entrada.content : entrada.new_string;
       if (sistema && typeof conteudo === 'string') {
-        const r = design.conferir(conteudo, sistema);
+        const r = design.conferir(conteudo, sistema, entrada.content !== undefined ? undefined : entrada.old_string);
         if (!r.ok) {
           try { estado.incrementar(e.session_id, 'token_fora_do_sistema'); } catch (err) { contadorNaoGravou(); }
           return negar(design.motivo(alvo, r.fora, sistema));

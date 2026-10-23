@@ -133,6 +133,31 @@ test('escopo D36: a SAIDA e ASCII pura mesmo com entrada acentuada', () => {
   }
 });
 
+// A2-04 (revisao completa, L2): o remedio "escreva `- <alvo>` em Dentro" tinha de casar o arquivo negado. Com ` (`,
+// ` - ` ou ` #` no nome o parser cortava a linha; com acento o ascii() trocava a letra e o caminho escrito era outro.
+test('A2-04: a linha que o motivo manda escrever casa o arquivo; com acento, o motivo diz para copiar o real', () => {
+  const casaPeloRemedio = (alvo) => {
+    const item = escopo.motivoSemEscopo(alvo, 'padrao').split('\n').filter((l) => /^ {2}- /.test(l))[0];
+    return escopo.dentro(alvo, escopo.parse('## Dentro\n' + item.trim() + '\n'));
+  };
+  for (const alvo of ['docs/Manual (v2).md', 'docs/Relatorio - final.md', 'docs/notas #1.md', 'src/a b.js', 'src/a.js']) {
+    assert.strictEqual(casaPeloRemedio(alvo), true, alvo);
+  }
+  const ACENTO = /acento ou caractere especial: copie-o da sua chamada/;
+  for (const m of [escopo.motivoSemEscopo('docs/Relatório.md', 'padrao'), escopo.motivoOutraFrente('docs/Relatório.md'),
+    escopo.motivoFora('docs/Relatório.md', 'padrao', escopo.parse('## Dentro\n- src/**\n'))]) {
+    assert.match(m, ACENTO, m);
+    assert.ok(/^[\x20-\x7E\n]*$/.test(m), 'fora de ASCII: ' + m);
+    // revisao cega do L2 (ronda 2): a linha e um bloco proprio na forma unica - em branco antes e depois (ou e a ultima)
+    const l = m.split('\n');
+    const i = l.findIndex((x) => ACENTO.test(x));
+    assert.strictEqual(l[i - 1], '', 'linha em branco antes do aviso de acento: ' + m);
+    assert.ok(i === l.length - 1 || l[i + 1] === '', 'linha em branco depois do aviso de acento: ' + m);
+    assert.ok(!/\n\n\n/.test(m), 'bloco vazio duplo: ' + m);
+  }
+  assert.doesNotMatch(escopo.motivoSemEscopo('src/a.js', 'padrao'), ACENTO, 'caminho sem acento nao leva a linha');
+});
+
 // D36 dizia "Fora nao bloqueia", e era verdade entao. D244/defeito 7: agora bloqueia, e a
 // mensagem tem de dizer o que o portao faz - nem mais, nem menos.
 test('escopo D36/D244: a mensagem diz que "Fora de escopo" bloqueia, porque agora bloqueia', () => {

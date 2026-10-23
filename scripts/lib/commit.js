@@ -39,9 +39,16 @@ function semRevisao(comando) {
 function pastaDoComando(comando) {
   const c = String(comando || '');
   const valor = function (m) { return m[2] !== undefined ? m[2] : (m[3] !== undefined ? m[3] : m[4]); };
-  const comC = /\bgit\s+-C\s+(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(c);
+  // A2-01: o -C que vale e o das opcoes do proprio `git ... commit` (a forma do ehCommit, com o valor entre aspas); o de
+  // um `git -C <outro> status` antes dele media o outro repositorio.
+  // O conteudo entre aspas vira Q do mesmo tamanho (as posicoes seguem as de `c`): `echo "git commit"` nao e o commit,
+  // e `-c user.name="a b"` e uma opcao so.
+  const mascara = c.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, function (m) { return m[0] + 'Q'.repeat(m.length - 2) + m[m.length - 1]; });
+  const gc = /\bgit(?:\.exe)?((?:\s+(?:-[cC]\s+(?:"[^"]*"|'[^']*'|\S+)|--?[A-Za-z][\w-]*(?:=\S+)?))*)\s+commit(?![\w-])/.exec(mascara);
+  const fim = gc ? gc.index : -1;
+  const opcoes = gc ? c.substr(gc.index + /^git(?:\.exe)?/.exec(gc[0])[0].length, gc[1].length) : '';
+  const comC = gc && /(?:^|\s)-C\s+(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(opcoes);
   if (comC) return comC[1] !== undefined ? comC[1] : (comC[2] !== undefined ? comC[2] : comC[3]);
-  const fim = c.search(/\bgit\b[^;&|]*\bcommit\b/);
   const ate = fim === -1 ? c : c.slice(0, fim);
   const re = /(?:^|[\s;&|(])cd\s+("([^"]*)"|'([^']*)'|([^\s;&|)]+))/g;
   let m;

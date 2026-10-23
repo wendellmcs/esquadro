@@ -1,5 +1,6 @@
 'use strict';
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const texto = require('./texto.js');
@@ -38,6 +39,49 @@ const DOMINIOS_RESERVADOS = [
 ];
 
 const ARQUIVO_LOCAL = '.sanitacao-local.json';
+
+/**
+ * D597 (revisao completa, A10-01): os IDs de sessao do Claude Code desta maquina - o nome de cada transcricao em
+ * <projects>/<projeto>/<id>.jsonl. Tres estados, como o vocabulario local (IN-04): pasta AUSENTE = nada a comparar;
+ * pasta que existe e NAO ABRE vai para `naoLidas`, e quem chama nao pode dar limpo sobre ela.
+ * Devolve { ids: Set, naoLidas: [{ pasta, porQue }] }.
+ */
+function sessoesLocais(projetos) {
+  const r = { ids: new Set(), naoLidas: [] };
+  let nomes = [];
+  try { nomes = fs.readdirSync(projetos); } catch (e) {
+    if (!e || e.code !== 'ENOENT') r.naoLidas.push({ pasta: projetos, porQue: texto.causaDoErro(e) });
+    return r;
+  }
+  for (const p of nomes) {
+    const pasta = path.join(projetos, p);
+    let arquivos = [];
+    try { arquivos = fs.readdirSync(pasta); } catch (e) {
+      // ENOTDIR: arquivo solto entre as pastas de projeto; ENOENT: sumiu entre as duas leituras. Nenhum e transcricao.
+      if (e && e.code !== 'ENOTDIR' && e.code !== 'ENOENT') r.naoLidas.push({ pasta: pasta, porQue: texto.causaDoErro(e) });
+      continue;
+    }
+    for (const n of arquivos) {
+      const m = /^(.+)\.jsonl$/i.exec(n);
+      if (m) r.ids.add(m[1].toLowerCase());
+    }
+  }
+  return r;
+}
+
+// A isca da classe `sessao_local` entra na lista lida do disco: e assim que o autoteste prova o filtro sem depender
+// de haver sessao nesta maquina. A leitura do disco se prova a parte: `naoLidas` reprova o autoteste e o limpo.
+// A pasta e a do resto do plugin (CLAUDE_CONFIG_DIR ou ~/.claude); o cache vale enquanto ela for a mesma.
+const ISCA_SESSAO = '5e55a0d5-' + '9597-4000-8000-00000000d597';
+let sessoesEmCache = null;
+function sessoesDaMaquina() {
+  const pasta = require('./gasto.js').pastaDosProjetos();
+  if (!sessoesEmCache || sessoesEmCache.pasta !== pasta) {
+    sessoesEmCache = Object.assign({ pasta: pasta }, sessoesLocais(pasta));
+    sessoesEmCache.ids.add(ISCA_SESSAO);
+  }
+  return sessoesEmCache;
+}
 
 /**
  * Classes genericas: nao carregam vocabulario de ninguem. Valem em qualquer
@@ -112,6 +156,18 @@ const CLASSES_GENERICAS = [
     padrao: /\bS-1-5-21-[0-9-]{10,}/g,
     isca: 'S-1-5-21-' + '1234567890-987654321-1122334455-1001',
     controle: 'S-1-5-18 e a conta de sistema'
+  },
+  {
+    chave: 'sessao_local',
+    nome: 'ID de sessao do Claude Code desta maquina',
+    // D597 (revisao completa, A10-01): UUID qualquer (de exemplo, de biblioteca) nao identifica ninguem; o de uma
+    // sessao com transcricao nesta maquina e do dono - um ficou na fixture publica de 0.3.4 a 0.11.1.
+    // D599: sem borda de proposito. O `\b` deixava passar `sessao_<id>` (o `_` e caractere de palavra), e borda nao
+    // hexadecimal deixava passar `code<id>`. Quem separa o ID do dono de UUID qualquer e o soSe, nao a borda.
+    padrao: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+    soSe: function (trecho) { return sessoesDaMaquina().ids.has(trecho.toLowerCase()); },
+    isca: ISCA_SESSAO,
+    controle: '1b4e28ba-' + '2fa1-11d2-883f-0016d3cca427'
   }
 ];
 
@@ -225,6 +281,7 @@ function varrerTexto(conteudo, arquivo, listaClasses) {
       let m;
       while ((m = re.exec(linhas[i])) !== null) {
         if (classe.reservados && ehReservado(m[0], classe.reservados)) continue;
+        if (classe.soSe && !classe.soSe(m[0])) continue;
         achados.push({
           classe: classe.chave, nome: classe.nome,
           arquivo: arquivo || '(texto)', linha: i + 1, trecho: m[0]
@@ -265,15 +322,19 @@ function correrGit(raiz, args) {
  * sobre o que nunca leu. O --exclude-standard mantem o .gitignore valendo, e e
  * o que preserva o .sanitacao-local.json fora da varredura: o vocabulario
  * privado se acusaria inteiro.
+ *
+ * A4-03: `fora` omitido = FORA_DO_PUBLICO, que e regra do export do PROPRIO esquadro (D132 §1.3). O `auditar` de
+ * um projeto qualquer passa [], porque ali `docs/` vai a publico como o resto.
  */
-function superficiePublicavel(raiz) {
+function superficiePublicavel(raiz, fora) {
+  const tirar = fora === undefined ? FORA_DO_PUBLICO : fora;
   // D420/IN-01: `-z`. Sem ele o git devolve nome com acento entre aspas e com
   // escape octal, o arquivo nao abre e some da varredura sem ninguem saber.
   const bruto = correrGit(raiz, ['ls-files', '-z', '--cached', '--others', '--exclude-standard']);
   if (bruto === null) return null;
   return bruto.split('\0').filter(function (a) {
     if (!a) return false;
-    return !FORA_DO_PUBLICO.some(function (p) {
+    return !tirar.some(function (p) {
       return a === p.replace(/\/$/, '') || a.indexOf(p) === 0;
     });
   });
@@ -337,11 +398,22 @@ function varrerArquivos(raiz, arquivos, listaClasses, ilegiveis, naoConferidos) 
 /**
  * Superficie 2 (D132 §3): autoria do historico. Recebe as linhas ja lidas, para
  * poder ser testada sem repositorio - funcao pura em cima de string.
+ *
+ * A4-02: o NOME (o que vem antes do `<`) e publico no GitHub como o e-mail, e passa pelas mesmas classes da
+ * superficie 3 (`listaClasses`; omitida = as genericas). Sem isso, nome do dono com e-mail noreply saia limpo.
  */
-function varrerAutores(linhas) {
+function varrerAutores(linhas, listaClasses) {
   const achados = [];
   (linhas || []).forEach(function (linha, i) {
     const m = String(linha).match(/<([^>]+)>/);
+    const nome = m ? String(linha).slice(0, m.index) : String(linha);
+    varrerTexto(nome, null, listaClasses).forEach(function (a) {
+      achados.push({
+        superficie: 2,
+        classe: a.classe, nome: a.nome,
+        arquivo: '(historico do git)', linha: i + 1, trecho: a.trecho
+      });
+    });
     if (!m) return;
     if (ehReservado(m[1], DOMINIOS_RESERVADOS)) return;
     achados.push({
@@ -426,6 +498,9 @@ function autoteste(raiz) {
   vocab.descartados.forEach(function (d) {
     falhas.push({ classe: d.chave, tipo: 'termo descartado', porQue: d.porQue + ' em ' + ARQUIVO_LOCAL + ': esse termo NAO esta sendo procurado' });
   });
+  sessoesDaMaquina().naoLidas.forEach(function (n) {
+    falhas.push({ classe: 'sessao_local', tipo: 'leitura do disco', porQue: n.pasta + ' nao abriu (' + n.porQue + '): os IDs de sessao dela NAO estao sendo procurados' });
+  });
   lista.forEach(function (classe) {
     if (!classe.isca || !classe.controle) {
       falhas.push({ classe: classe.chave, tipo: 'estrutura', porQue: 'classe sem isca ou sem controle' });
@@ -448,6 +523,9 @@ function autoteste(raiz) {
   }
   if (varrerAutores(['Fulano <1234+fulano' + '@users.noreply.github.com>']).length > 0) {
     falhas.push({ classe: 'autoria_do_historico', tipo: 'controle negativo', porQue: 'acusou o noreply do GitHub' });
+  }
+  if (varrerAutores(['C:' + '\\Users\\' + 'fulano <1234+fulano' + '@users.noreply.github.com>'], lista).length === 0) {
+    falhas.push({ classe: 'autoria_do_historico', tipo: 'controle positivo', porQue: 'nome de autor nao foi acusado' });
   }
   const iscaMsg = varrerMensagens([{ sha: 'abc', texto: 'ajusta ' + 'C:' + '\\Users\\' + 'fulano\\x' }], lista);
   if (iscaMsg.length === 0) {
@@ -475,8 +553,9 @@ function auditar(raiz) {
   // roda; API e teste direto nao).
   const vocab = lerVocabularioLocal(raiz);
   const vocabularioOk = vocab.estado !== 'invalido' && vocab.descartados.length === 0;
+  const naoLidas = sessoesDaMaquina().naoLidas;
   const lista = CLASSES_GENERICAS.concat(vocab.termos);
-  const arquivos = superficiePublicavel(raiz);
+  const arquivos = superficiePublicavel(raiz, []);
   if (arquivos === null) return null;
   const autores = autoresDoHistorico(raiz);
   if (autores === null) return null;
@@ -486,7 +565,7 @@ function auditar(raiz) {
   const ilegiveis = [];
   const naoConferidos = [];
   const achados = varrerArquivos(raiz, arquivos, lista, ilegiveis, naoConferidos)
-    .concat(varrerAutores(autores))
+    .concat(varrerAutores(autores, lista))
     .concat(varrerMensagens(mensagens, lista));
 
   const porClasse = Object.create(null);
@@ -508,12 +587,13 @@ function auditar(raiz) {
     naoConferidos: naoConferidos,
     achados: achados, porClasse: porClasse, porSuperficie: porSuperficie,
     vocabulario: { estado: vocab.estado, motivo: vocab.motivo, descartados: vocab.descartados },
-    limpo: achados.length === 0 && ilegiveis.length === 0 && vocabularioOk
+    sessoes: { naoLidas: naoLidas },
+    limpo: achados.length === 0 && ilegiveis.length === 0 && vocabularioOk && naoLidas.length === 0
   };
 }
 
 module.exports = {
   CLASSES_GENERICAS, DOMINIOS_RESERVADOS, FORA_DO_PUBLICO, ARQUIVO_LOCAL,
-  termosLocais, lerVocabularioLocal, classes, varrerTexto, varrerArquivos, varrerAutores, varrerMensagens,
+  termosLocais, lerVocabularioLocal, sessoesLocais, classes, varrerTexto, varrerArquivos, varrerAutores, varrerMensagens,
   superficiePublicavel, semCommits, autoresDoHistorico, mensagensDoHistorico, auditar, autoteste
 };

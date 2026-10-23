@@ -69,7 +69,8 @@ if (tem('corrigir')) {
   }
 
   if (destino === 'arquivo') {
-    const arquivo = agentesLib.caminho(cwd, alvo);
+    // A1-15: pelo arquivo que o --mapa mostra, nao pelo nome - o `name:` do frontmatter pode diferir dele.
+    const arquivo = agentesLib.caminho(cwd, String(d.arquivo).replace(/\.md$/, ''));
     let bruto;
     try { bruto = fs.readFileSync(arquivo, 'utf8'); }
     catch (e) {

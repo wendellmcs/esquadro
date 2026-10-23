@@ -116,6 +116,71 @@ test('destrutivo: deixa passar comando de leitura e de teste', () => {
   }
 });
 
+// Revisao completa, L1 (A9-06): as grafias de A1-01..05 que o rm e o git de verdade aceitam e o portao deixava
+// passar (`achados/A1-destrutivo.md`): opcao do rm depois do alvo ou depois de uma opcao longa (A1-01), opcao longa
+// abreviada (A1-02), a arvore inteira sem o `.` (A1-03), `dd` com os operandos invertidos (A1-04) e `branch -d -f` (A1-05).
+const DEVE_BARRAR_A1 = [
+  'rm --no-preserve-root -rf /',
+  'rm --verbose -rf build',
+  'sudo rm --verbose -rf build',
+  'rm dist -rf',
+  'rm a b -rf',
+  'rm build -Rf',
+  'rm build -vrf',
+  'rm build.log -f',
+  'rm --rec build',
+  'rm --forc build.log',
+  'git reset --har HEAD~1',
+  'git reset --h',
+  'git checkout --forc main',
+  'git switch --disc main',
+  'git push --del origin main',
+  'git push --mir origin',
+  'git push --prun origin',
+  'git checkout :/',
+  'git checkout ./',
+  'git checkout *',
+  'git checkout -- *',
+  'git restore ./',
+  'git restore :/',
+  'git restore *',
+  'git restore --worktree :/',
+  'git restore --source HEAD ./',
+  'dd of=/dev/sda if=img',
+  'dd bs=1M of=/dev/sda if=x',
+  'git branch -d -f x',
+  'git branch -df x',
+  'git branch -fd x',
+  'git branch --delete --force x'
+];
+
+// Os vizinhos que nao apagam e tem de continuar passando depois da correcao.
+const DEVE_PASSAR_A1 = [
+  'rm report.txt',
+  'rm -i build.log',
+  'git restore --staged :/',
+  'git restore --staged ./',
+  'git checkout ./src/a.js',
+  'git checkout :/src/a.js',
+  'git checkout -- .gitignore',
+  'git branch -d feature',
+  'git branch -f feature main',
+  'git branch --format x',
+  'git reset --soft HEAD~1',
+  'git push --dry-run origin main',
+  'dd --version'
+];
+
+test('destrutivo: L1 (A1-01..05) barra as grafias que o rm e o git aceitam', () => {
+  const passaram = DEVE_BARRAR_A1.filter((cmd) => !destrutivo.classificar(cmd).destrutivo);
+  assert.deepStrictEqual(passaram, []);
+});
+
+test('destrutivo: L1 (A1-01..05) deixa passar os vizinhos que nao apagam', () => {
+  const barraram = DEVE_PASSAR_A1.filter((cmd) => destrutivo.classificar(cmd).destrutivo);
+  assert.deepStrictEqual(barraram, []);
+});
+
 test('destrutivo: projeto pode acrescentar padrao proprio', () => {
   const projeto = { comandosBloqueados: ['gcloud\\s+run\\s+deploy'] };
   assert.strictEqual(destrutivo.classificar('gcloud run deploy api', projeto).destrutivo, true);

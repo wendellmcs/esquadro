@@ -1381,6 +1381,36 @@ test('D486: preparar-revisao entrega o trecho nas faixas pequenas e o arquivo in
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// L3 (s104), A3-04: o revisar manda subir de faixa ("mudanca que monta tela sobe a completa"), mas o pacote seguia
+// recortado. --completa forca a faixa completa e o arquivo inteiro. A3-03: o mapa.json leva a faixa, que o apurar le.
+test('L3 A3-04: --completa entrega o arquivo inteiro na faixa completa; o mapa.json leva a faixa', () => {
+  const dir = repoDeFaixas();
+  try {
+    const js = fs.readFileSync(path.join(dir, 'logica.js'), 'utf8');
+    const mudado = trocar(js, 1, 99);
+    fs.writeFileSync(path.join(dir, 'logica.js'), mudado, 'utf8');
+    let r = rodarCli(dir, 'logica.js');
+    let s = JSON.parse(r.stdout);
+    assert.strictEqual(s.faixa, 'uma');
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(path.dirname(s.a), 'mapa.json'), 'utf8')).faixa, 'uma');
+    r = spawnSync(process.execPath, [CLI, '--arquivo', 'logica.js', '--completa', '--semente', 'fixa'],
+      { cwd: dir, encoding: 'utf8', shell: false });
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    s = JSON.parse(r.stdout);
+    assert.strictEqual(s.faixa, 'completa');
+    assert.strictEqual(s.lentes, null);
+    assert.strictEqual(s.linhasMudadas, 1, 'a medida segue a do diff');
+    assert.strictEqual(s.trecho, undefined);
+    assert.deepStrictEqual([fs.readFileSync(s.a, 'utf8'), fs.readFileSync(s.b, 'utf8')].sort(), [js, mudado].sort());
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(path.dirname(s.a), 'mapa.json'), 'utf8')).faixa, 'completa');
+    assert.match(s.aviso, /--completa/);
+    // --completa como valor de outra flag segue erro de uso
+    r = spawnSync(process.execPath, [CLI, '--arquivo', '--completa'], { cwd: dir, encoding: 'utf8', shell: false });
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /--arquivo pede um valor/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('D485: git diff que falha nao inventa faixa pequena - completa, linhasMudadas null', () => {
   const dir = repoDeFaixas();
   try {
@@ -1489,8 +1519,9 @@ test('D503: sem referencia para o tipo do arquivo, o pacote e o de hoje (regress
       const s = JSON.parse(r.stdout);
       const pasta = path.dirname(s.a);
       assert.deepStrictEqual(fs.readdirSync(pasta).sort(), ['A.txt', 'B.txt', 'mapa.json', 'vereditos'], nome);
+      // L3 (s104, A3-03): o mapa.json leva a faixa desde o L3; o resto do pacote sem referencia segue o de antes.
       assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(pasta, 'mapa.json'), 'utf8'))),
-        ['arquivo', 'mapa'], nome);
+        ['arquivo', 'mapa', 'faixa'], nome);
       assert.deepStrictEqual(Object.keys(s), ['ronda', 'arquivo', 'base', 'a', 'b', 'regua', 'vereditos', 'faixa',
         'lentes', 'linhasMudadas', 'aviso', 'trecho', 'semRegua'], nome);
       // Plano 082, Tarefa 5 (p1-27): so de outro tipo, o pacote e o de hoje, mas o aviso diz que a referencia ficou de fora.

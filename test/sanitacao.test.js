@@ -94,6 +94,110 @@ test('sanitacao: todo achado cita arquivo e linha - regra anti-teatro', () => {
   assert.strictEqual(r[0].linha, 3);
 });
 
+// D597 (revisao completa, A10-01): ID de sessao do Claude Code e dado do dono quando a sessao e desta maquina.
+test('sanitacao: sessoesLocais le os IDs das transcricoes em <projects>/<projeto>/<id>.jsonl', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro sessoes-'));
+  try {
+    const id = '0f0f0f0f-' + '1111-4222-8333-444444444444';
+    const projetos = path.join(home, '.claude', 'projects');
+    fs.mkdirSync(path.join(projetos, 'proj'), { recursive: true });
+    fs.writeFileSync(path.join(projetos, 'proj', id + '.jsonl'), '{}\n');
+    fs.writeFileSync(path.join(projetos, 'proj', 'notas.txt'), 'x');
+    fs.writeFileSync(path.join(projetos, 'solto.txt'), 'arquivo fora de pasta de projeto nao e leitura que falhou');
+    const r = sanit.sessoesLocais(projetos);
+    assert.deepStrictEqual([...r.ids], [id]);
+    assert.deepStrictEqual(r.naoLidas, []);
+    const sem = sanit.sessoesLocais(path.join(home, 'nao-existe'));
+    assert.strictEqual(sem.ids.size, 0, 'sem a pasta: nenhum ID, sem lancar');
+    assert.deepStrictEqual(sem.naoLidas, [], 'pasta que nao existe e "nada a comparar", nao leitura que falhou');
+  } finally { require('node:fs').rmSync(home, { recursive: true, force: true }); }
+});
+
+// Revisao cega do L1, ronda 1 (estados, manutencao): so a pasta AUSENTE e "nada a comparar". A que existe e nao abre
+// (aqui um arquivo no lugar dela: ENOTDIR, portavel) e leitura que falhou - e a classe sessao_local procurou no vazio.
+function comConfig(dir, fn) {
+  const antes = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = dir;
+  try { return fn(); } finally {
+    if (antes === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = antes;
+  }
+}
+
+test('sanitacao: sessoesLocais separa a pasta que nao existe da que nao abre', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro sessoes-ruim-'));
+  try {
+    const arquivo = path.join(dir, 'projects');
+    fs.writeFileSync(arquivo, 'nao sou pasta');
+    const r = sanit.sessoesLocais(arquivo);
+    assert.strictEqual(r.ids.size, 0);
+    assert.strictEqual(r.naoLidas.length, 1, 'pasta que existe e nao abre tem de aparecer como nao lida');
+    assert.strictEqual(r.naoLidas[0].pasta, arquivo);
+    assert.ok(r.naoLidas[0].porQue, 'sem o motivo o dono nao sabe o que consertar');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('sanitacao: a classe sessao_local le as transcricoes de CLAUDE_CONFIG_DIR, como o resto do plugin', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const cfg = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro cfg-'));
+  try {
+    const id = '0e0e0e0e-' + '1111-4222-8333-555555555555';
+    fs.mkdirSync(path.join(cfg, 'projects', 'proj'), { recursive: true });
+    fs.writeFileSync(path.join(cfg, 'projects', 'proj', id + '.jsonl'), '{}\n');
+    const achados = comConfig(cfg, () => sanit.varrerTexto('id: ' + id, 'a.js', sanit.CLASSES_GENERICAS));
+    assert.strictEqual(achados.filter((a) => a.classe === 'sessao_local').length, 1,
+      'com CLAUDE_CONFIG_DIR a transcricao nao mora em ~/.claude: o ID da sessao passava como UUID qualquer');
+  } finally { fs.rmSync(cfg, { recursive: true, force: true }); }
+});
+
+test('sanitacao: pasta de transcricoes que nao abre reprova o autoteste e tira o limpo do auditar', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const cfg = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro cfg-ruim-'));
+  const dir = repo();
+  try {
+    fs.writeFileSync(path.join(cfg, 'projects'), 'nao sou pasta');
+    comConfig(cfg, () => {
+      const prova = sanit.autoteste(dir);
+      assert.strictEqual(prova.ok, false, 'o autoteste dava ok com a isca sozinha no conjunto');
+      assert.ok(prova.falhas.some((f) => f.classe === 'sessao_local'), JSON.stringify(prova.falhas));
+      const r = sanit.auditar(dir);
+      assert.ok(r !== null, 'git nao respondeu');
+      assert.strictEqual(r.achados.length, 0);
+      assert.strictEqual(r.limpo, false, 'limpo sobre IDs de sessao que nao foram procurados');
+      assert.strictEqual(r.sessoes.naoLidas.length, 1);
+    });
+    assert.ok(sanit.autoteste(dir).ok, 'sem a sobreposicao o autoteste volta a passar');
+  } finally {
+    fs.rmSync(cfg, { recursive: true, force: true });
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('sanitacao: UUID qualquer nao acusa; o da isca de sessao local acusa', () => {
+  const classe = sanit.CLASSES_GENERICAS.filter((c) => c.chave === 'sessao_local')[0];
+  assert.ok(classe, 'falta a classe sessao_local');
+  assert.strictEqual(sanit.varrerTexto('id: ' + classe.isca, 'a.js', LOCAIS).filter((a) => a.classe === 'sessao_local').length, 1);
+  assert.strictEqual(sanit.varrerTexto('id: ' + classe.controle, 'a.js', LOCAIS).filter((a) => a.classe === 'sessao_local').length, 0);
+});
+
+// D599 (ronda 3 do L1): o `_` e caractere de palavra, entao o `\b` nao separa o ID de `sessao_<id>`; e a conferencia
+// mostrou que borda nenhuma serve - `code<id>` e `<id>7` vazam o ID inteiro. Sem borda, quem filtra e o soSe (so ID
+// desta maquina acusa), e por isso UUID qualquer segue sem acusar.
+test('sanitacao: ID de sessao colado a qualquer caractere tambem acusa', () => {
+  const classe = sanit.CLASSES_GENERICAS.filter((c) => c.chave === 'sessao_local')[0];
+  const acusa = (t) => sanit.varrerTexto(t, 'a.js', LOCAIS).filter((a) => a.classe === 'sessao_local').length;
+  ['sessao_' + classe.isca, classe.isca + '_copia', 'x' + classe.isca, classe.isca.toUpperCase(),
+    'code' + classe.isca, classe.isca + '7', 'a' + classe.isca + 'abc'].forEach((t) => {
+    assert.strictEqual(acusa(t), 1, t);
+  });
+  assert.strictEqual(acusa('a' + classe.controle + '7'), 0, 'UUID que nao e sessao desta maquina, colado ou nao, nao acusa');
+});
+
 // ── as TRES superficies do repositorio de verdade ────────────────────────
 
 test('sanitacao: docs/ fica fora da superficie publicavel (D132 §1.3)', () => {
@@ -252,8 +356,7 @@ test('sanitar: repositorio limpo -> saida 0 e veredito nas tres superficies', ()
   assert.ok(/SUPERFICIE 2 autoria/.test(r.stdout), r.stdout);
   assert.ok(/SUPERFICIE 3 mensagens/.test(r.stdout), r.stdout);
   assert.ok(/LIMPO nas tres superficies/.test(r.stdout), r.stdout);
-  assert.ok(r.stdout.indexOf('Fora da superficie: ' + sanit.FORA_DO_PUBLICO.join(', ')) !== -1,
-    r.stdout);
+  assert.ok(r.stdout.indexOf('Fora da superficie: so o que o .gitignore cobre.') !== -1, r.stdout);
 });
 
 test('sanitar: vazamento no conteudo -> saida 1, com arquivo, linha e superficie', () => {
@@ -848,4 +951,47 @@ test('T-1a #15: termo local valido sem chave acusa com a classe "(termo N)", nao
   assert.strictEqual(achados[0].classe, '(termo 1)');
   assert.strictEqual(achados[0].nome, '(termo 1)');
   assert.ok(sanit.autoteste(dir).ok, 'o termo sem chave tem de se provar com isca e controle como os demais');
+});
+
+// ── A4-02 (revisao completa, L4): o NOME do autor e publico como o e-mail ──
+
+test('A4-02: varrerAutores varre o nome do autor pelas classes, nao so o e-mail', () => {
+  const caminho = 'C:' + '\\Users\\' + 'fulano';
+  const achados = sanit.varrerAutores([caminho + ' <1+f' + '@users.noreply.github.com>']);
+  assert.deepStrictEqual(achados.map((a) => [a.superficie, a.classe, a.linha]), [[2, 'caminho_de_maquina', 1]]);
+  // controle: nome comum com o noreply segue limpo
+  assert.strictEqual(sanit.varrerAutores(['Fulano de Tal <1+f' + '@users.noreply.github.com>']).length, 0);
+  // o vocabulario local entra pela lista de classes, como na superficie 3
+  const dir = repo();
+  lerVocabulario(dir, { termos: [TERMO_SINTETICO] });
+  const comLocal = sanit.varrerAutores(['MARCA-INTERNA Silva <1+f' + '@users.noreply.github.com>'], sanit.classes(dir));
+  assert.deepStrictEqual(comLocal.map((a) => [a.superficie, a.classe]), [[2, 'sintetica']]);
+});
+
+test('A4-02: sanitar acusa o nome do autor do vocabulario local, com e-mail noreply', () => {
+  const dir = repo();
+  fs.writeFileSync(path.join(dir, '.gitignore'), sanit.ARQUIVO_LOCAL + '\n', 'utf8');
+  lerVocabulario(dir, { termos: [TERMO_SINTETICO] });
+  spawnSync('git', ['add', '-A'], { cwd: dir, encoding: 'utf8', shell: false });
+  spawnSync('git', ['-c', 'user.name=MARCA-INTERNA da Silva', '-c', 'user.email=1+x' + '@users.noreply.github.com',
+    'commit', '-qm', 'segundo'], { cwd: dir, encoding: 'utf8', shell: false });
+  const r = sanitar(dir);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.ok(/SUPERFICIE 2 autoria\s+historico\s+-> [1-9]/.test(r.stdout), r.stdout);
+  assert.ok(/S2\s+sintetica\s+\(historico do git\):/.test(r.stdout), r.stdout);
+});
+
+// ── A4-03 (revisao completa, L4): `docs/` fora e regra do export do esquadro, nao de todo projeto ──
+
+test('A4-03: sanitar num projeto qualquer varre docs/ e nao diz que deixou docs/ de fora', () => {
+  const dir = repo();
+  fs.mkdirSync(path.join(dir, 'docs'));
+  fs.writeFileSync(path.join(dir, 'docs', 'guia.md'), 'veja C:' + '\\Users\\' + 'jose\\proj\n', 'utf8');
+  const r = sanitar(dir);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.ok(/S1\s+caminho_de_maquina\s+docs\/guia\.md:1/.test(r.stdout), r.stdout);
+  assert.ok(r.stdout.indexOf('Fora da superficie: docs/') === -1, r.stdout);
+  // o export do esquadro segue sem docs/ (D132 §1.3): a superficie publicavel e a do exportar.js
+  assert.strictEqual(sanit.superficiePublicavel(dir).indexOf('docs/guia.md'), -1);
+  assert.ok(sanit.auditar(dir).achados.some((a) => a.arquivo === 'docs/guia.md'));
 });

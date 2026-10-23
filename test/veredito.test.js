@@ -1036,3 +1036,97 @@ test('082 T6 (p2-7): mapa sem um dos lados nao deixa o A.txt da ordem trocada ca
   assert.throws(() => v.apurar([r1.vereditos], { mapas: [MAPA_REF], invertidas: [{ mapa: { A: 'HEAD', B: 'novo' }, vereditos: r1.invertida.vereditos }] }),
     /sem o mapa/);
 });
+
+// L3 (s104), A3-01 + A9-05: dois defeitos distintos do mesmo veredito na mesma linha eram uma chave so, e o segundo
+// sumia de achadosNovosP0P1. O RV-12 cobria so o caso entre rondas; este e dentro da propria ronda.
+test('L3 A3-01: dois P1 distintos do mesmo veredito na mesma linha saem os dois; repetidos na ronda seguinte nao molham', () => {
+  const M = { A: 'trabalho', B: 'HEAD' };
+  const dois = () => [veredito('correcao', [achado('P1', 'A.txt', 42, 'defeito X'), achado('P1', 'A.txt', 42, 'defeito Y')])];
+  let r = v.apurar([dois()], { mapas: [M] });
+  assert.deepStrictEqual(r.novos.map((a) => a.descricao), ['defeito X', 'defeito Y']);
+  r = v.apurar([dois()]);
+  assert.deepStrictEqual(r.novos.map((a) => a.descricao), ['defeito X', 'defeito Y'], 'sem mapa, a mesma regra');
+  r = v.apurar([dois(), dois()], { mapas: [M, M] });
+  assert.strictEqual(r.secas, 1, 'os dois repetidos na ronda 2 nao molham');
+  // um terceiro na mesma linha, so na ronda 2, e achado novo
+  const tres = [veredito('correcao', [achado('P1', 'A.txt', 42, 'defeito X'), achado('P1', 'A.txt', 42, 'defeito Y'),
+    achado('P1', 'A.txt', 42, 'defeito Z')])];
+  r = v.apurar([dois(), tres], { mapas: [M, M] });
+  assert.strictEqual(r.secas, 0);
+  assert.deepStrictEqual(r.novos.map((a) => a.descricao), ['defeito Z']);
+  // revisao L3 R2 (correcao, P1): o novo vem ANTES do repetido no veredito - o listado e o novo, nao o repetido
+  const yAntes = [veredito('correcao', [achado('P1', 'A.txt', 42, 'defeito Y'), achado('P1', 'A.txt', 42, 'defeito X')])];
+  r = v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 42, 'defeito X')])], yAntes], { mapas: [M, M] });
+  assert.strictEqual(r.secas, 0);
+  assert.deepStrictEqual(r.novos.map((a) => a.descricao), ['defeito Y']);
+  // e o repetido sozinho com outras palavras segue sem molhar (a chave base e dele)
+  r = v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 42, 'defeito X')])],
+    [veredito('correcao', [achado('P1', 'A.txt', 42, 'o X de outro jeito')])]], { mapas: [M, M] });
+  assert.strictEqual(r.secas, 1);
+  // revisao L3 R3 (correcao, P1; D602): X consertado e Z novo na linha onde ja havia X e Y - o Z nao some
+  const xy = () => [veredito('correcao', [achado('P1', 'A.txt', 42, 'defeito X'), achado('P1', 'A.txt', 42, 'defeito Y')])];
+  r = v.apurar([xy(), [veredito('correcao', [achado('P1', 'A.txt', 42, 'defeito Y'), achado('P1', 'A.txt', 42, 'defeito Z')])]],
+    { mapas: [M, M] });
+  assert.strictEqual(r.secas, 0);
+  assert.deepStrictEqual(r.novos.map((a) => a.descricao), ['defeito Z']);
+  // o novo antes do repetido reescrito: o novo esta na lista (o reescrito tambem - custo aceito na D602)
+  r = v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 42, 'defeito X')])],
+    [veredito('correcao', [achado('P1', 'A.txt', 42, 'defeito Y'), achado('P1', 'A.txt', 42, 'o X de outro jeito')])]],
+  { mapas: [M, M] });
+  assert.ok(r.novos.some((a) => a.descricao === 'defeito Y'), JSON.stringify(r.novos));
+  // custo aceito na D602: dois repetidos reescritos na mesma linha molham a ronda
+  r = v.apurar([xy(), [veredito('correcao', [achado('P1', 'A.txt', 42, 'o X de novo'), achado('P1', 'A.txt', 42, 'o Y de novo')])]],
+    { mapas: [M, M] });
+  assert.strictEqual(r.secas, 0);
+  // um so, ja visto na 2a chave, segue repeticao
+  r = v.apurar([xy(), [veredito('correcao', [achado('P1', 'A.txt', 42, 'defeito Y')])]], { mapas: [M, M] });
+  assert.strictEqual(r.secas, 1);
+  // controle: o mesmo achado em dois vereditos da mesma lente segue um so
+  r = v.apurar([[veredito('correcao', [achado('P1', 'A.txt', 42, 'X')]), veredito('correcao', [achado('P1', 'A.txt', 42, 'X')])]],
+    { mapas: [M] });
+  assert.strictEqual(r.novos.length, 1);
+});
+
+// L3 (s104), A3-05: "p1" e " P1 " eram severidade invalida, e o achado saia descartado com a ronda seca.
+test('L3 A3-05: severidade em minuscula ou com espaco vale como a canonica; "alta" segue descartada', () => {
+  for (const sev of ['p1', ' P1 ', 'p0', 'P2 ']) {
+    const r = v.validarVeredito(veredito('correcao', [achado(sev, 'A.txt', 3)]));
+    assert.strictEqual(r.achadosValidos.length, 1, JSON.stringify(sev));
+    assert.strictEqual(r.achadosValidos[0].severidade, sev.trim().toUpperCase());
+  }
+  assert.strictEqual(v.validarVeredito(veredito('correcao', [achado('alta', 'A.txt', 3)])).achadosValidos.length, 0);
+  const r = v.apurar([[veredito('correcao', [achado('p1', 'A.txt', 3)])], [veredito('correcao', [])]]);
+  assert.strictEqual(r.secas, 1, 'o "p1" da ronda 1 molhou');
+});
+
+// L3 (s104), A3-03: uma ronda 1 com um veredito so (ou de lente "banana") fechava aprovado. Com a faixa da ronda 1
+// (o preparar-revisao.js grava no mapa.json), a ronda 1 sem as lentes da faixa e voto que falta, como a ronda vazia.
+test('L3 A3-03: com a faixa, a ronda 1 sem as lentes da faixa e voto que falta', () => {
+  const vazio = (l) => veredito(l, []);
+  assert.throws(() => v.apurar([[vazio('correcao')], [vazio('correcao')]], { faixas: ['duas', 'duas'] }),
+    (e) => /ronda 1/.test(e.message) && /borda/.test(e.message) && e.codigo === 'VOTO_QUE_FALTA');
+  assert.throws(() => v.apurar([[vazio('banana')], [vazio('banana')]], { faixas: ['uma'] }), /correcao/);
+  const sete = ['correcao', 'estados', 'borda', 'seguranca', 'manutencao', 'microcopy', 'enxuto'];
+  assert.throws(() => v.apurar([sete.slice(0, 6).map(vazio), [vazio('correcao')]], { faixas: ['completa'] }), /7/);
+  assert.throws(() => v.apurar([sete.slice(0, 6).concat(['banana']).map(vazio), [vazio('correcao')]], { faixas: ['completa'] }), /7/);
+  // controles
+  assert.strictEqual(v.apurar([[vazio('correcao'), vazio('borda')], [vazio('correcao')]], { faixas: ['duas'] }).encerrar, true);
+  assert.strictEqual(v.apurar([sete.map(vazio), [vazio('correcao')]], { faixas: ['completa'] }).encerrar, true);
+  assert.doesNotThrow(() => v.apurar([[vazio('Correção e regressão')]], { faixas: ['uma'] }), 'o titulo com acento e a lente');
+  assert.doesNotThrow(() => v.apurar([[vazio('banana')], [vazio('banana')]]), 'sem faixa (base antiga), a conta de antes');
+});
+
+test('L3 A3-03: com a faixa, a lente que achou P0/P1 do lado novo tem de voltar na ronda seguinte', () => {
+  const M = { A: 'trabalho', B: 'HEAD' };
+  const r1 = [veredito('correcao', []), veredito('borda', [achado('P1', 'A.txt', 9, 'quebra')])];
+  assert.throws(() => v.apurar([r1, [veredito('correcao', [])], [veredito('correcao', [])]], { mapas: [M, M, M], faixas: ['duas'] }),
+    (e) => /ronda 2/.test(e.message) && /borda/.test(e.message) && e.codigo === 'VOTO_QUE_FALTA');
+  const r = v.apurar([r1, [veredito('borda', [])], [veredito('borda', [])]], { mapas: [M, M, M], faixas: ['duas'] });
+  assert.strictEqual(r.motivo, 'duas rondas secas seguidas: aprovado');
+  // o P1 refutado e o do lado antigo nao obrigam a lente a voltar
+  const ref = [{ ronda: 1, lente: 'borda', arquivo: 'A.txt', linha: 9, severidade: 'P1', prova: 'x.js:1' }];
+  assert.doesNotThrow(() => v.apurar([r1, [veredito('correcao', [])]], { mapas: [M, M], faixas: ['duas'], refutados: ref }));
+  const antigo = [veredito('correcao', []), veredito('borda', [achado('P1', 'B.txt', 9)])];
+  assert.doesNotThrow(() => v.apurar([antigo, [veredito('correcao', [])]], { mapas: [M, M], faixas: ['duas'] }));
+  assert.doesNotThrow(() => v.apurar([r1, [veredito('correcao', [])]], { mapas: [M, M] }), 'sem faixa, a conta de antes');
+});

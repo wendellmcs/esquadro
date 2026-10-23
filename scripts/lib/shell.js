@@ -2,6 +2,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const texto = require('./texto.js');
+// A1-08: o comando e o achado vem do dono e podem ter acento; o aviso sai em ASCII (R5) como o do destrutivo.js.
+const { ascii } = require('./escopo.js');
 
 // 0.3.5/D294: a tabela que nao se le NAO some calada. A causa fica guardada e o portao a mostra
 // (`problemasDaTabela` + `avisoTabela`): o comando passa, e sai aviso. Nada se nega por arquivo
@@ -159,7 +161,7 @@ function motivo(comando, problemas, tentativa) {
     ? '  1. escreva o comando em PowerShell, sem outra forma de bash;'
     : '  1. reescreva o comando com o que esta em "Use no lugar";');
   linhas.push('  2. ou use uma ferramenta multiplataforma (Node, o proprio harness).');
-  return linhas.join('\n');
+  return linhas.map(ascii).join('\n');
 }
 
 /**
@@ -574,7 +576,7 @@ function motivoCdSolto(comando, achado) {
   });
   linhas.push('');
   linhas.push('So o dono libera: ele acrescenta o padrao em "comandosLiberados" de .claude/esquadro/projeto.json.');
-  return linhas.join('\n');
+  return linhas.map(ascii).join('\n');
 }
 
 /**
@@ -600,7 +602,7 @@ function avisoCdCorrigido(achado, deNovo) {
     '',
     'O ' + (achado ? achado.achado : 'cd') + ' mudaria a pasta para os comandos seguintes; no subshell a pasta volta sozinha.',
     'Da proxima vez, escreva assim: ( cd "<pasta>" && <comando> ), ou git -C "<pasta>" sem mudar de pasta.'
-  ].join('\n');
+  ].map(ascii).join('\n');
 }
 
 module.exports = { TABELA, semLiterais, conferir, problemasDaTabela, avisoTabela, motivo, cdSolto, motivoCdSolto,

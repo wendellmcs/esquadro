@@ -559,7 +559,10 @@ function shellComTabela(conteudo) {
   fs.mkdirSync(path.join(base, 'scripts', 'lib'), { recursive: true });
   fs.mkdirSync(path.join(base, 'modelos'), { recursive: true });
   fs.copyFileSync(path.join(__dirname, '..', 'scripts', 'lib', 'shell.js'), path.join(base, 'scripts', 'lib', 'shell.js'));
-  fs.copyFileSync(path.join(__dirname, '..', 'scripts', 'lib', 'texto.js'), path.join(base, 'scripts', 'lib', 'texto.js'));
+  // A1-08: o shell.js pede o ascii do escopo.js, que pede o glob.js.
+  for (const dep of ['texto.js', 'escopo.js', 'glob.js']) {
+    fs.copyFileSync(path.join(__dirname, '..', 'scripts', 'lib', dep), path.join(base, 'scripts', 'lib', dep));
+  }
   if (conteudo !== null) fs.writeFileSync(path.join(base, 'modelos', 'shell-win32.json'), conteudo, 'utf8');
   try { return require(path.join(base, 'scripts', 'lib', 'shell.js')); } finally { fs.rmSync(base, { recursive: true, force: true }); }
 }

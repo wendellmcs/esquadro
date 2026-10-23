@@ -2,7 +2,7 @@
 // 0.3.4, item 1 (D264, D287): o veredito do inspetor e gravado por hook, nao a mao.
 // O script nunca barra (sai com 0, nunca emite `decision`) e nunca cala (nao gravou = systemMessage
 // com a causa). A fixture REAL_SUBAGENT_STOP e o payload de um SubagentStop real (claude 2.1.258,
-// 2026-09-30, agente esquadro:inspetor), com os caminhos de usuario trocados por ficticios.
+// 2026-09-30, agente esquadro:inspetor), com os caminhos de usuario trocados por ficticios. D597: o session_id tambem (era o de uma sessao real do dono).
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -14,8 +14,8 @@ const RAIZ = path.join(__dirname, '..');
 const SCRIPT = path.join(RAIZ, 'scripts', 'gravar-veredito.js');
 
 const REAL_SUBAGENT_STOP = {
-  session_id: '2ea387fe-91f5-4f3a-9a12-156200305348',
-  transcript_path: 'C:\\dev\\.claude\\projects\\proj\\2ea387fe-91f5-4f3a-9a12-156200305348.jsonl',
+  session_id: '11111111-2222-4333-8444-555555555555',
+  transcript_path: 'C:\\dev\\.claude\\projects\\proj\\11111111-2222-4333-8444-555555555555.jsonl',
   cwd: 'C:\\dev\\proj',
   prompt_id: 'e7fb3c83-5849-4197-bccb-fd491ed465fa',
   permission_mode: 'acceptEdits',
@@ -24,7 +24,7 @@ const REAL_SUBAGENT_STOP = {
   effort: { level: 'medium' },
   hook_event_name: 'SubagentStop',
   stop_hook_active: false,
-  agent_transcript_path: 'C:\\dev\\.claude\\projects\\proj\\2ea387fe\\subagents\\agent-a4ef814f10f9daff9.jsonl',
+  agent_transcript_path: 'C:\\dev\\.claude\\projects\\proj\\11111111\\subagents\\agent-a4ef814f10f9daff9.jsonl',
   last_assistant_message: '```json\n{\n  "lente": "correcao",\n  "melhor": "empate",\n' +
     '  "porQue": "nao sei - A.txt:1 retorna 1 e B.txt:1 retorna 2",\n  "achados": []\n}\n```',
   background_tasks: [{ id: 'a4ef814f10f9daff9', type: 'subagent', status: 'running',

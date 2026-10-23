@@ -323,6 +323,15 @@ test('D486: o revisar e o inspetor dizem o que fazer com o recorte do trecho mud
   assert.ok(/no m[aá]ximo P2/.test(inspetor), 'o inspetor tem de limitar a P2 o que depende do vao');
 });
 
+// L3 (s104): subir a completa tem flag (A3-04); a aprovacao com achado descartado manda ler vereditosDescartados
+// (A3-05); a ronda 1 sem as lentes da faixa, ou sem a lente que achou P0/P1, para a apuracao (A3-03).
+test('L3: o revisar cita --completa, manda ler vereditosDescartados e diz que o script confere as lentes', () => {
+  const revisar = fs.readFileSync(path.join(RAIZ, 'skills', 'revisar', 'SKILL.md'), 'utf8');
+  assert.ok(revisar.includes('--completa'), 'o revisar nao diz como subir a completa');
+  assert.ok(revisar.includes('`vereditosDescartados`'), 'o revisar nao manda ler os descartados');
+  assert.match(revisar, /lente que achou P0 ou P1 e n[aã]o voltou/i, 'o revisar nao diz que a lente tem de voltar');
+});
+
 // Ronda 2 do Passo 8b: "oito travas" batia o README com o CHANGELOG e o manifesto, e o
 // titulo do README com a tabela dele - nunca com o codigo. Trava e portao que nega (os
 // baldes de bloqueio do saude.js) ou um dos dois comandos. Balde novo que nega tem de
@@ -799,4 +808,155 @@ test('D503: a 4.1 do padrao manda nomear antes a referencia de topo que se abre 
   assert.match(s, /\/esquadro:revisar/, 'a 4.1 nao aponta a revisao que usa a referencia');
   assert.match(s, /nas duas ordens/, 'a 4.1 nao diz a regra de pronto contra a referencia');
   assert.match(s, /sem refer[êe]ncia/, 'a 4.1 nao diz o que fazer sem referencia');
+});
+
+// ── L6 da revisao completa: o texto diz o que o codigo faz ─────────────────
+
+test('A4-06: a skill gerada nao manda rodar script do plugin como se morasse no projeto', () => {
+  const t = ler('modelos/skill-projeto.md');
+  assert.ok(!/`node scripts\//.test(t), 'o molde manda "node scripts/..." - o script mora no plugin (Cannot find module)');
+  assert.match(t, /node "<plugin>\/scripts\/uso\.js"/, 'o molde perdeu a contagem de disparos pela pasta do plugin');
+  assert.ok(fs.existsSync(path.join(RAIZ, 'scripts', 'uso.js')), 'o uso.js saiu do plugin');
+});
+
+test('A4-07: o aprender diz que o propor-regra.js RECUSA quebra de linha (D434)', () => {
+  assert.match(ler('scripts/propor-regra.js'), /RECUSADA: o gatilho ou a acao tem quebra de linha\. Nada foi gravado\./);
+  const p = plano(ler('skills/aprender/SKILL.md'));
+  assert.ok(!/n[ãa]o recusa texto com duas linhas/i.test(p), 'a skill ainda diz que o script nao recusa');
+  assert.ok(!/grava assim mesmo/i.test(p), 'a skill ainda diz que o script grava a regra partida');
+  assert.match(p, /recusa .{0,80}RECUSADA/, 'a skill nao diz que o script recusa, com a palavra que ele imprime');
+});
+
+test('A8-01: o Passo 5 do init nao diz que aaa e padrao barram igual (o portao do manual so olha aaa)', () => {
+  assert.match(ler('scripts/portao-escopo.js'), /marcha === 'aaa' && projeto\.portaoManual !== false/);
+  const p = plano(secaoDoInit('Passo 5 '));
+  assert.ok(!/barram exatamente igual/.test(p), 'o Passo 5 ainda diz que aaa e padrao barram igual');
+  assert.ok(!/n[ãa]o [ée], hoje, uma trava mais apertada/.test(p), 'o Passo 5 ainda diz que aaa nao aperta mais');
+  assert.match(p, /`aaa`.{0,200}manual/, 'o Passo 5 nao diz que aaa exige o manual');
+  assert.match(p, /portaoManual"?: false/, 'o Passo 5 nao diz a chave que desliga o portao do manual');
+});
+
+test('A8-02: o aprender diz o que o gancho manda - rodar na mesma resposta e perguntar em 3 opcoes', () => {
+  const ordem = require('../scripts/lib/correcao.js').INSTRUCAO_DA_CORRECAO;
+  assert.match(ordem, /nesta mesma resposta/);
+  assert.match(ordem, /em 3 opcoes/);
+  const p = plano(ler('skills/aprender/SKILL.md'));
+  assert.ok(!/oferece em uma linha/.test(p), 'a skill ainda diz que o agente so oferece em uma linha');
+  assert.match(p, /na mesma resposta/, 'a skill nao diz que roda na mesma resposta');
+  assert.match(p, /3 op[çc][õo]es/, 'a skill nao diz que pergunta em 3 opcoes');
+});
+
+test('A11-01: o que o init manda escrever (Passos 3, 4 e 8) nao e lido como alegacao de sucesso pelo fecho', () => {
+  const ev = require('../scripts/lib/evidencia.js');
+  const disparam = [];
+  let passo = '';
+  ler('skills/init/SKILL.md').split(/\r?\n/).forEach(function (l, i) {
+    const m = l.match(/^## (Passo \S+)/);
+    if (m) passo = m[1];
+    if (!/^Passo (3|4|8)\b/.test(passo) || !(/^\|/.test(l) || /^\d+\. \*\*/.test(l))) return;
+    if (ev.analisar(l).alegaSucesso) disparam.push(passo + ':' + (i + 1) + ' ' + l.slice(0, 80));
+  });
+  assert.deepStrictEqual(disparam, [], 'linhas que o modelo repete e o portao de fecho barra');
+});
+
+// A8-03: os blocos de saida dos portoes no README sao a saida literal desta versao - rodados aqui, de verdade, contra o
+// projeto de exemplo do README. Bloco "esquadro..." do README que nao e nenhuma delas reprova (texto velho), salvo os
+// que este teste nao gera (o do fecho e o aviso do portaoDecisao).
+function saidasDosPortoes() {
+  const os = require('node:os');
+  const { spawnSync } = require('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-a803-'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-a803t-'));
+  try {
+    const escrever = (rel, c) => {
+      const a = path.join(dir, rel);
+      fs.mkdirSync(path.dirname(a), { recursive: true });
+      fs.writeFileSync(a, c, 'utf8');
+    };
+    escrever('.claude/esquadro/projeto.json', JSON.stringify({
+      versaoConfig: 1, marchaPadrao: 'padrao', intocaveis: ['.env'],
+      marchas: { aaa: [], padrao: ['src/**', 'test/**'], rapida: ['docs/**'] }
+    }));
+    escrever('.claude/esquadro/escopo.md', ['# Escopo', '**Objetivo:** corrigir o calculo do frete no carrinho.',
+      '## Dentro', '- src/carrinho/**', '- test/carrinho.test.js', '- test/cobertura.json', '## Fora de escopo',
+      '- src/pagamento/**', ''].join('\n'));
+    escrever('src/usuarios/perfil.js', 'x\n');
+    escrever('src/pagamento/cobranca.js', 'x\n');
+    escrever('.env', 'A=1\n');
+    escrever('test/cobertura.json', '{ "minimo": 80 }\n');
+    spawnSync('git', ['init', '-q', dir]);
+    spawnSync('git', ['-C', dir, 'add', '-A']);
+    spawnSync('git', ['-C', dir, '-c', 'user.name=x', '-c', 'user.email=x@x', 'commit', '-q', '-m', 'base']);
+    const env = Object.assign({}, process.env, { ESQUADRO_TMP: tmp });
+    const rodar = (script, ev) => {
+      const r = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', script)],
+        { input: JSON.stringify(Object.assign({ session_id: 'sa803', cwd: dir }, ev)), encoding: 'utf8', env: env, cwd: dir, timeout: 60000 });
+      let j = null;
+      try { j = JSON.parse(r.stdout); } catch (e) { j = null; }
+      return (j && j.hookSpecificOutput && j.hookSpecificOutput.permissionDecisionReason) || (j && j.reason) || null;
+    };
+    const pre = (tool, input) => ({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input });
+    const em = (rel) => path.join(dir, rel);
+    rodar('abertura.js', { hook_event_name: 'SessionStart', source: 'startup' });
+    const s = {
+      fora: rodar('portao-escopo.js', pre('Edit', { file_path: em('src/usuarios/perfil.js'), old_string: 'x', new_string: 'y' })),
+      FORA: rodar('portao-escopo.js', pre('Edit', { file_path: em('src/pagamento/cobranca.js'), old_string: 'x', new_string: 'y' })),
+      intocavel: rodar('portao-escopo.js', pre('Write', { file_path: em('.env'), content: 'A=2\n' })),
+      destrutivo: rodar('portao-destrutivo.js', pre('Bash', { command: 'git reset --hard origin/main' })),
+      criar: rodar('portao-escopo.js', pre('Write', { file_path: em('src/carrinho/frete-novo.js'), content: 'x\n' })),
+      catraca: rodar('portao-escopo.js', pre('Edit', { file_path: em('test/cobertura.json'), old_string: '"minimo": 80', new_string: '"minimo": 60' }))
+    };
+    const ho = '.claude/esquadro/handoff/2026-10-10-frete.md';
+    escrever(ho, '# handoff\n');
+    rodar('marcar-trabalho.js', { hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: em(ho), content: '# handoff\n' } });
+    s.handoff = rodar('portao-fecho.js', { hook_event_name: 'Stop', stop_hook_active: false, last_assistant_message: 'Gravei o handoff do frete.' });
+    s.troca = saude.avisoDeSaude(['7 bloqueios de portao nesta sessao (limiar 6)']);
+    return s;
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+const secaoDoReadme = (titulo) => {
+  const t = ler('README.md');
+  const i = t.indexOf('\n## ' + titulo);
+  assert.ok(i !== -1, 'sumiu a secao "' + titulo + '" do README');
+  const f = t.indexOf('\n## ', i + 4);
+  return plano(t.slice(i, f === -1 ? t.length : f));
+};
+
+// A12-05 (doc host-marketplace, "Grant access to a private marketplace"): o atalho owner/repo sonda o SSH; sem chave
+// SSH, CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1 pula a sonda; o /plugin na sessao e o update nao caem sozinhos para HTTPS.
+test('A12-05: o Como instalar diz o caminho de quem nao tem chave SSH no GitHub', () => {
+  const p = secaoDoReadme('Como instalar');
+  assert.match(p, /CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1/, 'falta a variavel que pula a sonda SSH');
+  assert.match(p, /SSH/, 'nao diz que o atalho tenta SSH');
+  assert.match(p, /https:\/\/github\.com\/wendellmcs\/esquadro\.git/, 'falta a URL https, que vai direto por HTTPS');
+});
+
+// A12-06 (doc hooks e plugins/org): allowManagedHooksOnly bloqueia hooks de plugin (isento o forcado no enabledPlugins
+// gerenciado); allowManagedModsOnly para os hooks do mod; a lista de marketplaces barra com "is blocked by enterprise policy".
+test('A12-06: o Como instalar avisa que a politica da empresa pode desligar as travas', () => {
+  const p = secaoDoReadme('Como instalar');
+  assert.match(p, /allowManagedHooksOnly/, 'falta a chave que bloqueia os hooks de plugin');
+  assert.match(p, /enabledPlugins/, 'falta a saida (plugin forcado no enabledPlugins gerenciado)');
+  assert.match(p, /allowManagedModsOnly/, 'falta a chave que para os hooks do mod');
+  assert.match(p, /is blocked by enterprise policy/, 'falta a mensagem que o /plugin mostra');
+});
+
+test('A8-03: os blocos de saida dos portoes no README sao a saida literal desta versao', () => {
+  const saidas = saidasDosPortoes();
+  Object.keys(saidas).forEach(function (k) { assert.ok(saidas[k], 'o portao "' + k + '" nao negou no projeto de exemplo'); });
+  const blocos = [];
+  ler('README.md').replace(/\r\n/g, '\n').replace(/^~~~text\n([\s\S]*?)\n~~~$/gm, function (m, c) { blocos.push(c); return m; });
+  const literais = Object.keys(saidas).map(function (k) { return saidas[k].replace(/\n+$/, ''); });
+  Object.keys(saidas).forEach(function (k, i) {
+    assert.ok(blocos.indexOf(literais[i]) !== -1, 'o README nao tem a saida literal do portao "' + k + '":\n' + literais[i]);
+  });
+  const naoGerados = [/^esquadro - portao de fecho \(trava 3\)\./, /^esquadro: ATENCAO - valor de tipo errado/];
+  const velhos = blocos.filter(function (b) {
+    return /^esquadro[ :]/.test(b) && literais.indexOf(b) === -1 && !naoGerados.some(function (r) { return r.test(b); });
+  });
+  assert.deepStrictEqual(velhos.map(function (b) { return b.split('\n')[0]; }), [], 'bloco de portao no README que o codigo nao imprime');
 });

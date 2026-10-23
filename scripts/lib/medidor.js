@@ -7,7 +7,7 @@
 //   medidas     - os gatilhos de saude.medir (troca de chat); avisouSaude - o aviso de troca ja foi dado;
 //   historico   - por sessao, o % de cada janela no 1o e no ultimo momento (gasto.guardarSessao), para a previsao em
 //                 trocas de chat; sessao - o id da sessao atual, que fica fora dessa media;
-//   gasto       - o gasto do mes (gasto.gastoDoMes): { usd, real, estimado, pendentes, desde }.
+//   gasto       - o gasto do mes (gasto.gastoDoMes): { usd, real, estimado, pendentes, semPreco, ilegiveis, desde }.
 // Devolve a linha de status (curta), a resposta do comando (longa) e se a troca de chat ja cruzou. Texto de gancho
 // fica ASCII (R5); a barra e a resposta do comando sao excecao, com acento (D532: a sonda da Tarefa 1 do plano 082 viu
 // o acento inteiro nas duas). Campo que o motor nao deu e omitido: numero inventado e pior que numero nenhum.
@@ -184,9 +184,12 @@ function gastoDoMes(g) {
   return {
     usd: gasto.usd, real: gasto.real, estimado: gasto.estimado,
     desde: typeof gasto.desde === 'string' && gasto.desde.trim() !== '' ? gasto.desde.trim() : null,
-    pendentes: num(gasto.pendentes) && gasto.pendentes > 0 ? Math.ceil(gasto.pendentes) : 0
+    pendentes: contagem(gasto.pendentes),
+    // A6-02: o que ficou fora da conta segue ate a tela (o gasto.js os devolve; antes paravam aqui, calados)
+    semPreco: contagem(gasto.semPreco), ilegiveis: contagem(gasto.ilegiveis)
   };
 }
+function contagem(v) { return num(v) && v > 0 ? Math.ceil(v) : 0; }
 
 /**
  * A previsao em trocas de chat de uma janela: quantas sessoes como as anteriores cabem no que falta dela. A media vem
@@ -275,6 +278,14 @@ function linhasDoGasto(uso, gasto) {
     if (gasto.pendentes > 0) {
       gastos.push('- ainda somando: ' + (gasto.pendentes === 1 ? 'falta 1 conversa salva' : 'faltam ' + gasto.pendentes + ' conversas salvas') +
         ' para ler; o total se completa sozinho nas próximas respostas, sem você fazer nada');
+    }
+    if (gasto.semPreco > 0) {
+      gastos.push('- fora da conta: ' + (gasto.semPreco === 1 ? '1 mensagem' : gasto.semPreco + ' mensagens') +
+        ' de um modelo que a tabela de preços não tem; o mês sai menor do que é');
+    }
+    if (gasto.ilegiveis > 0) {
+      gastos.push('- fora da conta: ' + (gasto.ilegiveis === 1 ? '1 conversa salva que não se leu' :
+        gasto.ilegiveis + ' conversas salvas que não se leram') + '; a próxima medida tenta de novo');
     }
     gastos.push('- na assinatura é o valor que a API cobraria, não uma cobrança');
   }

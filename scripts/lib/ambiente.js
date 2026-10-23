@@ -1,14 +1,16 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const texto = require('./texto.js');
 
 const LIMITES = (function () {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'modelos', 'limites.json'), 'utf8')); }
   catch (e) { return { delegaveisConhecidos: [] }; }
 })();
 
+// A4-01: sem o semBom, o settings.json gravado com BOM (PowerShell 5.1) voltava null e o ambiente saia vazio, calado.
 function lerJson(arquivo) {
-  try { const o = JSON.parse(fs.readFileSync(arquivo, 'utf8')); return o && typeof o === 'object' ? o : null; }
+  try { const o = JSON.parse(texto.semBom(fs.readFileSync(arquivo, 'utf8'))); return o && typeof o === 'object' ? o : null; }
   catch (e) { return null; }
 }
 

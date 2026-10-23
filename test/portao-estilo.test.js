@@ -657,7 +657,7 @@ test('hooks.json: o portao-estilo e o SEGUNDO gancho da entrada Bash|PowerShell,
     assert.strictEqual(typeof h.timeout, 'number');
   }
   // o Write|Edit segue com o portao-escopo sozinho
-  const we = hooks.PreToolUse.filter(function (g) { return g.matcher === 'Write|Edit'; });
+  const we = hooks.PreToolUse.filter(function (g) { return g.matcher === 'Write|Edit|NotebookEdit'; });
   assert.deepStrictEqual(we[0].hooks.map(function (h) { return h.args[0]; }), ['${CLAUDE_PLUGIN_ROOT}/scripts/portao-escopo.js']);
   assert.ok(fs.existsSync(path.join(RAIZ, 'scripts', 'portao-estilo.js')));
 });

@@ -181,7 +181,16 @@ const TRAVA_ESCOPO = 'esquadro - portao de escopo (trava 4 - o escopo da tarefa)
 const TRAVA_OUTRA_FRENTE = 'esquadro - outra frente de trabalho (trava 5 - arquivo de outra frente).';
 const O_QUE_E_MARCHA = 'o nivel de rigor que o projeto.json da a este caminho';
 
+// A2-04: o caminho sai por ascii() (R5); com acento ou caractere fora de ASCII, o escrito no aviso nao e o real.
+// A linha e um bloco proprio na forma unica: depois de uma linha em branco, com outra depois (ou no `fim` do aviso).
+function avisoDeAcento(original, fim) {
+  if (ascii(original) === String(original == null ? '' : original)) return [];
+  const linha = 'O caminho real tem acento ou caractere especial: copie-o da sua chamada, nao deste texto.';
+  return fim ? ['', linha] : [linha, ''];
+}
+
 function motivoSemEscopo(alvo, marcha, arquivo) {
+  const original = alvo;
   alvo = ascii(alvo);
   marcha = ascii(marcha);
   arquivo = arquivo || ARQUIVO;
@@ -195,18 +204,21 @@ function motivoSemEscopo(alvo, marcha, arquivo) {
     '  # Escopo',
     '  **Objetivo:** <uma linha sobre o que esta tarefa resolve>',
     '  ## Dentro',
-    '  - ' + alvo,
+    // A2-04: entre crases, o parser le o caminho inteiro (sem crase, corta em ` (`, ` - `, ` #`).
+    '  - `' + alvo + '`',
     '  ## Fora de escopo',
     '  - <o que voce NAO vai mexer, mesmo tendo vontade>',
-    '',
+    ''
+  ].concat(avisoDeAcento(original), [
     'A secao "Dentro" libera: o que nao estiver listado la e negado.',
     'A secao "Fora de escopo" tambem bloqueia: o que voce declarou que NAO vai tocar e negado,',
     'mesmo que case um padrao de "Dentro". Pode anotar o motivo depois do caminho, entre parenteses.',
     'Qualidade maxima se aplica ao que foi pedido, jamais a ampliacao do pedido.'
-  ].join('\n');
+  ]).join('\n');
 }
 
 function motivoFora(alvo, marcha, esc, arquivo) {
+  const original = alvo;
   alvo = ascii(alvo);
   marcha = ascii(marcha);
   arquivo = arquivo || ARQUIVO;
@@ -222,9 +234,8 @@ function motivoFora(alvo, marcha, esc, arquivo) {
     'Escolha uma:',
     '  1. nao edite este arquivo - achado fora de escopo vira REGISTRO, nunca correcao;',
     '  2. se ele e mesmo parte do pedido, acrescente-o ao escopo e diga por que.',
-    '',
-    'Ampliar o escopo e contado e aparece no fecho do turno.'
-  ].join('\n');
+    ''
+  ].concat(avisoDeAcento(original), ['Ampliar o escopo e contado e aparece no fecho do turno.']).join('\n');
 }
 
 function motivoDeclaradoFora(alvo, padrao, arquivo) {
@@ -402,6 +413,7 @@ function motivoIntocavel(alvo) {
 }
 
 function motivoOutraFrente(alvo, arquivo) {
+  const original = alvo;
   alvo = ascii(alvo);
   arquivo = arquivo || ARQUIVO;
   return [
@@ -416,7 +428,7 @@ function motivoOutraFrente(alvo, arquivo) {
     // 0.3.3, item 25: o que se conta e a ampliacao do escopo (contador escopo_ampliado, em
     // portao-escopo.js), que o portao do fecho mostra no fim do turno (portao-fecho.js).
     'liste o caminho exato em ' + arquivo + ', na secao "## Dentro". Essa ampliacao do escopo e contada e aparece no fecho do turno.'
-  ].join('\n');
+  ].concat(avisoDeAcento(original, true)).join('\n');
 }
 
 module.exports = {

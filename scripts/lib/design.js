@@ -234,8 +234,13 @@ function radical(anti) {
   return (a.length > 4 && /e$/.test(a)) ? a.slice(0, -1) : a;
 }
 
-function conferir(texto, sistema) {
+function conferir(texto, sistema, antes) {
   if (!sistema) return { ok: true, fora: [] };
+  // A2-03: no Edit, o valor fora que ja estava no `old_string` (contexto, legado) nao e do pedido: desconta, por contagem.
+  const jaTinha = new Map();
+  if (typeof antes === 'string') {
+    for (const a of conferir(antes, sistema).fora) jaTinha.set(a.valor, (jaTinha.get(a.valor) || 0) + 1);
+  }
   const permitidos = new Set(
     [].concat(sistema.cores || [], sistema.raios || [], sistema.espacos || [], sistema.sombras || [])
       .map(normalizarValor)
@@ -256,7 +261,12 @@ function conferir(texto, sistema) {
     }
   });
 
-  return { ok: fora.length === 0, fora: fora };
+  const novos = fora.filter(function (a) {
+    const n = jaTinha.get(a.valor) || 0;
+    if (n > 0) jaTinha.set(a.valor, n - 1);
+    return n === 0;
+  });
+  return { ok: novos.length === 0, fora: novos };
 }
 
 // Plano 082, Tarefa 5 (mock S10): a forma unica dos avisos - o que falta, o arquivo entre aspas, "Faca uma destas".

@@ -285,6 +285,23 @@ test('pedido 31: conta das transcricoes ainda em curso aparece como "somando"; s
   assert.ok(torto.curta.indexOf('mês ') === -1, torto.curta);
 });
 
+test('A6-02: o que ficou fora da conta do mes (sem preco, ilegivel) aparece na resposta longa, nunca calado', () => {
+  const longa = function (extra) {
+    return medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: [], gasto: Object.assign({}, GASTO, extra) }).longa;
+  };
+  const varios = longa({ semPreco: 295, ilegiveis: 2 });
+  assert.ok(varios.indexOf('- fora da conta: 295 mensagens de um modelo que a tabela de preços não tem; o mês sai ' +
+    'menor do que é\n') !== -1, varios);
+  assert.ok(varios.indexOf('- fora da conta: 2 conversas salvas que não se leram; a próxima medida tenta de novo\n') !== -1,
+    varios);
+  const um = longa({ semPreco: 1, ilegiveis: 1 });
+  assert.ok(um.indexOf('- fora da conta: 1 mensagem de um modelo que a tabela de preços não tem;') !== -1, um);
+  assert.ok(um.indexOf('- fora da conta: 1 conversa salva que não se leu;') !== -1, um);
+  for (const nada of [{}, { semPreco: 0, ilegiveis: 0 }, { semPreco: 'x', ilegiveis: -1 }]) {
+    assert.ok(longa(nada).indexOf('fora da conta') === -1, longa(nada));
+  }
+});
+
 // Plano 082 (p6-24): a barra na ordem contexto · 5h · semana · mês · sessão · troca; o plano saiu dela (esta na faixa).
 test('plano 082: a barra na ordem do mock e sem o plano, mesmo se o chamador mandar planoCurto', () => {
   const r = medidor.linhaDaSessao({ uso: uso(), amostras: [], medidas: saude.medir({}, null), gasto: GASTO, planoCurto: 'plano d503 5 de 6' });

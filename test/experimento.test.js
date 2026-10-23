@@ -95,6 +95,34 @@ test('experimento: NADA e a UNICA coluna que reprova o plugin - FORA e cobertura
   assert.ok(ob.motivo(c).indexOf('HOOK 0 | REGRAS 1 | SKILL 1 | FORA 1') !== -1, ob.motivo(c));
 });
 
+// L3 (s104), A3-20: o comentario do obrigacoes.js e o roteiro mandam o FORA citar a decisao; o codigo so pedia texto.
+test('L3 A3-20: FORA sem citar a decisao INVALIDA; com D<numero> ou "decisao <numero>" vale', () => {
+  // revisao L3 R2 (correcao, P1): prosa com numero nao e citacao - "decis" solto, d minusculo separado, nome de arquivo
+  for (const ev of ['porque sim', 'ja foi decidido', 'D', 'AD82', 'a decisao de 5 minutos', 'decisivo 3', 'tela d 5',
+    'veja d3.js', 'decidido em 2026-10-22', 'nr. 82']) {
+    const r = resultado();
+    r.linhas[2] = { id: 'guarda-1', mecanismo: 'FORA', evidencia: ev };
+    const c = ob.conferirResultado(LINHAS, r);
+    assert.strictEqual(c.veredito, 'INVALIDO', ev);
+    assert.ok(c.invalidez.some((m) => /guarda-1/.test(m) && /cite a decisao/.test(m)), JSON.stringify(c.invalidez));
+  }
+  // revisao L3 R1 (correcao, P1): plural, espaco e hifen tambem citam a decisao
+  for (const ev of ['D82: contrato de negocio fica no AGENTS.md', 'decisão 8 do dono', 'ver d82', 'decisões 82 e 83',
+    'D 82', 'D-82', 'decisoes 82', 'decisão nº 82', 'decisão #82', 'decisão 82',
+    // R2: numero por extenso, ponto e cerquilha depois do D
+    'decisao numero 82', 'decisão número 82', 'decisao nr. 82', 'D.82', 'D#82', '(D82)', 'pela D82.']) {
+    const r = resultado();
+    r.linhas[2] = { id: 'guarda-1', mecanismo: 'fora', evidencia: ev };
+    assert.strictEqual(ob.conferirResultado(LINHAS, r).veredito, 'BASTA', ev);
+  }
+  // revisao L3 R3 (correcao, P1; D601): texto montado de proposito nao trava a checagem (retrocesso exponencial)
+  const r = resultado();
+  r.linhas[2] = { id: 'guarda-1', mecanismo: 'FORA', evidencia: 'decisao ' + 'n  '.repeat(40) + 'x' };
+  const t0 = Date.now();
+  assert.strictEqual(ob.conferirResultado(LINHAS, r).veredito, 'INVALIDO');
+  assert.ok(Date.now() - t0 < 500, 'demorou ' + (Date.now() - t0) + ' ms');
+});
+
 test('experimento: obrigacao sem classificacao nenhuma da INCONCLUSIVO', () => {
   const r = resultado();
   r.linhas.pop();

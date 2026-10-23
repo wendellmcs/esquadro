@@ -108,3 +108,71 @@ test('propor: D434 quebra de linha no gatilho ou na acao e recusada e nada e gra
     assert.strictEqual(fs.readFileSync(alvo, 'utf8'), antes);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('propor: A4-04 grava no regras.md da raiz do projeto, mesmo rodando de uma subpasta', () => {
+  const dir = projeto();
+  try {
+    fs.writeFileSync(path.join(dir, '.claude', 'esquadro', 'projeto.json'), '{}\n', 'utf8');
+    const sub = path.join(dir, 'src', 'modulo');
+    fs.mkdirSync(sub, { recursive: true });
+    const r = rodar(['--gatilho', 'ao fechar tarefa', '--acao', 'colar a saida da rodada', '--gravar'], sub);
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const raiz = fs.readFileSync(path.join(dir, '.claude', 'esquadro', 'regras.md'), 'utf8');
+    assert.ok(raiz.includes('ao fechar tarefa -> colar a saida da rodada'), raiz);
+    assert.ok(raiz.includes('ao editar -> rodar git status antes'), raiz);
+    assert.strictEqual(fs.existsSync(path.join(sub, '.claude')), false, 'criou .claude/ na subpasta');
+    assert.ok(r.stdout.includes('Total de regras agora: 2'), r.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('propor: A4-05 regras.md que nao e texto utf8 e recusado e fica intacto', () => {
+  const regras = '# Regras\n\n- ao editar -> rodar git status antes\n- ao subir -> rodar a suite\n';
+  const casos = {
+    'UTF-16LE com BOM': Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from(regras, 'utf16le')]),
+    'UTF-16BE com BOM': Buffer.concat([Buffer.from([0xFE, 0xFF]), Buffer.from(regras, 'utf16le').swap16()]),
+    'UTF-16LE sem BOM': Buffer.from(regras, 'utf16le'),
+    'latin1 (byte invalido em utf8)': Buffer.from('# Regras\n\n- ao editar -> revis\xe3o antes\n', 'latin1')
+  };
+  for (const [nome, bytes] of Object.entries(casos)) {
+    const dir = projeto();
+    try {
+      const alvo = path.join(dir, '.claude', 'esquadro', 'regras.md');
+      fs.writeFileSync(alvo, bytes);
+      const r = rodar(['--gatilho', 'ao fechar tarefa', '--acao', 'colar a saida da rodada', '--gravar'], dir);
+      assert.strictEqual(r.status, 1, nome + ': ' + r.stdout + r.stderr);
+      assert.ok(r.stdout.includes('Nao gravei'), nome + ': ' + r.stdout);
+      assert.ok(fs.readFileSync(alvo).equals(bytes), nome + ': o regras.md mudou');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+test('propor: A4-05 regras.md que existe e nao abre e recusado, nunca trocado pelo cabecalho', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-aprende-'));
+  try {
+    const alvo = path.join(dir, '.claude', 'esquadro', 'regras.md');
+    fs.mkdirSync(alvo, { recursive: true });
+    const r = rodar(['--gatilho', 'ao fechar tarefa', '--acao', 'colar a saida da rodada', '--gravar'], dir);
+    assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+    assert.ok(r.stdout.includes('Nao gravei'), r.stdout);
+    assert.ok(fs.statSync(alvo).isDirectory());
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('propor: A4-05 controle - regras.md utf8 com BOM e o ausente seguem gravando', () => {
+  const dir = projeto();
+  try {
+    const alvo = path.join(dir, '.claude', 'esquadro', 'regras.md');
+    fs.writeFileSync(alvo, '\uFEFF# Regras\n\n- ao editar -> rodar git status antes\n', 'utf8');
+    const r = rodar(['--gatilho', 'ao fechar tarefa', '--acao', 'colar a saida da rodada', '--gravar'], dir);
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    assert.ok(fs.readFileSync(alvo, 'utf8').includes('- ao editar -> rodar git status antes'));
+    assert.ok(fs.readFileSync(alvo, 'utf8').startsWith('﻿# Regras'), 'o BOM do arquivo do dono sumiu');
+    assert.ok(r.stdout.includes('Total de regras agora: 2'), r.stdout);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  const novo = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-aprende-'));
+  try {
+    const r = rodar(['--gatilho', 'ao fechar tarefa', '--acao', 'colar a saida da rodada', '--gravar'], novo);
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    assert.ok(r.stdout.includes('Total de regras agora: 1'), r.stdout);
+  } finally { fs.rmSync(novo, { recursive: true, force: true }); }
+});

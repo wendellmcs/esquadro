@@ -280,3 +280,68 @@ test('091 T6: commit negado conta a ordem dada uma vez; o revisar a cumpre; a ma
     assert.strictEqual(ler().contadores.ordem_revisar_recusada, 1, 'recusou sem ordem pendente');
   });
 });
+
+// A2-01 (revisao completa, L2): o `-C` que decide o repositorio era o PRIMEIRO do comando, nao o do `git commit`.
+test('A2-01: pastaDoComando le o -C do proprio git commit, nao o de outro git antes dele', () => {
+  assert.strictEqual(commit.pastaDoComando('git -C "/outro" status && git commit -m x'), null);
+  assert.strictEqual(commit.pastaDoComando('git -C "/outro" status && git -C "/meu" commit -m x'), '/meu');
+  assert.strictEqual(commit.pastaDoComando('git -C /outro status; cd "a b" && git commit'), 'a b');
+  assert.strictEqual(commit.pastaDoComando('git commit -C HEAD'), null, 'o -C do commit e "reusar a mensagem"');
+  // revisao cega do L2 (ronda 1, P2 do lado novo): "git commit" entre aspas nao e o commit; valor de -c com espaco
+  assert.strictEqual(commit.pastaDoComando('echo "git commit" && git -C /repo commit -m x'), '/repo');
+  assert.strictEqual(commit.pastaDoComando('git -c user.name="a b" -C /repo commit'), '/repo');
+});
+
+/** Um segundo repositorio, com src/grande.js mudado contra o HEAD. */
+function comDoisRepos(fn) {
+  comRepo(function (dir, tmp) {
+    const outro = repo();
+    try { fn(dir, tmp, outro); } finally { fs.rmSync(outro, { recursive: true, force: true }); }
+  });
+}
+
+test('A2-01: git -C <outro> status && git commit mede o repositorio do commit, e nega', () => {
+  comDoisRepos(function (dir, tmp, outro) {
+    tocar(dir, tmp, 'src/pequeno.js');
+    const r = commitar(dir, tmp, 'git -C "' + outro + '" status && git commit -m x');
+    assert.ok(negou(r), 'o -C do status desviou a medida e o commit passou: ' + JSON.stringify(r.json));
+    assert.ok(motivo(r).includes('"src/pequeno.js"'), motivo(r));
+  });
+});
+
+// A9-03 (revisao completa, L2): o filtro "so os arquivos do repositorio do commit" (commit.js, `topoDoCommit`), o
+// `check-ignore` do arquivo novo e o "e mais N" do MAX_CITADOS nao tinham teste.
+test('A9-03: arquivo tocado em outro repositorio nao barra o commit deste; barra o commit de la', () => {
+  comDoisRepos(function (dir, tmp, outro) {
+    hook('marcar-trabalho.js', dir, tmp, { hook_event_name: 'PostToolUse', tool_name: 'Write',
+      tool_input: { file_path: path.join(outro, 'src', 'grande.js') } });
+    const aqui = commitar(dir, tmp, 'git commit -m x');
+    assert.ok(!negou(aqui), 'o arquivo do outro repositorio barrou este commit: ' + JSON.stringify(aqui.json));
+    const la = commitar(dir, tmp, 'git -C "' + outro + '" commit -m x');
+    assert.ok(negou(la), 'o commit no outro repositorio passou sem revisao: ' + JSON.stringify(la.json));
+  });
+});
+
+test('A9-03: arquivo novo que o .gitignore ignora nao barra o commit', () => {
+  comRepo(function (dir, tmp) {
+    fs.writeFileSync(path.join(dir, '.gitignore'), 'gerado.js\n');
+    fs.writeFileSync(path.join(dir, 'gerado.js'), 'x\n');
+    tocar(dir, tmp, 'gerado.js');
+    const r = commitar(dir, tmp, 'git commit -m x');
+    assert.ok(!negou(r), 'o arquivo ignorado barrou o commit: ' + JSON.stringify(r.json));
+  });
+});
+
+test('A9-03: com mais de 5 pendentes, o motivo cita 5 e diz "e mais N"', () => {
+  comRepo(function (dir, tmp) {
+    for (let i = 1; i <= 6; i++) {
+      fs.writeFileSync(path.join(dir, 'src', 'n' + i + '.js'), 'x\n');
+      tocar(dir, tmp, 'src/n' + i + '.js');
+    }
+    const r = commitar(dir, tmp, 'git commit -m x');
+    assert.ok(negou(r), JSON.stringify(r.json));
+    const linhas = motivo(r).split('\n').filter(function (l) { return /^ {2}- "src\/n\d\.js"/.test(l); });
+    assert.strictEqual(linhas.length, 5, motivo(r));
+    assert.ok(motivo(r).split('\n').indexOf('  - e mais 1') !== -1, motivo(r));
+  });
+});

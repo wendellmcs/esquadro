@@ -88,6 +88,24 @@ test('D244/defeito 6: pasta existente fora do git nao e inerte; o typo continua 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// A2-05 (revisao completa, L2): o glob so entende `*` e `**`. `sec/` (barra no fim) e `cfg/*.{js,ts}` nao casam arquivo
+// nenhum, e a pasta fixa existir no disco calava o aviso: o intocavel parecia proteger e nao protegia.
+test('A2-05: padrao com barra no fim ou {a,b} e inerte pela forma, mesmo com a pasta no disco; o aviso diz a forma certa', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esquadro-a205-'));
+  try {
+    for (const p of ['sec', 'cfg']) fs.mkdirSync(path.join(dir, p));
+    const r = projeto.intocaveisInertes({ intocaveis: ['sec/', 'cfg/*.{js,ts}', 'cfg/**', 'sec/**'] }, ARQUIVOS, dir);
+    assert.deepStrictEqual(r, ['sec/', 'cfg/*.{js,ts}']);
+    const m = projeto.motivoInerte(r);
+    assert.match(m, /so entende \* e \*\*/, m);
+    assert.ok(/^[\x20-\x7E\n]*$/.test(m), 'fora de ASCII: ' + m);
+    assert.doesNotMatch(projeto.motivoInerte(['segredo/**']), /so entende/, 'typo comum nao leva a linha da forma');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('D244/defeito 6: padrao sem pasta fixa (so glob) nao se salva pelo disco', () => {
   const os = require('node:os');
   assert.deepStrictEqual(projeto.intocaveisInertes({ intocaveis: ['**/*.pem'] }, ARQUIVOS, os.tmpdir()), ['**/*.pem']);

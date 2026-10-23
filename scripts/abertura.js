@@ -54,32 +54,42 @@ function avisoDaReferencia(cwd, projeto) {
 io.blindar(function () {
   io.lerEntrada(function (e) {
     const cwd = config.raizDoProjeto(e.cwd || process.cwd());
-    estado.alterar(e.session_id, function (s) {
-      // D17: a foto e tirada uma vez, na abertura. Arquivo que ja estava
-      // modificado aqui pertence a outra frente ate prova em contrario.
-      // D46: o SessionStart tambem dispara em `compact` e em `resume`, com o
-      // MESMO session_id. Sem esta guarda a foto seria refeita com o git status
-      // ATUAL, que ja contem o trabalho do proprio agente - e depois de uma
-      // compactacao de contexto o agente ficaria barrado nos proprios arquivos.
-      // A guarda olha a foto, nao a origem: origem nova no harness nao deixa
-      // a trava muda sem avisar.
-      if (Array.isArray(s.gitAbertura)) return s;
-      const foto = git.modificados(cwd);
-      // D49: `null` e "nao consegui fotografar" (git ausente, fora de repo,
-      // timeout); `[]` e "arvore limpa". Congelar uma foto que falhou deixaria a
-      // trava 5b muda pelo resto da sessao, em silencio - e uma reabertura
-      // (`compact`, `resume`) e justamente a segunda chance de conseguir.
-      if (foto === null) return s;
-      s.gitAbertura = foto;
-      s.abertoEm = e.source || null;
-      return s;
-    });
+    // A5-05: o estado que nao grava (pasta que nao se cria, disco cheio) nao cala a abertura - o io.blindar engolia o
+    // erro e nada saia. A reinjecao nao depende do estado; uma linha diz o que ficou de fora (molde da auditoria).
+    let semEstado = null;
+    try {
+      estado.alterar(e.session_id, function (s) {
+        // D17: a foto e tirada uma vez, na abertura. Arquivo que ja estava
+        // modificado aqui pertence a outra frente ate prova em contrario.
+        // D46: o SessionStart tambem dispara em `compact` e em `resume`, com o
+        // MESMO session_id. Sem esta guarda a foto seria refeita com o git status
+        // ATUAL, que ja contem o trabalho do proprio agente - e depois de uma
+        // compactacao de contexto o agente ficaria barrado nos proprios arquivos.
+        // A guarda olha a foto, nao a origem: origem nova no harness nao deixa
+        // a trava muda sem avisar.
+        if (Array.isArray(s.gitAbertura)) return s;
+        const foto = git.modificados(cwd);
+        // D49: `null` e "nao consegui fotografar" (git ausente, fora de repo,
+        // timeout); `[]` e "arvore limpa". Congelar uma foto que falhou deixaria a
+        // trava 5b muda pelo resto da sessao, em silencio - e uma reabertura
+        // (`compact`, `resume`) e justamente a segunda chance de conseguir.
+        if (foto === null) return s;
+        s.gitAbertura = foto;
+        s.abertoEm = e.source || null;
+        return s;
+      });
+    } catch (erro) {
+      semEstado = 'esquadro: o estado da sessao nao gravou (' + escopoLib.ascii(textoLib.causaDoErro(erro)).slice(0, 120) +
+        '): sem a foto do git da abertura, a trava dos arquivos que ja vinham modificados (outra frente) fica ' +
+        'desligada ate a proxima abertura. O resto da abertura segue igual.\n';
+    }
     // A2: stdout de abertura de sessao entra como contexto que o Claude ve.
     // Roda em toda reabertura de proposito: e depois da compactacao que a regra
     // se perde, e e por isso que ela se reinjeta em vez de so se ler uma vez.
     const projeto = config.carregarProjeto(cwd);
     const texto = require('./lib/reinjecao.js').montar(cwd, e.session_id, e.source);
     if (texto) process.stdout.write(texto);
+    if (semEstado) process.stdout.write((texto ? '\n' : '') + semEstado);
     // D420/PT-04: projeto.json PRESENTE e ilegivel (config devolve null igual ao ausente) so era
     // avisado dentro da reinjecao, que sai antes quando nao ha regras.md - e os portoes de
     // escopo/intocaveis ficavam desligados sem ninguem saber. Aqui o aviso sai com ou sem regras;

@@ -72,7 +72,8 @@ function main() {
     console.log('SEM ' + sanit.ARQUIVO_LOCAL + ': rodando so com as classes genericas.');
     console.log('Nome de pessoa, de empresa e de projeto interno NAO estao sendo procurados.');
   }
-  console.log('Fora da superficie: ' + sanit.FORA_DO_PUBLICO.join(', ') + '.');
+  // A4-03: o `docs/` fora e so do export do esquadro (exportar.js); aqui a pasta inteira entra.
+  console.log('Fora da superficie: so o que o .gitignore cobre.');
   console.log('');
 
   const tamanhos = { 1: r.arquivos + ' arquivos', 2: 'historico', 3: r.commits + ' commits' };

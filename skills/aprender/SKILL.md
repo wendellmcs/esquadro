@@ -15,9 +15,9 @@ passaria a escrever o arquivo que o governa.
 
 **Quando esta skill é oferecida sem pedido.** O gancho `abrir-turno.js` (um script que o Claude Code
 roda sozinho a cada mensagem do usuário) avisa o agente quando a mensagem parece uma correção ao
-comportamento dele. O agente atende o pedido primeiro e, no fim da resposta, oferece em uma linha rodar
-esta skill; é essa linha, no fim da resposta, que o usuário vê. O gancho nunca grava: gravar continua
-exigindo os passos abaixo. No máximo uma oferta a cada 5 turnos; desliga com
+comportamento dele. O agente atende o pedido primeiro e, na mesma resposta, roda esta skill e pergunta
+em 3 opções (Passo 4): gravar como está, ajustar o texto antes ou não gravar. O gancho nunca grava:
+gravar continua exigindo o sim do usuário. No máximo uma oferta a cada 5 turnos; desliga com
 `"sugerirAprender": false` em `.claude/esquadro/projeto.json`. Se a mensagem era relato de bug ou
 resposta a uma pergunta, a oferta se ignora: siga sem rodar a skill, e nada é gravado.
 
@@ -59,9 +59,8 @@ texto, cada caso tem o seu cuidado:
   comando nem chega a rodar. Troque cada um por `'` dobrado (`''`) ou reescreva sem eles.
 - **Barra invertida no fim** (`\`), no Windows PowerShell 5.1: um texto com espaço que acaba assim
   engole o argumento seguinte (medido). Não termine o texto com ela.
-- **Quebra de linha:** não ponha. A regra é **uma linha só** (`gatilho -> ação`). O script não
-  recusa texto com duas linhas: ele propõe e grava assim mesmo, mas só a primeira linha fica com o
-  marcador `-`, e a regra gravada nunca é lida (medido: `Total de regras agora: 0`). Escreva o
+- **Quebra de linha:** não ponha. A regra é **uma linha só** (`gatilho -> ação`). O script recusa
+  gatilho ou ação com quebra de linha antes de tudo: responde `RECUSADA` e não grava nada. Escreva o
   gatilho e a ação em uma frase cada, sem Enter no meio.
 
 Confira na saída do `propor-regra.js` que o texto saiu igual ao que você quis antes de seguir para o

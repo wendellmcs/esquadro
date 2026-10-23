@@ -3,6 +3,7 @@ const degrausLib = require('./degraus.js');
 const fs = require('node:fs');
 const path = require('node:path');
 const agentesLib = require('./agentes.js');
+const { ascii } = require('./escopo.js');
 
 /** Cada linha com o terminador que ela tem de verdade. Existe para que a
  *  correcao troque UMA linha e devolva o resto do arquivo byte a byte igual:
@@ -136,11 +137,15 @@ function motivo(r) {
     'Estes agentes declaram um modelo (`model:`) diferente do que a entrevista gravou no mapa',
     '(campo "agentes" de .claude/esquadro/projeto.json):'
   ];
+  // A1-08: nome e arquivo vem do dono e podem ter acento; o aviso sai em ASCII (R5), e o nome sem acento nao e o real.
+  let mudou = false;
+  const a = function (v) { const s = ascii(v); if (s !== String(v)) mudou = true; return s; };
   for (const d of r.divergencias) {
-    linhas.push('  - "' + d.agente + '" em ".claude/agents/' + d.arquivo + '"');
-    linhas.push('      o arquivo diz: ' + d.declarado);
-    linhas.push('      o mapa diz:    ' + d.gravado);
+    linhas.push('  - "' + a(d.agente) + '" em ".claude/agents/' + a(d.arquivo) + '"');
+    linhas.push('      o arquivo diz: ' + a(d.declarado));
+    linhas.push('      o mapa diz:    ' + a(d.gravado));
   }
+  if (mudou) linhas.push('Nome com acento ou caractere especial sai aqui sem acento: use o nome real, do arquivo do agente.');
   linhas.push('Nada foi bloqueado: um dos dois lados ficou velho, e so o dono sabe qual.');
   linhas.push('');
   linhas.push('Faca uma destas para cada agente, com a escolha do dono:');

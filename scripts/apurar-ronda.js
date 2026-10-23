@@ -226,6 +226,7 @@ try {
 const baseRel = path.relative(cwd, base).split(path.sep).join('/');
 const arquivoRevisado = arquivoDaBase(base, pastas);
 const mapas = [];
+const faixas = [];
 const semMapa = [];
 const semVeredito = [];
 const ilegiveis = [];
@@ -323,7 +324,9 @@ const rondas = pastas
         'este comando de novo.');
     }
     mapas.push(mapa);
-    const pass1 = lerVereditos(e.name, [e.name, 'vereditos'], mapaInv !== null);
+    // L3 (A3-03): a faixa que o preparar-revisao.js gravou; com a da ronda 1, o apurar confere as lentes.
+    faixas.push(mj && typeof mj.faixa === 'string' ? mj.faixa : null);
+    const pass1 =lerVereditos(e.name, [e.name, 'vereditos'], mapaInv !== null);
     invertidas.push(mapaInv ? { mapa: mapaInv, vereditos: lerVereditos(e.name, [e.name, 'invertida', 'vereditos'], true,
       pass1.map(function (v) { return v && v.lente; })) } : null);
     return pass1;
@@ -409,9 +412,11 @@ function textoDaLinha(indice, rotulo, linha, passada) {
 let r;
 try {
   r = veredito.apurar(rondas, { mapas: mapas, refutados: refutados, mesmos: mesmos, textoDaLinha: textoDaLinha,
-    invertidas: invertidas });
+    invertidas: invertidas, faixas: faixas });
 } catch (err) {
   // 0.3.3, item 7: o erro diz o defeito; a linha seguinte diz onde corrigir e o que fazer depois.
+  // L3 (A3-03): o voto que falta ja diz o que fazer; a linha da refutacao nao e com ele.
+  if (err.codigo === 'VOTO_QUE_FALTA') falhar('ERRO: ' + err.message + '.\n');
   const doMesmos = err.message.indexOf('mesmos.json') !== -1;
   process.stdout.write('ERRO: ' + err.message + '\n' + (doMesmos
     ? 'Corrija ' + baseRel + '/mesmos.json (ou apague o arquivo) e rode este comando de novo.\n'
@@ -426,6 +431,11 @@ rondas.forEach(function (ronda, i) {
     for (const e of veredito.validarVeredito(vd, { comReferencia: comReferencia }).erros) descartados.push(e);
   }
 });
+// L3 (A3-05): o achado fora do formato segue descartado sem travar a ronda (D422), mas a aprovacao diz que houve.
+if (r.encerrar && r.motivo === 'duas rondas secas seguidas: aprovado' && descartados.length) {
+  r.motivo += ', com ' + descartados.length + ' achado(s) descartado(s) por estar fora do formato: leia ' +
+    'vereditosDescartados antes de dar por aprovado';
+}
 
 /**
  * D21/D120: "2+ revisoes independentes fechadas" e gatilho contavel de troca de chat, e ate aqui

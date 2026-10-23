@@ -12,7 +12,7 @@ produziu — e o raciocínio que produziu o bug reproduz o bug.
 
 ## Passo 1 — preparar o pacote cego
 
-    node "${CLAUDE_PLUGIN_ROOT}/scripts/preparar-revisao.js" --arquivo <caminho>
+    node "${CLAUDE_PLUGIN_ROOT}/scripts/preparar-revisao.js" --arquivo <caminho> [--completa]
 
 O script escreve `A.txt`, `B.txt` e `mapa.json` em `.claude/esquadro/revisao/<arquivo>/<n>/`: cada
 arquivo tem a sua base, e `<n>` é a ronda dele. O `<arquivo>` é o id do arquivo: cada `/` do caminho
@@ -50,6 +50,8 @@ As lentes de cada faixa estão em `scripts/lib/veredito.js` → `lentesDaFaixa`.
 
 O script mede linhas, não sentido. **Você pode subir de faixa, nunca descer:** 3 linhas que mudam lógica sobem a
 `duas`; `duas` sem teste vermelho e mutação rodados sobe a `completa`; mudança que monta tela sobe a `completa`.
+Para subir à `completa`, passe `--completa` no Passo 1: o pacote sai com o arquivo inteiro, sem recorte. Se a ronda já
+foi preparada sem ele, apague a pasta dela, que ainda não tem vereditos, e prepare de novo com a flag.
 Diga ao usuário a faixa usada e, se subiu, por quê. A regra de parada (Passo 5) é a mesma em toda faixa.
 
 **Duas famílias, por decisão do dono.** Elas divergem **por desenho**:
@@ -136,6 +138,12 @@ houver uma só; com mais de uma, para com erro que lista os arquivos.
 
 Quem decide se a ronda foi seca é o script, não você. Cole a saída dele na resposta.
 
+- **O script confere as lentes que votaram.** O `mapa.json` leva a faixa: a ronda 1 sem alguma lente da faixa (na
+  `completa`, com menos de 7 lentes conhecidas) e a ronda com alguma lente que achou P0 ou P1 e não voltou param com
+  `ERRO`, como a ronda sem veredito. Grave o voto que falta e rode de novo.
+- **Achado fora do formato** (severidade que não é P0, P1 nem P2; sem `arquivo:linha`) é descartado e não molha a
+  ronda. Quando a revisão aprova com algum, o `motivo` diz quantos: leia `vereditosDescartados` antes de dar por
+  aprovado. P0 ou P1 descartado que for defeito real se corrige, e o arquivo passa por revisão nova.
 - **Só o lado novo molha a ronda.** O script lê o `mapa.json` de cada ronda: P0/P1 citado no lado
   antigo (o que a mudança conserta, ou já existia) sai em `achadosDoLadoAntigo` — informação, não
   bloqueio. Você continua sem abrir o `mapa.json`: quem o lê é o script.

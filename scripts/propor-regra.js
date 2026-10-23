@@ -3,6 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const regraLib = require('./lib/regra.js');
+const config = require('./lib/config.js');
+const textoLib = require('./lib/texto.js');
 
 function arg(nome) {
   const i = process.argv.indexOf('--' + nome);
@@ -12,7 +14,8 @@ function arg(nome) {
 const gatilho = (arg('gatilho') || '').trim();
 const acao = (arg('acao') || '').trim();
 const gravar = process.argv.indexOf('--gravar') !== -1;
-const alvo = path.join(process.cwd(), '.claude', 'esquadro', 'regras.md');
+// A4-04: a raiz do projeto, nao a pasta atual - a regra gravada numa subpasta nunca era lida pela abertura.
+const alvo = config.caminhoEmEsquadro(config.raizDoProjeto(process.cwd()), 'regras.md');
 
 if (!gatilho || !acao) {
   process.stdout.write("uso: propor-regra.js --gatilho '<quando>' --acao '<o que fazer>' [--gravar]\n");
@@ -44,8 +47,25 @@ if (!gravar) {
   process.exit(0);
 }
 
-let texto = '';
-try { texto = fs.readFileSync(alvo, 'utf8'); } catch (e) { texto = '# Regras deste projeto\n'; }
+// A4-05: so o regras.md AUSENTE vira o cabecalho padrao. O que existe e nao abre, ou nao e texto utf8 (UTF-16 do `>`
+// do PowerShell 5.1, latin1), e recusado: ler como utf8 e regravar destruia as regras que ja estavam la.
+function recusarLeitura(porQue) {
+  process.stdout.write('ERRO: o ' + alvo + ' ' + porQue + '. Nao gravei.\n');
+  process.stdout.write('  - converta o arquivo para texto utf8 (ou corrija a causa) e rode de novo\n');
+  process.exit(1);
+}
+let bytes = null;
+try { bytes = fs.readFileSync(alvo); } catch (e) {
+  if (!e || e.code !== 'ENOENT') recusarLeitura('nao abriu: ' + textoLib.causaDoErro(e));
+}
+let texto = '# Regras deste projeto\n';
+if (bytes) {
+  // ignoreBOM: o BOM utf8 fica no texto e volta ao arquivo como estava.
+  try { texto = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); } catch (e) { texto = null; }
+  if (texto === null || texto.indexOf('\0') !== -1) {
+    recusarLeitura('nao e texto utf8 (UTF-16, como o `>` do PowerShell 5.1 grava, ou outra codificacao)');
+  }
+}
 
 // D442/6 (T-20): duplicata e a LINHA inteira ("- " + regra), nao trecho: a regra que e so o comeco de outra
 // ("ao editar -> rodar git status" x "... status antes") era dada como JA EXISTE e nao era gravada.

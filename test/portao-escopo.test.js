@@ -822,6 +822,71 @@ test('TS-02 (lote 3, D423): trava 8 - Edit que SOBE teto ou DESCE piso nega; mes
   });
 });
 
+// A2-02 / A9-04 (revisao completa, L2): a trava 8 so comparava os fragmentos do Edit. Write por cima de arquivo que
+// JA tem a catraca, Edit so do numero (sem a palavra no fragmento) e o numero escrito como 2_000 ou 1e3 passavam.
+test('A2-02: trava 8 compara o arquivo inteiro - Write por cima, Edit so do numero, 2_000 e 1e3 negam', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    try {
+      escrever(dir, '.claude/esquadro/escopo.md', '## Dentro\n- src/a.js\n');
+      escrever(dir, 'src/a.js', '{ "teto": 200, "nome": "a" }\n');
+      const w = entrada(dir, 'src/a.js');
+      w.tool_input.content = '{ "teto": 800, "nome": "a" }\n';
+      const porCima = rodar(w, tmp);
+      assert.ok(negou(porCima), 'Write por cima subindo o teto de 200 para 800 tinha de negar');
+      assert.match(motivoDeNegacao(porCima), /200 -> 800/);
+      assert.ok(negou(rodar(editar(dir, 'src/a.js', '200', '300'), tmp)), 'Edit so do numero tinha de negar');
+      assert.ok(negou(rodar(editar(dir, 'src/a.js', '"teto": 200', '"teto": 2_000'), tmp)), '2_000 tinha de negar');
+      assert.ok(negou(rodar(editar(dir, 'src/a.js', '"teto": 200', '"teto": 1e3'), tmp)), '1e3 tinha de negar');
+      // controles: mexer em outra coisa do arquivo, regravar igual e apertar passam
+      liberou(rodar(editar(dir, 'src/a.js', '"a"', '"b"'), tmp));
+      liberou(rodar(editar(dir, 'src/a.js', '200', '100'), tmp));
+      const igual = entrada(dir, 'src/a.js');
+      igual.tool_input.content = '{ "teto": 200, "nome": "b" }\n';
+      liberou(rodar(igual, tmp));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+// A12-02 (revisao completa, L2): o NotebookEdit escreve arquivo (.ipynb), mas o matcher era Write|Edit e o portao so
+// lia `file_path`; o do NotebookEdit e `notebook_path` (esquema da ferramenta, conferido na s103).
+test('A12-02: NotebookEdit passa pelo portao de escopo - fora do escopo e intocavel negam, dentro libera', () => {
+  const hooks = JSON.parse(fs.readFileSync(path.join(RAIZ, 'hooks', 'hooks.json'), 'utf8')).hooks;
+  const g = hooks.PreToolUse.filter(function (x) { return x.hooks.some(function (h) { return /portao-escopo\.js$/.test(h.args[0]); }); })[0];
+  assert.ok(g && g.matcher.split('|').indexOf('NotebookEdit') !== -1, 'o NotebookEdit nao esta no matcher do portao de escopo');
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    try {
+      escrever(dir, '.claude/esquadro/escopo.md', '## Dentro\n- src/a.ipynb\n');
+      escrever(dir, 'src/a.ipynb', '{}');
+      escrever(dir, 'src/b.ipynb', '{}');
+      const nb = (rel) => ({ session_id: 'a1202', cwd: dir, hook_event_name: 'PreToolUse', tool_name: 'NotebookEdit',
+        tool_input: { notebook_path: path.join(dir, rel), new_source: 'x' } });
+      assert.ok(negou(rodar(nb('src/b.ipynb'), tmp)), 'notebook fora do escopo tinha de negar');
+      assert.ok(negou(rodar(nb('segredos/c.ipynb'), tmp)), 'notebook intocavel tinha de negar');
+      liberou(rodar(nb('src/a.ipynb'), tmp));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+// A2-03 (revisao completa, L2): o portao de design conferia o new_string inteiro; o valor legado que o Edit so leva de
+// contexto (o mesmo no old_string) barrava a edicao e mandava trocar o que o pedido nao tocava.
+test('A2-03: valor fora do sistema que ja estava no old_string nao barra o Edit; o acrescentado barra', () => {
+  comTmp((tmp) => {
+    const dir = montarProjeto();
+    try {
+      escrever(dir, '.claude/esquadro/escopo.md', '## Dentro\n- src/a.css\n');
+      escrever(dir, '.claude/esquadro/design.json',
+        JSON.stringify({ cores: ['#ffffff'], raios: ['4px'], espacos: ['8px'], sombras: [], antiReferencias: [] }));
+      escrever(dir, 'src/a.css', '.a { padding: 13px; color: red }\n');
+      liberou(rodar(editar(dir, 'src/a.css', '.a { padding: 13px; color: red }', '.a { padding: 13px; color: #ffffff }', 'a203-ctx'), tmp));
+      const novo = rodar(editar(dir, 'src/a.css', '.a { padding: 13px; color: red }', '.a { padding: 13px; margin: 13px; color: #ffffff }', 'a203-mais'), tmp);
+      assert.ok(negou(novo), 'o segundo 13px e acrescentado e tinha de negar');
+      assert.match(motivoDeNegacao(novo), /13px/);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
 test('TS-03 (lote 3, D423): token_fora_do_sistema - Write (content) e Edit (new_string) em .css com cor fora do design.json negam; token dentro libera', () => {
   comTmp((tmp) => {
     const dir = montarProjeto();

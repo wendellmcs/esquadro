@@ -572,6 +572,37 @@ test('fiacao: tabela ilegivel com o estado da sessao fora do ar - o aviso sai me
   }
 });
 
+// A5-05: no mesmo principio do F3-20, o estado que nao grava nao cala a abertura (regras, blocos) nem a resposta a
+// pergunta sobre o contexto. A reinjecao nao depende do estado; so a foto do git e as marcas dependem.
+test('fiacao: estado da sessao fora do ar - a abertura e o abrir-turno falam mesmo assim (A5-05)', () => {
+  const dir = temp('abertura-sem-estado');
+  try {
+    projetoComRegras(dir);
+    const arquivo = path.join(dir, 'e-um-arquivo');
+    fs.writeFileSync(arquivo, 'x', 'utf8');
+    const env = Object.assign({}, process.env, { ESQUADRO_TMP: path.join(arquivo, 'dentro') });
+    const abrir = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'abertura.js')], {
+      cwd: dir, encoding: 'utf8', env: env, timeout: 60000,
+      input: JSON.stringify({ session_id: 'sem-estado', cwd: dir, source: 'compact' })
+    });
+    assert.strictEqual(abrir.status, 0, abrir.stderr);
+    assert.ok(abrir.stdout.includes(REGRA_Q), 'a abertura calou as regras: ' + JSON.stringify(abrir.stdout));
+    assert.ok(abrir.stdout.includes(TITULO_C), abrir.stdout);
+    assert.ok(abrir.stdout.includes('esquadro: o estado da sessao nao gravou ('), abrir.stdout);
+    const turno = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'abrir-turno.js')], {
+      cwd: dir, encoding: 'utf8', env: env, timeout: 60000,
+      input: JSON.stringify({ session_id: 'sem-estado', cwd: dir, prompt: 'o contexto esta bom?' })
+    });
+    assert.strictEqual(turno.status, 0, turno.stderr);
+    const saudeLib = require('../scripts/lib/saude.js');
+    let ctx = null;
+    try { ctx = JSON.parse(turno.stdout).hookSpecificOutput.additionalContext; } catch (e) { ctx = null; }
+    assert.ok(ctx && ctx.includes(saudeLib.INSTRUCAO_DA_PERGUNTA), 'o abrir-turno calou a pergunta: ' + JSON.stringify(turno.stdout));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('fiacao: tabela do PowerShell ilegivel - o comando passa com aviso, UMA vez por sessao, e o fecho nao o traz de volta (D294)', () => {
   const plugin = pluginComTabela('{ "quando": ');
   const dir = temp('tabela-ilegivel');
@@ -1834,4 +1865,39 @@ test('D503 T6: controles - com a chave (ate vazia), sem projeto.json ou com proj
       assert.ok(!fs.existsSync(path.join(dir, MARCA_REF)), nome + ': marca sem aviso');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
+});
+
+// Revisao completa, L1 (A9-01): a fiacao inteira do hooks.json - evento, matcher, scripts na ordem e timeout. Antes so
+// alguns elos eram presos (portao-estilo.test.js, gravar-veredito.test.js...); trocar o script do SessionStart, tirar o
+// `Agent` do `Task|Agent` ou o `Skill` do marcador passava pela suite inteira (mutantes da A9).
+test('hooks.json: cada evento chama os scripts certos, com o matcher, a ordem e o timeout de hoje', () => {
+  const hooks = JSON.parse(fs.readFileSync(path.join(RAIZ, 'hooks', 'hooks.json'), 'utf8')).hooks;
+  const mapa = {};
+  for (const evento of Object.keys(hooks)) {
+    mapa[evento] = hooks[evento].map(function (g) {
+      return [g.matcher || ''].concat(g.hooks.map(function (h) {
+        assert.strictEqual(h.type + ' ' + h.command, 'command node', evento);
+        assert.ok(fs.existsSync(h.args[0].replace('${CLAUDE_PLUGIN_ROOT}', RAIZ)), h.args[0]);
+        return path.basename(h.args[0]) + ' ' + h.timeout;
+      }));
+    });
+  }
+  assert.deepStrictEqual(mapa, {
+    SessionStart: [['', 'abertura.js 15']],
+    UserPromptSubmit: [['', 'abrir-turno.js 10']],
+    PreToolUse: [
+      ['Write|Edit|NotebookEdit', 'portao-escopo.js 10'],
+      ['Bash|PowerShell', 'portao-destrutivo.js 10', 'portao-estilo.js 10', 'portao-commit.js 30'],
+      ['Task|Agent', 'portao-agente.js 10', 'portao-apelido.js 10'],
+      ['AskUserQuestion', 'portao-decisao.js 10']
+    ],
+    PostToolUse: [
+      ['Write|Edit|Bash|PowerShell|Grep|Glob|Read|AskUserQuestion|Skill', 'marcar-trabalho.js 10'],
+      ['SubagentHandback', 'gravar-veredito.js 10']
+    ],
+    SubagentStart: [['', 'abrir-subagente.js 10']],
+    SubagentStop: [['^esquadro:inspetor$', 'gravar-veredito.js 10']],
+    Stop: [['', 'portao-fecho.js 10']],
+    SessionEnd: [['', 'fim-sessao.js 10']]
+  });
 });

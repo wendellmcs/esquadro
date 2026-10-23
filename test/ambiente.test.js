@@ -59,6 +59,24 @@ test('ambiente: settings.json corrompido nao derruba a deteccao', () => {
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('ambiente: settings.json, settings.local.json e .mcp.json com BOM sao lidos (A4-01)', () => {
+  // O Out-File do PowerShell 5.1 e o Bloco de Notas antigo gravam o BOM; sem tira-lo o JSON.parse falhava e o
+  // ambiente saia vazio, calado - o init duplicava o que o projeto ja tinha.
+  const BOM = '﻿';
+  const dir = montar({
+    '.claude/settings.json': BOM + JSON.stringify({ enabledPlugins: { 'superpowers@x': true }, hooks: { PreToolUse: [] } }),
+    '.claude/settings.local.json': BOM + JSON.stringify({ hooks: { Stop: [] } }),
+    '.mcp.json': BOM + JSON.stringify({ mcpServers: { servidor: {} } })
+  });
+  try {
+    const r = ambiente.detectar(dir);
+    assert.deepStrictEqual(r.plugins, ['superpowers@x']);
+    assert.deepStrictEqual(r.hooks.slice().sort(), ['PreToolUse', 'Stop']);
+    assert.deepStrictEqual(r.mcp, ['servidor']);
+    assert.ok(r.delegaveis.some((d) => d.indexOf('superpowers') === 0), JSON.stringify(r.delegaveis));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('instrucoes: conta item de lista e item numerado nas fontes canonicas', () => {
   const dir = montar({
     'CLAUDE.md': '# t\n\n- regra um\n- regra dois\n1. regra tres\n\nparagrafo solto nao conta.\n',

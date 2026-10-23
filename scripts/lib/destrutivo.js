@@ -651,6 +651,18 @@ function abreResto(t) {
 const ASPA_OU_LETRA = '(?:"[^"]*"|\'[^\']*\'|"(?![^"]*")|\'(?![^\']*\')|[^\\s"\'])+';
 const GIT = '\\bgit(?:\\.exe)?["\']?\\s+(?:-' + ASPA_OU_LETRA + '(?:\\s+(?!-)' + ASPA_OU_LETRA + ')?\\s+)*';
 
+// A1-02 (revisao completa, L1): o git e o GNU rm aceitam abreviacao unica de opcao longa (`--har` e o `--hard`); a
+// D431 escreveu os prefixos a mao para o `clean --force`. Aqui eles saem do nome: abrev('hard') = 'h(?:a(?:r(?:d)?)?)?'.
+// Prefixo ambiguo (`push --d`: delete ou dry-run) o proprio programa recusa, entao casa-lo nao barra comando que roda.
+function abrev(nome) {
+  let s = '';
+  for (let i = nome.length - 1; i > 0; i--) s = '(?:' + nome[i] + s + ')?';
+  return nome[0] + s;
+}
+
+// A1-03 (revisao completa, L1): a arvore inteira tambem se escreve `./`, `:/` (raiz do repositorio) e `*`.
+const ARVORE = '(?:\\.|\\./|:/|\\*)';
+
 // D49: o subcomando tem de ser um token COMPLETO - `rebase.autoStash` e
 // configuracao publicada do git, e o `.` e fronteira de palavra.
 const FIM = '(?=[\\s;|&]|$)';
@@ -677,7 +689,7 @@ const APELIDO_CMD = /^(?:rmdir|rd|del|erase)(?:\.exe)?$/i;
 // D67: o shell `cmd`/`cmd.exe` - o unico onde `#` NAO e comentario. Escopa a
 // releitura com `#` literal ao vetor medido (`cmd /c "..."`), sem tocar `bash -c`.
 const CMD_EXE = /^cmd(?:\.exe)?$/i;
-const APAGA_REF = /^(?:-d|--delete|--mirror|--prune)$/i;
+const APAGA_REF = new RegExp('^(?:-d|--' + abrev('delete') + '|--' + abrev('mirror') + '|--' + abrev('prune') + ')$', 'i');
 
 // D54: o `^` e o escape do cmd (`del ^/s ^/q build` executa `del /s /q build`),
 // mas no PowerShell e no bash ele e literal - e la o separador colado nele
@@ -804,6 +816,18 @@ function apelidoPS(seg) {
   return a !== null && corrobora(seg, PS_FLAG, a);
 }
 
+// A1-01/A1-02 (revisao completa, L1): o GNU rm aceita a opcao em qualquer posicao (`rm dist -rf`, `rm --verbose -rf x`)
+// e a opcao longa abreviada (`--rec`, `--forc`); a regra de texto so lia `-letras` logo depois do `rm`. Lido por token,
+// no molde do `apelidoPS`: `rm` em posicao de comando e outro token que seja opcao recursiva ou forcada. Como na regra
+// de texto: o `^` no nome nao conta (limite declarado da D54) e sem alvo e prosa (`grep -rn "rm -rf" .`, FIX22/F3).
+const RM_OPCAO = new RegExp('^(?:-(?!-)[a-zA-Z]*[rRf][a-zA-Z]*|--' + abrev('recursive') + '|--' + abrev('force') + ')$');
+function rmForcado(seg) {
+  const a = achaCmd(seg, /^rm(?:\.exe)?$/i);
+  if (a === null || seg.tokens[a.k].indexOf('^') !== -1 || !corrobora(seg, RM_OPCAO, a)) return false;
+  for (let k = a.k + 1; k < seg.tokens.length; k++) if (seg.tokens[k][0] !== '-') return true;
+  return false;
+}
+
 // D50/D51: a forma do cmd (`rd /s /q build`), agora tambem em posicao de comando.
 // O `(?![a-z])` deixa passar `/s` e `/s/q` (as duas formas que o cmd aceita) e
 // nao casa `/src`, que e caminho e nao chave.
@@ -844,7 +868,7 @@ const CHECKOUT_FLAG = '(?:-[fq]+|--(?:force|ours|theirs|quiet|no-overlay|overlay
 // citado vira `""` antes, para valor entre aspas (`-C "a b"`) ser um token so.
 // D442/1: `-q`/`--quiet` (sozinho ou agrupado ao `-S`, ex. `-Sq`) nao muda o efeito; o `--staged`/`-S` tem de
 // estar nas opcoes capturadas - `-q .` sozinho descarta a arvore.
-const SO_INDICE = /^\s*git(?:\.exe)?\s+(?:-[Cc]\s+\S+\s+)*restore\s+((?:(?:--staged|--quiet|-[Sq]+)\s+)+)(?:--\s+)?\.\s*$/;
+const SO_INDICE = /^\s*git(?:\.exe)?\s+(?:-[Cc]\s+\S+\s+)*restore\s+((?:(?:--staged|--quiet|-[Sq]+)\s+)+)(?:--\s+)?(?:\.\/?|:\/|\*)\s*$/;
 function soIndice(t) {
   const m = SO_INDICE.exec(t.replace(/"[^"]*"|'[^']*'/g, '""'));
   return !!m && /(?:^|\s)(?:--staged|-q*S)/.test(m[1]);
@@ -894,10 +918,11 @@ function dryRunClean(t) {
 const REGRAS = [
   { re: /\brm\s+(-[a-zA-Z]*\s+)*-?[a-zA-Z]*[rf][a-zA-Z]*\s+\S/i, semAspas: true, motivo: 'rm recursivo ou forcado' },
   { re: /\brm\b/i, e: /--(recursive|force)(?![\w-])/i, semAspas: true, motivo: 'rm recursivo ou forcado' },
+  { fn: rmForcado, motivo: 'rm recursivo ou forcado' },
   { re: /\bRemove-Item\b/i, e: PS_FLAG_TXT, motivo: 'Remove-Item recursivo ou forcado' },
   { fn: apelidoPS, motivo: 'apelido do PowerShell para Remove-Item, recursivo ou forcado' },
   { fn: formaCmd, motivo: 'forma do cmd: apaga a arvore inteira' },
-  { re: new RegExp(GIT + 'reset\\s+--hard\\b', 'i'), semAspas: true, motivo: 'git reset --hard descarta trabalho nao commitado' },
+  { re: new RegExp(GIT + 'reset\\s+--' + abrev('hard') + '(?![\\w-])', 'i'), semAspas: true, motivo: 'git reset --hard descarta trabalho nao commitado' },
   // D420/SH-03: `--force` por extenso tambem apaga (so `-f` agrupado era lido).
   // D429/1: a flag que apaga (-f/-d/-x agrupada ou --force) pode vir depois de outra opcao (`-q -fd`, `-e x -fd`);
   // `libera` tira o dry-run (`-n`, `-nfd`, `--dry-run`), que so lista. `-en`: o `n` e o valor do `-e`, nao dry-run.
@@ -911,16 +936,16 @@ const REGRAS = [
   // `-\S+`: `-b nova .` e `-p .` (interativo) nao entram.
   // D429/1: `checkout -f <ramo>`/`--force <ramo>` (e `<ramo> -f`) joga fora as mudancas locais ao trocar. A flag so conta
   // antes do `--` (depois dele e pathspec: `checkout -- -f` e um arquivo).
-  { re: new RegExp(GIT + 'checkout\\s+(?:(?!--(?:\\s|$))[^\\s;|&]+\\s+)*(?:-[a-zA-Z]*f[a-zA-Z]*|--force)' + FIM, 'i'), semAspas: true, motivo: 'git checkout -f descarta mudancas locais' },
-  { re: new RegExp(GIT + 'checkout\\s+(?:' + CHECKOUT_FLAG + '\\s+)*(?:--\\s+\\.' + FIM + '|(?:[^\\s;|&-]\\S*\\s+)?(?:--\\s+)?\\.' + FIM + ')', 'i'), semAspas: true, motivo: 'git checkout . (ou git checkout -- .) descarta todas as mudancas' },
+  { re: new RegExp(GIT + 'checkout\\s+(?:(?!--(?:\\s|$))[^\\s;|&]+\\s+)*(?:-[a-zA-Z]*f[a-zA-Z]*|--' + abrev('force') + ')' + FIM, 'i'), semAspas: true, motivo: 'git checkout -f descarta mudancas locais' },
+  { re: new RegExp(GIT + 'checkout\\s+(?:' + CHECKOUT_FLAG + '\\s+)*(?:--\\s+' + ARVORE + FIM + '|(?:[^\\s;|&-]\\S*\\s+)?(?:--\\s+)?' + ARVORE + FIM + ')', 'i'), semAspas: true, motivo: 'git checkout . (ou git checkout -- .) descarta todas as mudancas' },
   // D420/SH-04: `restore` aceita `--`, `--worktree`, `--source=X`, `--source X`, `-s X`, `-S`, `-W` antes do `.`.
   // S1/L1-1: `-SW` agrupado e valor entre aspas (`--source "a b"`) tambem. S1/H-1: so o indice (`--staged`/`-S`
   // sem `--worktree`/`-W`) nao perde trabalho - `libera` tira essa forma (ver `soIndice`).
   // D442/1: as flags que nao mudam o descarte (`-q`, `--ours`, `--work`...) estao em RESTORE_FLAG.
-  { re: new RegExp(GIT + 'restore\\s+(?:' + RESTORE_FLAG + '\\s+)*\\.(\\s|$)', 'i'), libera: soIndice, semAspas: true, motivo: 'git restore . descarta todas as mudancas' },
+  { re: new RegExp(GIT + 'restore\\s+(?:' + RESTORE_FLAG + '\\s+)*' + ARVORE + '(\\s|$)', 'i'), libera: soIndice, semAspas: true, motivo: 'git restore . descarta todas as mudancas' },
   // D420/SH-04: `switch -f`/`--force`/`--discard-changes` jogam fora as mudancas locais ao trocar de branch.
   // s62: `-f` agrupado (`-fq`, `-fc`, `-qf`) tambem, como no checkout.
-  { re: new RegExp(GIT + 'switch' + FIM + SEG + '\\s(?:-[a-zA-Z]*f[a-zA-Z]*|--force|--discard-changes)(?![\\w-])', 'i'), semAspas: true, motivo: 'git switch forcado descarta mudancas locais' },
+  { re: new RegExp(GIT + 'switch' + FIM + SEG + '\\s(?:-[a-zA-Z]*f[a-zA-Z]*|--' + abrev('force') + '|--' + abrev('discard-changes') + ')(?![\\w-])', 'i'), semAspas: true, motivo: 'git switch forcado descarta mudancas locais' },
   // D420/SH-03: `-f` agrupado a outras flags curtas (`-fu`, `-uf`, `-vf`) tambem forca o push.
   // S1/L1-2: sem `i` (git distingue `-F` de `-f`) e o aglomerado so vale se TODAS as letras forem flag curta do
   // push (f n d u q v o 4 6): `-fix` e argumento, nao flag. O `(?=...)` valida o aglomerado inteiro e o
@@ -978,16 +1003,22 @@ const REGRAS = [
   //
   // O `fn: apagaRemoto` continua abaixo e NAO e redundante: ele cobre `-d` e
   // `--prune`, que a regua nao tem.
-  { re: new RegExp(GIT + 'push' + FIM + SEG + '\\s(?::[A-Za-z]|--delete\\b|--mirror\\b)', 'i'), semAspas: true, motivo: 'apaga referencia no remoto' },
+  { re: new RegExp(GIT + 'push' + FIM + SEG + '\\s(?::[A-Za-z]|--' + abrev('delete') + '(?![\\w-])|--' + abrev('mirror') + '(?![\\w-]))', 'i'), semAspas: true, motivo: 'apaga referencia no remoto' },
   { re: new RegExp(GIT + 'push' + FIM + SEG + '\\s\\+(?=[^\\s]*[A-Za-z/])[^\\s]+', 'i'), semAspas: true, motivo: 'apaga referencia no remoto' },
   { fn: apagaRemoto, motivo: 'apaga referencia no remoto' },
   // Sem `i` de proposito: `-d` apaga branch ja mesclada e e seguro; `-D` nao.
   { re: new RegExp(GIT + 'branch\\s+-D\\b'), semAspas: true, motivo: 'apaga branch sem conferir merge' },
+  // A1-05 (revisao completa, L1): `-d` com `-f` e o mesmo que `-D` (`git branch --delete --force x` apaga sem conferir
+  // merge), agrupados ou nao. Dois testes independentes sobre o segmento, como a D51 desenhou.
+  { re: new RegExp(GIT + 'branch' + FIM + SEG + '\\s(?:-[a-zA-Z]*d[a-zA-Z]*|--' + abrev('delete') + ')' + FIM),
+    e: new RegExp('\\s(?:-[a-zA-Z]*f[a-zA-Z]*|--' + abrev('force') + ')' + FIM), semAspas: true, motivo: 'apaga branch sem conferir merge' },
   { re: new RegExp(GIT + '(rebase|filter-branch)' + FIM, 'i'), semAspas: true, motivo: 'reescreve historico' },
   { re: /\bDROP\s+(TABLE|DATABASE|SCHEMA)\b/i, semAspas: true, motivo: 'DDL destrutivo' },
   { re: /\bTRUNCATE\s+TABLE\b/i, semAspas: true, motivo: 'TRUNCATE apaga a tabela inteira' },
   { re: /\bnpm\s+publish\b/i, semAspas: true, motivo: 'publicacao nao pedida' },
-  { re: /\b(mkfs|dd\s+if=)/i, semAspas: true, motivo: 'escrita direta de disco' }
+  { re: /\b(mkfs|dd\s+if=)/i, semAspas: true, motivo: 'escrita direta de disco' },
+  // A1-04 (revisao completa, L1): o `dd` aceita os operandos em qualquer ordem (`dd of=/dev/sda if=img`).
+  { re: /\bdd\s/i, e: /\sof=/i, semAspas: true, motivo: 'escrita direta de disco' }
 ];
 
 function extras(projeto) {

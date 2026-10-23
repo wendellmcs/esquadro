@@ -15,18 +15,43 @@ function contarCaixa(atual, linha) {
   if (caixa[1] === ' ') atual.abertos += 1;
 }
 
+// A7-01: cabecalho que nao e item, de nivel ACIMA do item aberto ("## Criterios de aceite" depois de "### Tarefa"),
+// fecha o item - a caixa embaixo dele nao e passo. D604: no mesmo nivel ("### Passo 1" sob "### Tarefa 2") segue no
+// item, como o subcabecalho mais fundo - senao o passo aberto sumia do portao; "# comentario" dentro de
+// bloco de codigo nao e cabecalho (senao esconderia do portao os passos abertos depois do bloco). Cabecalho com forma
+// de item ("### Tarefa 2b", que o RE_TAREFA nao casa) tambem nao fecha: as caixas dele seguem cobradas na de cima.
+// R2 da s107: a cerca guarda o marcador que a abriu e so fecha com o mesmo caractere, comprimento igual ou maior
+// (CommonMark) - uma linha ~~~ dentro de um bloco ``` nao fecha. Devolve o marcador aberto, ou null fora da cerca.
+const RE_CABECALHO = /^(#{1,6})\s/;
+const RE_CERCA = /^\s*(`{3,}|~{3,})/;
+function cerca(aberta, linha) {
+  const m = linha.match(RE_CERCA);
+  if (!m) return aberta;
+  if (!aberta) return m[1];
+  return m[1][0] === aberta[0] && m[1].length >= aberta.length ? null : aberta;
+}
+function fechaItem(linha, nivel) {
+  const m = linha.match(RE_CABECALHO);
+  return !!m && m[1].length < nivel && !RE_ITEM.test(linha);
+}
+
 /** CLAUDE.md: etapa so e completa quando TODOS os subitens dela estao feitos. */
 function parseTarefas(texto) {
   const linhas = String(texto == null ? '' : texto).split(/\r?\n/);
   const tarefas = [];
   let atual = null;
+  let nivel = 0;
+  let naCerca = null;
   linhas.forEach(function (linha, i) {
+    naCerca = cerca(naCerca, linha);
     const cab = linha.match(RE_TAREFA);
     if (cab) {
       atual = { n: parseInt(cab[1], 10), titulo: cab[2].trim(), abertos: 0, total: 0, linha: i + 1 };
+      nivel = linha.match(/^#+/)[0].length;
       tarefas.push(atual);
       return;
     }
+    if (atual && !naCerca && fechaItem(linha, nivel)) { atual = null; return; }
     contarCaixa(atual, linha);
   });
   return tarefas;
@@ -151,9 +176,12 @@ function parseItens(texto) {
   const tabelas = [];
   let atual = null;
   let tabela = null;
+  let naCerca = null;
   // Cada linha cai em um so caso, nesta ordem: (1) dentro de uma tabela de etapas aberta; (2) abre uma tabela;
-  // (3) cabecalho de item, que passa a receber as caixas; (4) caixa, contada no item do cabecalho de cima.
+  // (3) cabecalho de item, que passa a receber as caixas; (4) cabecalho que fecha o item (A7-01); (5) caixa, contada
+  // no item do cabecalho de cima.
   linhas.forEach(function (linha, i) {
+    naCerca = cerca(naCerca, linha);
     // D513 #7: guarda a linha na tabela aberta (a etapa entra em `itens`) e diz se ela era da tabela.
     // R2 da s44: cabecalho com |---| embaixo, mesmo colado, abre outra tabela (nao soma etapas na aberta).
     if (tabela && !abreTabela(linhas, i) && guardarSeForDaTabela(tabela, linha, i, itens)) return;
@@ -171,6 +199,7 @@ function parseItens(texto) {
       itens.push(atual);
       return;
     }
+    if (atual && !naCerca && fechaItem(linha, atual.nivel)) { atual = null; return; }
     contarCaixa(atual, linha);
   });
   const vale = tabelaQueVale(itens);

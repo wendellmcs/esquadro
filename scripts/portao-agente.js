@@ -12,7 +12,8 @@ io.blindar(function () {
     const tipo = (e.tool_input || {}).subagent_type;
 
     // F18: contar sempre. Custo e informacao do dono, e ele so a tem se alguem contar.
-    estado.incrementar(e.session_id, 'agentes_despachados');
+    // A2-06 (molde D420/SH-02): estado fora do ar lancava aqui e `io.blindar` liberava o agente caro.
+    try { estado.incrementar(e.session_id, 'agentes_despachados'); } catch (err) { /* o balde vale menos que a negacao */ }
 
     if (!tipo) return io.permitir();
     const projeto = config.carregarProjeto(cwd);
@@ -23,7 +24,7 @@ io.blindar(function () {
     const r = custo.permitido(tipo, marchaMax, projeto);
     if (r.ok) return io.permitir();
 
-    estado.incrementar(e.session_id, 'agente_caro_em_marcha_rapida');
+    try { estado.incrementar(e.session_id, 'agente_caro_em_marcha_rapida'); } catch (err) { /* idem */ }
     io.negarFerramenta(r.motivo);
   });
 });

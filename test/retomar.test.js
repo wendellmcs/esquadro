@@ -77,6 +77,19 @@ test('volta-resumo: lerRegistro junta os pedidos do dono, do mais novo, e tira o
   } finally { r.fim(); }
 });
 
+test('volta-resumo: o resumo da compactacao nao e pedido do dono (A5-01, A9-08)', () => {
+  const r = registro([
+    pedido(40, 'pedido antes de compactar'),
+    pedido(30, 'This session is being continued from a previous conversation that ran out of context.',
+      { isCompactSummary: true, isVisibleInTranscriptOnly: true, origin: undefined }),
+    pedido(20, 'pedido depois de compactar')
+  ]);
+  try {
+    assert.deepStrictEqual(retomar.lerRegistro(r.f).pedidos.map(function (p) { return p.texto; }),
+      ['pedido depois de compactar', 'pedido antes de compactar']);
+  } finally { r.fim(); }
+});
+
 test('volta-resumo: o comando de barra conta como pedido, pelo nome e pelos argumentos', () => {
   const r = registro([pedido(10,
     '<command-message>handoff is running</command-message>\n<command-name>/esquadro:handoff</command-name>\n<command-args>volta</command-args>')]);

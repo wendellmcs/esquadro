@@ -114,6 +114,20 @@ Dentro de uma sessão, o mesmo par funciona como `/plugin marketplace add wendel
 `/plugin install esquadro@esquadro-local`. O `esquadro-local` é o nome do marketplace declarado em
 `.claude-plugin/marketplace.json`.
 
+**Sem chave SSH no GitHub:** o atalho `wendellmcs/esquadro` tenta primeiro clonar por SSH. O `claude plugin`
+do terminal cai sozinho para HTTPS quando o SSH falha, mas o `/plugin` dentro da sessão e as atualizações
+não caem. Defina `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` no ambiente antes de abrir o Claude Code, ou adicione
+o marketplace pela URL completa, que vai direto por HTTPS:
+`claude plugin marketplace add https://github.com/wendellmcs/esquadro.git`.
+
+**Em empresa com configurações gerenciadas** (as que o administrador impõe e você não muda), as travas
+podem não rodar, porque cada trava é um hook do plugin. Com `allowManagedHooksOnly`, os hooks de plugin ficam
+bloqueados, a menos que o administrador ligue o `esquadro` no `enabledPlugins` das configurações gerenciadas.
+O `allowManagedModsOnly` para os hooks do mod (a faixa e os botões). E uma lista de marketplaces permitidos
+pode barrar o `esquadro-local`: o `/plugin` mostra `is blocked by enterprise policy` ou
+`is not in the allowed marketplace list`. Nesses casos, quem libera é o administrador; o `/status` mostra
+`Enterprise managed settings` na linha `Setting sources` quando há configuração gerenciada.
+
 **Requisito:** Node.js no `PATH` — todo portão é um script `node`. Esta versão rodou com Node 24,
 no Windows.
 
@@ -165,6 +179,10 @@ auto-update**. O caminho que funciona nos dois lugares é o `~/.claude/settings.
 Na abertura da sessão seguinte o Claude Code copia a chave para o `known_marketplaces.json`; não é
 preciso o botão. Se você já tem outras entradas em `extraKnownMarketplaces`, acrescente só a chave
 `autoUpdate` na do `esquadro-local`.
+
+**O `/esquadro:init` faz isso por você:** ele pergunta e, com o sim, grava a chave pelo
+`ligar-atualizacao.js`, que preserva o resto das configurações e recusa, sem regravar, um `settings.json`
+que não consegue ler.
 
 **Para atualizar à mão** (sem a atualização automática, ou para pegar a versão nova agora):
 
@@ -221,7 +239,7 @@ ainda não leu. Se a sessão seguir sem vínculo, confira essas duas condições
 editar `src/pagamento/cobranca.js`, recebe de volta:
 
 ~~~text
-esquadro - portao de escopo (trava 4).
+esquadro - portao de escopo (trava 4 - o escopo da tarefa).
 
 O arquivo src/pagamento/cobranca.js casa "src/pagamento/**", que o escopo declara FORA desta tarefa.
 
@@ -325,10 +343,13 @@ BOM (comum no Windows) vale. O portão da "etapa com subitem aberto" lê só o f
 <summary>O aviso de troca de chat, literal</summary>
 
 ~~~text
-esquadro - hora de abrir chat novo. Gatilho contavel disparou:
+esquadro - hora de abrir chat novo.
+
+Gatilho contavel disparou:
   - 7 bloqueios de portao nesta sessao (limiar 6)
-Rode /esquadro:handoff, cole o prompt pronto num chat novo, e continue de la.
 Se surgiu a duvida "ja e hora?", ja era.
+
+Faca assim: rode /esquadro:handoff, cole o prompt pronto num chat novo e continue de la.
 ~~~
 
 </details>
@@ -632,9 +653,9 @@ Rodado contra um projeto de exemplo com este escopo:
 **Trava 4 — arquivo fora do escopo** (`Edit` em `src/usuarios/perfil.js`):
 
 ~~~text
-esquadro - portao de escopo (trava 4).
+esquadro - portao de escopo (trava 4 - o escopo da tarefa).
 
-O arquivo src/usuarios/perfil.js (marcha padrao) NAO esta no escopo declarado.
+O arquivo src/usuarios/perfil.js (marcha padrao: o nivel de rigor que o projeto.json da a este caminho) NAO esta no escopo declarado em .claude/esquadro/escopo.md.
 
 Escopo atual:
   - src/carrinho/**
@@ -651,7 +672,7 @@ Ampliar o escopo e contado e aparece no fecho do turno.
 **Trava 4 — o que o escopo declara "Fora"** (`Edit` em `src/pagamento/cobranca.js`):
 
 ~~~text
-esquadro - portao de escopo (trava 4).
+esquadro - portao de escopo (trava 4 - o escopo da tarefa).
 
 O arquivo src/pagamento/cobranca.js casa "src/pagamento/**", que o escopo declara FORA desta tarefa.
 
@@ -663,27 +684,31 @@ Escolha uma:
 **Trava 4 — intocável** (`Write` em `.env`, que o `projeto.json` lista em `intocaveis`):
 
 ~~~text
-esquadro - intocavel.
+esquadro - arquivo intocavel: mexer nele e decisao do dono.
 
-O arquivo .env esta na lista "intocaveis" de .claude/esquadro/projeto.json.
+Este arquivo esta na lista "intocaveis" de .claude/esquadro/projeto.json:
+  - ".env"
 Nem o escopo declarado libera este caminho.
 
-Mexer nele e decisao do dono do projeto, nao julgamento seu.
-Leve a ele com 3 opcoes e a recomendada marcada.
+Faca uma destas:
+  1. siga sem mexer nele: o que ele precisar vira registro;
+  2. ou leve ao dono 3 opcoes com a recomendada marcada.
 ~~~
 
 **Trava 5 — comando destrutivo** (`git reset --hard origin/main` pelo `Bash`):
 
 ~~~text
-esquadro - comando destrutivo (trava 5).
+esquadro - comando destrutivo barrado (trava 5): falta o sim do dono.
 
 Comando: git reset --hard origin/main
 Por que barrou: git reset --hard descarta trabalho nao commitado.
-
 Nenhum comando destrutivo roda sem confirmacao humana.
-Leve ao dono do projeto com 3 opcoes e a recomendada marcada, dizendo
-o que acontece na pratica em cada uma. Se ele autorizar, ele mesmo roda,
-ou acrescenta o padrao em .claude/esquadro/projeto.json:comandosLiberados.
+
+Faca uma destas:
+  1. leve ao dono 3 opcoes com a recomendada marcada, dizendo o que acontece na pratica em cada uma;
+  2. ou siga sem este comando, se o trabalho nao depende dele.
+
+So o dono libera: ele mesmo roda o comando, ou acrescenta o padrao em "comandosLiberados" de .claude/esquadro/projeto.json.
 ~~~
 
 **Trava 7 — criar sem ter procurado** (`Write` de `src/carrinho/frete-novo.js`, sem busca no turno):
@@ -693,7 +718,7 @@ esquadro: NEGADO - arquivo novo sem ter procurado o que ja existe.
 
 Alvo: src/carrinho/frete-novo.js  (nao existe ainda: isto e criacao, nao edicao)
 
-A falha de origem: "eu prefiro criar arquivo novo a entender o que ja existe".
+A falha de origem: criar arquivo novo em vez de entender o que ja existe.
 Antes de criar, procure - Grep, Glob, ou um grep/find pelo Bash - e diga na
 resposta o que a busca devolveu. Se mesmo assim nao houver onde encaixar,
 criar passa a ser a resposta certa, e o portao nao atrapalha de novo neste turno.
@@ -704,28 +729,30 @@ Editar arquivo que ja existe nunca exige isso: quem edita ja achou.
 **Trava 8 — catraca afrouxada** (`Edit` que troca `"minimo": 80` por `"minimo": 60`):
 
 ~~~text
-esquadro: NEGADO - isto sobe a catraca, e subir catraca e decisao humana.
+esquadro: NEGADO - isto sobe a catraca (o limite fixo que segura um indicador), e subir catraca e decisao humana.
 
 Arquivo: test/cobertura.json
-  minimo: 80 -> 60  (piso desceu: passa a exigir menos)
+  minimo: 80 -> 60  (o piso, o minimo exigido, desceu: agora exige menos que antes)
 
-A falha de origem: quando o teste atrapalha, a vontade e mexer no medidor.
-Remover a causa e a saida. Se a regua estiver mesmo errada, quem decide e o dono,
-e a decisao fica registrada - nao sai no meio de uma correcao.
+Por que barra: quando um teste ou checagem atrapalha, e tentador afrouxar o numero que o mede.
+O que fazer: desfaca a mudanca deste numero (volte ao numero da esquerda do "->" acima) e corrija a causa da falha.
+Se o numero estiver mesmo errado, peca ao dono a decisao e registre-a antes de mexer nele:
+subir catraca no meio de uma correcao nao e permitido.
 ~~~
 
 **Portão do prompt do handoff** (o turno gravou `.claude/esquadro/handoff/2026-10-10-frete.md` e a
 resposta final não tem bloco de código):
 
 ~~~text
-esquadro - portao de fecho (prompt do handoff).
+esquadro - falta colar no chat o prompt do handoff (portao de fecho).
 
-Voce gravou um arquivo de handoff neste turno e a sua resposta final nao tem bloco de codigo.
-O prompt pronto tem de chegar ao chat, nao so ao arquivo: cole-o agora num bloco de codigo
-(tres crases ou tres tis), nesta resposta final - uma vez so. O portao le so a resposta final:
-se o bloco ficou numa mensagem anterior deste turno, ele nao a ve.
+Voce gravou um arquivo de handoff neste turno, e a sua resposta final nao tem bloco de codigo.
+O prompt pronto tem de chegar ao chat, nao so ao arquivo. O portao le so a resposta final:
+um bloco numa mensagem anterior deste turno ele nao ve.
 
-Para desligar este portao no projeto: "portaoHandoff": false em .claude/esquadro/projeto.json.
+Faca assim: cole o prompt agora num bloco de codigo (tres crases ou tres tis), nesta resposta final - uma vez so.
+
+Desligar neste projeto: "portaoHandoff": false em .claude/esquadro/projeto.json.
 ~~~
 
 </details>
